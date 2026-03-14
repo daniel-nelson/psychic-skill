@@ -1,0 +1,537 @@
+# Single Table Inheritance (STI) - Complete Guide
+
+## Overview
+
+STI stores multiple model types in a single database table, discriminated by a `type` column. The parent table holds all columns for all child types; child-specific columns are nullable.
+
+## Generating an STI Resource
+
+### Step 1: Generate the Parent with `--sti-base-serializer`
+
+Use `g:resource` with the `--sti-base-serializer` flag. This flag generates **base serializers specially designed for STI extension** - they accept a generic `StiChildClass` parameter and include the `type` attribute with an enum constrained to the child's class name. This is critical for clients consuming the OpenAPI spec and JSON responses to know which shape they're receiving. Children extend these base serializers and pass their own class.
+
+```bash
+pnpm psy g:resource --sti-base-serializer --owning-model=Place \
+  v1/host/places/{}/rooms Room \
+  type:enum:room_types:Bathroom,Bedroom,Kitchen,Den,LivingRoom \
+  Place:belongs_to \
+  position:integer:optional \
+  deleted_at:datetime:optional
+```
+
+**Breaking down the command:**
+- `--sti-base-serializer` - Generates generic base serializers that accept a `StiChildClass` param and include a `type` attribute with a per-child enum, so clients know which shape they're receiving
+- `--owning-model=Place` - The parent model for authorization in controllers
+- `v1/host/places/{}/rooms` - Route path (`{}` is a placeholder for the parent resource ID param)
+- `Room` - Model name (the STI base class)
+- `type:enum:room_types:Bathroom,Bedroom,...` - The type discriminator column as an enum with all child type values
+- `Place:belongs_to` - Association column
+- `position:integer:optional` - Shared column (nullable)
+- `deleted_at:datetime:optional` - For soft delete
+
+**What this generates:**
+- Migration creating the `rooms` table with `type` enum column
+- `Room` model with STI-aware serializers
+- `RoomSerializer.ts` and `RoomSummarySerializer.ts` (base serializers for children to extend)
+- Controller with CRUD actions
+- Route entry
+- Factory and spec files
+
+Run after generating:
+```bash
+pnpm psy db:migrate
+```
+
+### Step 2: Generate STI Children with `g:sti-child`
+
+```bash
+pnpm psy g:sti-child [options] <ChildPath> extends <ParentModel> [columns...]
+```
+
+**Examples:**
+
+Child with an enum column:
+```bash
+pnpm psy g:sti-child --model-name=Bathroom \
+  Room/Bathroom extends Room \
+  bath_or_shower_style:enum:bath_or_shower_styles:bath,shower,bath_and_shower,none
+pnpm psy db:migrate
+```
+
+Child with an enum array column:
+```bash
+pnpm psy g:sti-child --model-name=Bedroom \
+  Room/Bedroom extends Room \
+  bed_types:enum[]:bed_types:twin,bunk,queen,king,cot,sofabed
+pnpm psy db:migrate
+```
+
+Child with no additional columns:
+```bash
+pnpm psy g:sti-child --model-name=Den Room/Den extends Room
+pnpm psy g:sti-child --model-name=LivingRoom Room/LivingRoom extends Room
+```
+
+After all children are generated:
+```bash
+pnpm psy db:migrate
+pnpm psy sync
+```
+
+**`g:sti-child` flags:**
+- `--model-name=ClassName` - Explicit class name (e.g., `--model-name=Bathroom` for path `Room/Bathroom`)
+- `--admin-serializers` - Also generate `AdminSerializer` and `AdminSummarySerializer` variants
+- `--internal-serializers` - Also generate `InternalSerializer` and `InternalSummarySerializer` variants
+- `--no-serializer` - Skip serializer generation entirely
+- `--connection-name` - Database connection (defaults to "default")
+
+**What `g:sti-child` generates:**
+- Dream STI child model decorated with `@STI(ParentClass)`
+- Child serializers that extend parent serializers
+- Migration that **ALTERs the parent table** (not a new table) to add child-specific columns
+- Check constraints ensuring child columns are NOT NULL only for that child type
+- Factory and spec skeleton
+
+### Key Differences
+
+| Aspect | Parent (`g:resource`) | Child (`g:sti-child`) |
+|--------|----------------------|----------------------|
+| Command | `pnpm psy g:resource --sti-base-serializer` | `pnpm psy g:sti-child` |
+| Table | Creates new table | ALTERs parent table |
+| Model | Standard model with serializers getter | `@STI(Parent)` decorator, overrides serializers getter |
+| Controller | Generated | Not generated (uses parent's controller) |
+| Serializer | Created as extensible base | Extends parent serializer |
+| Migration | CREATE TABLE with `type` enum | ALTER TABLE, add columns + check constraints |
+
+## Generated File Structure
+
+```
+src/app/
+  models/
+    Room.ts                    # Parent model (STI base with generic serializers)
+    Room/
+      Bathroom.ts              # @STI(Room), overrides serializers getter
+      Bedroom.ts
+      Kitchen.ts
+      Den.ts
+      LivingRoom.ts
+  serializers/
+    RoomSerializer.ts          # Base serializers (generic, for extension)
+    Room/
+      BathroomSerializer.ts    # Extends RoomSerializer/RoomSummarySerializer
+      BedroomSerializer.ts
+      KitchenSerializer.ts
+      DenSerializer.ts
+      LivingRoomSerializer.ts
+  controllers/
+    V1/Host/Places/
+      RoomsController.ts       # Single controller handles all room types
+spec/
+  factories/
+    Room/
+      BathroomFactory.ts
+      BedroomFactory.ts
+      ...
+  unit/
+    models/
+      Room/
+        Bathroom.spec.ts
+        Bedroom.spec.ts
+        ...
+```
+
+## Model Patterns
+
+### Parent Model (generated with `--sti-base-serializer`)
+
+The parent model has a `get serializers()` getter pointing to the STI base serializers. These base serializers are generic and accept a `StiChildClass` parameter, so each child passes its own class to get the correct `type` enum value in the OpenAPI schema and JSON output.
+
+```typescript
+import { Decorators, SoftDelete } from '@rvoh/dream'
+import { DreamColumn } from '@rvoh/dream/types'
+import ApplicationModel from './ApplicationModel.js'
+import Place from './Place.js'
+
+const deco = new Decorators<typeof Room>()
+
+@SoftDelete()
+export default class Room extends ApplicationModel {
+  public override get table() {
+    return 'rooms' as const
+  }
+
+  // STI base serializers - generic, accept child class for type discrimination
+
+  public id: DreamColumn<Room, 'id'>
+  public type: DreamColumn<Room, 'type'>
+  public position: DreamColumn<Room, 'position'>
+  public deletedAt: DreamColumn<Room, 'deletedAt'>
+  public createdAt: DreamColumn<Room, 'createdAt'>
+  public updatedAt: DreamColumn<Room, 'updatedAt'>
+
+  @deco.BelongsTo('Place')
+  public place: Place
+  public placeId: DreamColumn<Room, 'placeId'>
+
+  @deco.Sortable({ scope: 'place' })
+  public declare position: DreamColumn<Room, 'position'>
+}
+```
+
+### STI Child Model
+
+```typescript
+import { STI } from '@rvoh/dream'
+import { DreamColumn, DreamSerializers } from '@rvoh/dream/types'
+import Room from '../Room.js'
+
+@STI(Room)
+export default class Bedroom extends Room {
+  public override get serializers(): DreamSerializers<Bedroom> {
+    return {
+      default: 'Room/BedroomSerializer',
+      summary: 'Room/BedroomSummarySerializer',
+      forGuests: 'Room/BedroomForGuestsSerializer',
+    }
+  }
+
+  // Child-specific columns (nullable in DB, but typed for this child)
+  public bedTypes: DreamColumn<Bedroom, 'bedTypes'>
+}
+```
+
+### STI Limitations
+
+- Children **cannot define new associations** - all associations must be on the parent
+- Children **cannot use `@SoftDelete()`** - must be on the parent
+- Children **cannot use `@ReplicaSafe()`** - must be on the parent
+- Children can override `get serializers()` (and should)
+- Children can add child-specific columns
+
+## Serializer Patterns
+
+### Base Serializer (generic, for extension by children)
+
+```typescript
+import Room from '@models/Room.js'
+import { DreamSerializer } from '@rvoh/dream'
+
+export const RoomSummarySerializer = <T extends Room>(StiChildClass: typeof Room, room: T) =>
+  DreamSerializer(StiChildClass ?? Room, room)
+    .attribute('id')
+    .attribute('type', {
+      openapi: { type: 'string', enum: [(StiChildClass ?? Room).sanitizedName] },
+    })
+    .attribute('position')
+
+export const RoomSerializer = <T extends Room>(StiChildClass: typeof Room, room: T) =>
+  RoomSummarySerializer(StiChildClass, room)
+    .attribute('deletedAt')
+```
+
+Key points:
+- Uses generic `<T extends Room>` so any child class works
+- First param is `StiChildClass: typeof Room` - the child class itself
+- `.sanitizedName` returns the class name for the `type` enum value
+- `StiChildClass ?? Room` fallback handles edge cases
+
+### Child Serializer (extends base)
+
+```typescript
+import Bedroom from '@models/Room/Bedroom.js'
+import { RoomSerializer, RoomSummarySerializer } from '@serializers/RoomSerializer.js'
+
+// Summary extends base summary
+export const RoomBedroomSummarySerializer = (bedroom: Bedroom) =>
+  RoomSummarySerializer(Bedroom, bedroom)
+
+// Default extends base default, adds child-specific fields
+export const RoomBedroomSerializer = (bedroom: Bedroom) =>
+  RoomSerializer(Bedroom, bedroom)
+    .attribute('bedTypes')
+
+// Guest-facing with passthrough for i18n
+export const RoomBedroomForGuestsSerializer = (
+  bedroom: Bedroom,
+  passthrough: { locale: LocalesEnum }
+) =>
+  RoomForGuestsSerializer(Bedroom, bedroom, passthrough)
+    .rendersMany('bedTypes', { serializer: BedTypeSerializer })
+```
+
+## Migration Patterns
+
+### Parent Table Migration
+
+```typescript
+export async function up(db: Kysely<any>): Promise<void> {
+  await db.schema
+    .createType('room_types_enum')
+    .asEnum(['Bathroom', 'Bedroom', 'Kitchen', 'Den', 'LivingRoom'])
+    .execute()
+
+  await db.schema
+    .createTable('rooms')
+    .addColumn('id', 'uuid', col => col.primaryKey().defaultTo(sql`uuidv7()`))
+    .addColumn('type', sql`room_types_enum`, col => col.notNull())
+    .addColumn('position', 'integer', col => col.notNull())
+    .addColumn('place_id', 'uuid', col =>
+      col.references('places.id').onDelete('restrict').notNull()
+    )
+    .addColumn('deleted_at', 'timestamp')
+    .addColumn('created_at', 'timestamp', col => col.notNull())
+    .addColumn('updated_at', 'timestamp', col => col.notNull())
+    .execute()
+
+  await db.schema.createIndex('rooms_type').on('rooms').column('type').execute()
+  await db.schema.createIndex('rooms_place_id').on('rooms').column('place_id').execute()
+}
+```
+
+### STI Child Migration (ALTERs parent table)
+
+```typescript
+export async function up(db: Kysely<any>): Promise<void> {
+  // Create child-specific enum
+  await db.schema
+    .createType('bath_or_shower_styles_enum')
+    .asEnum(['bath', 'shower', 'bath_and_shower', 'none'])
+    .execute()
+
+  // Add column to PARENT table (not a new table)
+  await db.schema
+    .alterTable('rooms')
+    .addColumn('bath_or_shower_style', sql`bath_or_shower_styles_enum`)
+    .execute()
+
+  // Check constraint: column required ONLY for this child type
+  await db.schema
+    .alterTable('rooms')
+    .addCheckConstraint(
+      'rooms_not_null_bath_or_shower_style',
+      sql`type != 'Bathroom' OR bath_or_shower_style IS NOT NULL`,
+    )
+    .execute()
+}
+
+export async function down(db: Kysely<any>): Promise<void> {
+  await db.schema.alterTable('rooms').dropConstraint('rooms_not_null_bath_or_shower_style').execute()
+  await db.schema.alterTable('rooms').dropColumn('bath_or_shower_style').execute()
+  await db.schema.dropType('bath_or_shower_styles_enum').execute()
+}
+```
+
+### Array Enum Child Migration
+
+```typescript
+export async function up(db: Kysely<any>): Promise<void> {
+  await db.schema
+    .createType('bed_types_enum')
+    .asEnum(['twin', 'bunk', 'queen', 'king', 'cot', 'sofabed'])
+    .execute()
+
+  await db.schema
+    .alterTable('rooms')
+    .addColumn('bed_types', sql`bed_types_enum[]`, col => col.notNull().defaultTo('{}'))
+    .execute()
+}
+```
+
+## Controller Pattern
+
+A single controller handles ALL STI types. The `create` action must switch on type:
+
+```typescript
+export default class V1HostPlacesRoomsController extends V1HostPlacesBaseController {
+  @OpenAPI(Room, {
+    status: 200,
+    tags: ['rooms'],
+    cursorPaginate: true,
+    serializerKey: 'summary',
+    fastJsonStringify: true,
+  })
+  public async index() {
+    const rooms = await this.currentPlace
+      .associationQuery('rooms')
+      .preloadFor('summary')
+      .cursorPaginate({
+        cursor: this.castParam('cursor', 'string', { allowNull: true }),
+      })
+    this.ok(rooms)
+  }
+
+  @OpenAPI(Room, { status: 201, tags: ['rooms'], fastJsonStringify: true })
+  public async create() {
+    const roomType = this.castParam('type', 'string', { enum: RoomTypesEnumValues })
+    const roomParams = this.paramsFor(Room)
+    let room: Room
+
+    switch (roomType) {
+      case 'Bathroom':
+        room = await Bathroom.create({ place: this.currentPlace, ...roomParams })
+        break
+      case 'Bedroom':
+        room = await Bedroom.create({ place: this.currentPlace, ...roomParams })
+        break
+      case 'Kitchen':
+        room = await Kitchen.create({ place: this.currentPlace, ...roomParams })
+        break
+      case 'Den':
+        room = await Den.create({ place: this.currentPlace, ...roomParams })
+        break
+      case 'LivingRoom':
+        room = await LivingRoom.create({ place: this.currentPlace, ...roomParams })
+        break
+      default: {
+        // TypeScript exhaustiveness check - compiler error if a type is missed
+        const _never: never = roomType
+        throw new Error(`Unhandled RoomTypesEnum: ${_never as string}`)
+      }
+    }
+
+    if (room.isPersisted) room = await room.loadFor('default').execute()
+    this.created(room)
+  }
+
+  @OpenAPI(Room, { status: 204, tags: ['rooms'] })
+  public async update() {
+    const room = await this.room()
+    await room.update(this.paramsFor(Room))
+    this.noContent()
+  }
+
+  @OpenAPI({ status: 204, tags: ['rooms'] })
+  public async destroy() {
+    const room = await this.room()
+    await room.destroy()
+    this.noContent()
+  }
+
+  private async room() {
+    return await this.currentPlace
+      .associationQuery('rooms')
+      .preloadFor('default')
+      .findOrFail(this.castParam('id', 'string'))
+  }
+}
+```
+
+**Key points:**
+- `RoomTypesEnumValues` is auto-generated from the enum in `types/db.ts`
+- `this.paramsFor(Room)` uses the **parent** class for param extraction
+- Each `case` creates via the **child** class (e.g., `Bedroom.create(...)`)
+- The `default` branch with `const _never: never = roomType` ensures compile-time exhaustiveness
+- `show`, `update`, `destroy` work on the parent `Room` type - Dream returns the correct child instance
+
+## Testing Patterns
+
+### STI Factories
+
+Each child gets its own factory:
+
+```typescript
+// spec/factories/Room/BedroomFactory.ts
+import Bedroom from '@models/Room/Bedroom.js'
+import createPlace from '../PlaceFactory.js'
+import { UpdateableProperties } from '@rvoh/dream/types'
+
+export default async function createBedroom(
+  attrs: UpdateableProperties<Bedroom> & { place?: Place } = {}
+) {
+  const place = attrs.place ?? await createPlace()
+  return await Bedroom.create({
+    place,
+    bedTypes: ['queen'],
+    ...attrs,
+  })
+}
+```
+
+### STI Model Specs
+
+```typescript
+describe('Bedroom', () => {
+  it('is an STI child of Room', async () => {
+    const bedroom = await createBedroom()
+    expect(bedroom.type).toEqual('Bedroom')
+
+    // Querying Room returns correct child type
+    const room = await Room.findOrFail(bedroom.id)
+    expect(room).toBeInstanceOf(Bedroom)
+    expect((room as Bedroom).bedTypes).toEqual(['queen'])
+  })
+
+  it('only returns Bedrooms when querying Bedroom class', async () => {
+    const bedroom = await createBedroom()
+    const kitchen = await createKitchen()
+
+    const bedrooms = await Bedroom.all()
+    expect(bedrooms).toMatchDreamModels([bedroom])
+    expect(bedrooms).not.toMatchDreamModels([kitchen])
+  })
+})
+```
+
+### STI Controller Specs
+
+```typescript
+describe('POST /v1/host/places/:placeId/rooms', () => {
+  it('creates a Bedroom', async () => {
+    const { body } = await request.post(
+      `/v1/host/places/${place.id}/rooms`, 201,
+      { data: { type: 'Bedroom', bedTypes: ['queen', 'twin'] } }
+    )
+    expect(body.type).toEqual('Bedroom')
+    expect(body.bedTypes).toEqual(['queen', 'twin'])
+
+    const room = await place.associationQuery('rooms').firstOrFail()
+    expect(room).toBeInstanceOf(Bedroom)
+  })
+
+  it('creates a Bathroom', async () => {
+    const { body } = await request.post(
+      `/v1/host/places/${place.id}/rooms`, 201,
+      { data: { type: 'Bathroom', bathOrShowerStyle: 'bath_and_shower' } }
+    )
+    expect(body.type).toEqual('Bathroom')
+  })
+})
+```
+
+## Complete Generation Workflow
+
+```bash
+# 1. Generate parent resource with --sti-base-serializer
+pnpm psy g:resource --sti-base-serializer --owning-model=Place \
+  v1/host/places/{}/rooms Room \
+  type:enum:room_types:Bathroom,Bedroom,Kitchen,Den,LivingRoom \
+  Place:belongs_to position:integer:optional deleted_at:datetime:optional
+
+# 2. Migrate parent table
+pnpm psy db:migrate
+
+# 3. Generate each child
+pnpm psy g:sti-child --model-name=Bathroom Room/Bathroom extends Room \
+  bath_or_shower_style:enum:bath_or_shower_styles:bath,shower,bath_and_shower,none
+pnpm psy db:migrate
+
+pnpm psy g:sti-child --model-name=Bedroom Room/Bedroom extends Room \
+  bed_types:enum[]:bed_types:twin,bunk,queen,king,cot,sofabed
+pnpm psy db:migrate
+
+pnpm psy g:sti-child --model-name=Kitchen Room/Kitchen extends Room \
+  appliances:enum[]:appliance_types:stove,oven,microwave,dishwasher
+pnpm psy db:migrate
+
+pnpm psy g:sti-child --model-name=Den Room/Den extends Room
+pnpm psy g:sti-child --model-name=LivingRoom Room/LivingRoom extends Room
+
+# 4. Migrate remaining children and sync types
+pnpm psy db:migrate
+pnpm psy sync
+
+# 5. Update controller create action with switch statement for all types
+# 6. Add @Sortable and deferrable unique constraint if needed
+# 7. Write specs
+# 8. Run specs: pnpm uspec
+```

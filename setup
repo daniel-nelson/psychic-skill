@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SKILL_NAME="psychic-skill"
+
+# Determine if we're inside a .claude/skills directory
+PARENT_DIR="$(dirname "$SCRIPT_DIR")"
+PARENT_NAME="$(basename "$PARENT_DIR")"
+
+if [ "$PARENT_NAME" = "skills" ]; then
+  SKILLS_DIR="$PARENT_DIR"
+else
+  echo "Warning: $SKILL_NAME is not installed in a .claude/skills/ directory."
+  echo "Symlinks will not be created."
+  exit 0
+fi
+
+# Create symlinks for sub-skills (directories containing SKILL.md)
+LINKED=()
+for skill_dir in "$SCRIPT_DIR"/*/; do
+  [ -d "$skill_dir" ] || continue
+  skill_base="$(basename "$skill_dir")"
+
+  # Skip non-skill directories
+  [ "$skill_base" = "node_modules" ] && continue
+  [ "$skill_base" = ".git" ] && continue
+  [ -f "$skill_dir/SKILL.md" ] || continue
+
+  LINK_TARGET="$SKILLS_DIR/$skill_base"
+
+  # Create or update symlink
+  if [ -L "$LINK_TARGET" ]; then
+    rm "$LINK_TARGET"
+  elif [ -e "$LINK_TARGET" ]; then
+    echo "Skipping $skill_base: $LINK_TARGET already exists and is not a symlink"
+    continue
+  fi
+
+  ln -s "$SKILL_NAME/$skill_base" "$LINK_TARGET"
+  LINKED+=("$skill_base")
+done
+
+echo ""
+echo "psychic-skill setup complete."
+echo ""
+
+if [ ${#LINKED[@]} -gt 0 ]; then
+  echo "Linked skills:"
+  for s in "${LINKED[@]}"; do
+    echo "  /$s"
+  done
+  echo ""
+fi
+
+echo "The following skill is now available:"
+echo "  dream-psychic  (auto-loads when working with Dream/Psychic projects)"
+echo "  /psychic-upgrade  (upgrade to latest version)"
+echo ""
