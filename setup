@@ -55,5 +55,5 @@ fi
 
 echo "The following skill is now available:"
 echo "  dream-psychic  (auto-loads when working with Dream/Psychic projects)"
-echo "  /psychic-upgrade  (upgrade to latest version)"
+echo "  /psychic-update-skill  (update to latest version)"
 echo ""

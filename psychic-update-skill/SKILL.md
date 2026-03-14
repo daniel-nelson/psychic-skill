@@ -1,6 +1,6 @@
 ---
-name: psychic-upgrade
-description: Upgrade the psychic-skill to the latest version from GitHub
+name: psychic-update-skill
+description: Update the psychic-skill to the latest version from GitHub
 argument-hint: ''
 ---
 

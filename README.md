@@ -39,7 +39,7 @@ Real files get committed to your repo (not a submodule), so `git clone` just wor
 
 - Skill files (Markdown) in `~/.claude/skills/psychic-skill/` (or `.claude/skills/psychic-skill/` for project installs)
 - `dream-psychic` skill auto-loads when working with Dream/Psychic projects
-- `/psychic-upgrade` slash command (symlinked) for easy upgrades
+- `/psychic-update-skill` slash command (symlinked) for easy upgrades
 
 Everything lives inside `.claude/`. Nothing touches your PATH or runs in the background.
 
@@ -58,7 +58,7 @@ The skill enforces critical conventions:
 
 Paste this into Claude Code:
 
-> /psychic-upgrade
+> /psychic-update-skill
 
 Or manually:
 
@@ -68,7 +68,7 @@ Or manually:
 
 Paste this into Claude Code:
 
-> Uninstall psychic-skill: run `rm -f ~/.claude/skills/psychic-upgrade && rm -rf ~/.claude/skills/psychic-skill`. If this project also has psychic-skill at `.claude/skills/psychic-skill`, remove it too: run `rm -f .claude/skills/psychic-upgrade && rm -rf .claude/skills/psychic-skill`
+> Uninstall psychic-skill: run `rm -f ~/.claude/skills/psychic-update-skill && rm -rf ~/.claude/skills/psychic-skill`. If this project also has psychic-skill at `.claude/skills/psychic-skill`, remove it too: run `rm -f .claude/skills/psychic-update-skill && rm -rf .claude/skills/psychic-skill`
 
 ## Skill files
 
