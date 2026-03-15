@@ -2,7 +2,7 @@
 
 ## Overview
 
-Tests use **Vitest** with real database records (not mocks). Follow BDD principles: write failing spec first, then implement.
+Tests use **Vitest** with real database records (not mocks). We practice **BDD, not TDD** - focus expectations on outcomes, not implementation. For code added independently of a generator, always write a failing spec first, then implement. Generated code is the only exception (generators create scaffolding for specs and implementation simultaneously).
 
 ## Test Types
 
@@ -15,9 +15,15 @@ Tests use **Vitest** with real database records (not mocks). Follow BDD principl
 ```bash
 pnpm uspec                                    # All unit specs
 pnpm uspec spec/unit/models/Place.spec.ts    # Single file
-pnpm uspec --grep "creates a Place"          # Filter by description
 pnpm fspec                                    # Feature specs (headless)
 pnpm fspec:visible                            # Feature specs (visible browser)
+```
+
+**Run specific specs within a file** using `.only` or `.skip`:
+```typescript
+it.only('returns the index of Places', async () => { ... })  // Run only this
+it.skip('returns the index of Places', async () => { ... })  // Skip this
+// Also works on describe and context blocks
 ```
 
 ## Factory Pattern
@@ -342,16 +348,62 @@ expect(body.results).toHaveLength(1)
 expect(place.name).toEqual('Expected Name')
 ```
 
+## Spec Organization
+
+### When spec'ing a function
+Use `describe` for the outermost block and `context` blocks for different state:
+```typescript
+describe('calculatePrice', () => {
+  context('when the item is on sale', () => {
+    it('applies the discount', async () => { ... })
+  })
+})
+```
+
+### When spec'ing a class
+Use `describe` for the class, `describe` for each public method (`.staticMethod` or `#instanceMethod`), and `context` for state:
+```typescript
+describe('Place', () => {
+  describe('#destroy', () => {
+    context('when the place has rooms', () => {
+      it('cascades the soft delete', async () => { ... })
+    })
+  })
+})
+```
+
+### Keep DRY with spec setup
+Leverage nested `context` blocks to change only the one thing being tested:
+```typescript
+describe('V1/Host/PlacesController', () => {
+  describe('POST create', () => {
+    let options: CreatePlaceOptions
+
+    beforeEach(async () => {
+      // Set happy path defaults
+      options = { name: 'Cozy Cabin', style: 'cabin', sleeps: 4 }
+    })
+
+    it('creates a Place', async () => { ... })
+
+    context('when sleeps is negative', () => {
+      beforeEach(() => { options.sleeps = -1 })
+      it('returns 422', async () => { ... })
+    })
+  })
+})
+```
+
 ## Testing Principles
 
 1. **Use real models** - Create records via factories, not mocks
-2. **Don't stub Dream internals** - Never mock `.find()`, `.create()`, etc.
+2. **Don't stub Dream internals** - Never mock `.find()`, `.create()`, `.loaded()`, etc.
 3. **Test behavior, not implementation** - Assert on outcomes, not internal calls
-4. **Use spies for external services** - Mock external APIs, not Dream/Psychic
-5. **Test authorization** - Verify users can only access their own resources
-6. **Test soft deletes** - Verify record is hidden AND still in database
-7. **BDD style** - `describe` > `context` > `it` hierarchy
-8. **Use Polly** for external API recording/replay
+4. **Don't spec behavior of another class that is already spec'd** - Use vitest spies to return different values instead
+5. **In controller specs, use factories to create real models** - Let controllers leverage real Dream queries (never mocked). If a spec'd service/view-model fetches or transforms the data, you may mock it, but ensure its own spec covers the full variety of cases
+6. **Test authorization** - Verify users can only access their own resources
+7. **Test soft deletes by testing behavior** - Verify record is hidden (normal query) AND still present when scopes are removed
+8. **Use Polly** (`setupPolly`) for recording and replaying external API calls rather than stubbing
 
 ## Background Worker Testing
 

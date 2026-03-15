@@ -2,23 +2,16 @@
 
 ## Overview
 
-Dream migrations use Kysely under the hood. They define database schema changes with up/down functions.
+Dream migrations use Kysely under the hood. **Migrations are always created via generators** (`g:resource`, `g:model`, `g:sti-child`, or `g:migration`) - never create migration files by hand. This reference covers the Kysely API and DreamMigrationHelpers available for editing generated migrations.
 
-## Basic Template
+**CRITICAL: Never modify an existing migration file that has already been merged into main.** Use `pnpm psy g:migration` to create a new migration for additional changes.
+
+## DreamMigrationHelpers
+
+`DreamMigrationHelpers` (imported from `@rvoh/dream/db`) provides convenience methods for common migration operations. **Prefer a DreamMigrationHelpers method over compound Kysely calls whenever one is available.** Consult the TSDocs on `DreamMigrationHelpers` for the full list of available methods and their signatures - methods include helpers for extensions, enum manipulation, deferrable constraints, GIN indexes, table renaming, and more.
 
 ```typescript
 import { DreamMigrationHelpers } from '@rvoh/dream/db'
-import { Kysely, sql } from 'kysely'
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function up(db: Kysely<any>): Promise<void> {
-  // Schema changes
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function down(db: Kysely<any>): Promise<void> {
-  // Rollback changes
-}
 ```
 
 ## Create Table
@@ -247,49 +240,6 @@ await DreamMigrationHelpers.createExtension(db, 'citext')
 
 // Trigram similarity for fuzzy search
 await DreamMigrationHelpers.createExtension(db, 'pg_trgm')
-```
-
-## DreamMigrationHelpers
-
-```typescript
-import { DreamMigrationHelpers } from '@rvoh/dream/db'
-
-// Create extension
-await DreamMigrationHelpers.createExtension(db, 'citext')
-
-// Deferrable unique constraint (required for @Sortable)
-await DreamMigrationHelpers.addDeferrableUniqueConstraint(db, 'room_position_constraint', {
-  table: 'rooms',
-  columns: ['place_id', 'position'],
-})
-
-// Drop constraint
-await DreamMigrationHelpers.dropConstraint(db, 'room_position_constraint', { table: 'rooms' })
-
-// GIN index for full-text search
-await DreamMigrationHelpers.createGinIndex(db, 'index_users_name_gin', {
-  table: 'users',
-  column: 'name',
-})
-
-// Add enum value
-await DreamMigrationHelpers.addEnumValue(db, {
-  enumName: 'styles_enum',
-  value: 'mansion',
-})
-
-// Drop enum value
-await DreamMigrationHelpers.dropEnumValue(db, {
-  enumName: 'styles_enum',
-  value: 'dump',
-  replacements: [{ table: 'places', column: 'style', replaceWith: 'cave' }],
-})
-
-// Rename table (including sequence)
-await DreamMigrationHelpers.renameTable(db, 'old_name', 'new_name')
-
-// Force new transaction boundary
-DreamMigrationHelpers.newTransaction()
 ```
 
 ## Polymorphic Association Columns

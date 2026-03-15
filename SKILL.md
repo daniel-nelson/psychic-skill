@@ -3,7 +3,7 @@ name: dream-psychic
 description: >
   Comprehensive guide for developing applications with Dream ORM and Psychic web framework.
   TRIGGER when: code imports from '@rvoh/dream', '@rvoh/psychic', '@rvoh/psychic-workers', or '@rvoh/psychic-websockets',
-  or project has Dream models, Psychic controllers, or uses 'pnpm psy' commands.
+  or project has Dream models, Psychic controllers, or uses 'psy' commands.
   Covers models, associations, validations, hooks, scopes, serializers, controllers, routing,
   migrations, background workers, websockets, OpenAPI, testing, and code generation.
 user-invocable: false
@@ -14,16 +14,25 @@ allowed-tools: Read, Grep, Glob, Bash, Edit, Write
 
 You are working with **Dream** (a TypeScript Active Record ORM) and **Psychic** (a batteries-included TypeScript web framework built on Koa). Both are open source packages published under the `@rvoh` npm scope.
 
+**Installed skill version**: !`cat "${CLAUDE_SKILL_DIR}/VERSION" 2>/dev/null || echo "unknown"`
+To check for updates, fetch the latest version: !`curl -sf https://raw.githubusercontent.com/daniel-nelson/psychic-skill/main/VERSION 2>/dev/null || echo "unable to check"`
+If the remote version is newer than the installed version, suggest running `/psychic-update-skill`.
+
+All CLI commands in this document are run via the local project's package manager (e.g., `pnpm psy sync`, `yarn psy sync`, `npm run psy sync`). Examples use `pnpm` but substitute the project's actual package manager.
+
 ## Critical Rules
 
 1. **ALWAYS read the project's `AGENTS.md` or `CLAUDE.md` first** before doing any work - these contain project-specific conventions that override general patterns.
 2. **ALWAYS run `pnpm psy <command> --help`** before using any generator - never guess syntax.
 3. **NEVER use JavaScript `Date`** - always use `DateTime` or `CalendarDate` from `@rvoh/dream`.
 4. **NEVER stub or mock Dream internals** in tests - use factories to create real model instances.
-5. **Sources of truth** (priority order): TSDocs > `pnpm psy <command> --help` > existing code patterns.
-6. **Use `pnpm`** as the package manager (not npm or yarn).
-7. **BDD approach**: Write failing spec first, then implement.
-8. **Run `pnpm psy sync`** after changing associations or model structure to regenerate types.
+5. **NEVER modify an existing migration file that has already been merged into main.**
+6. **A generator must always be used** when creating new models, controllers, or migrations.
+7. **Sources of truth** (priority order): TSDocs > `pnpm psy <command> --help` > psychic-skill > MCP server (dream-psychic-rag).
+8. **BDD approach**: Write failing spec first, then implement. Generated code is the only exception (generators create scaffolding for specs and implementation simultaneously).
+9. **Run `pnpm psy sync`** after changing associations, serializers, OpenAPI decorators, or routes.
+10. **Only use comments to explain "why", not "what"** - prefer expressive code over comments. TSDoc comments explaining "how" or "when" to use a function/method/class are welcome.
+11. **Use Dream's built-in utilities** (`@rvoh/dream/utils`) instead of lodash or hand-rolled equivalents. See [utils.md](utils.md) for the full list.
 
 ## Project Structure
 
@@ -56,25 +65,74 @@ api/
 ## Key Commands
 
 ```bash
-pnpm psy db:migrate              # Run migrations
+pnpm psy db:migrate              # Run migrations, then sync
 pnpm psy db:rollback             # Rollback last migration batch
-pnpm psy db:reset                # Drop + create + migrate
-pnpm psy sync                    # Sync types + OpenAPI specs
-pnpm psy sync:openapi            # Regenerate OpenAPI only
+pnpm psy db:reset                # Drop + create + migrate, then sync
+pnpm psy sync                    # Sync types, OpenAPI specs, and cli:sync commands
 pnpm psy routes                  # Display all routes
+pnpm psy --help                  # List all psy commands
 
 # Generators (ALWAYS run --help first)
-pnpm psy g:model ModelName field:type
-pnpm psy g:resource path/Name ModelName field:type
+pnpm psy g:resource path/Name ModelName field:type   # Preferred for HTTP-accessible models
+pnpm psy g:model ModelName field:type                # When model won't be HTTP-accessible
 pnpm psy g:controller Path/Name action1 action2
-pnpm psy g:migration description
+pnpm psy g:migration description                     # For schema changes without a new model
 pnpm psy g:sti-child Model/Child extends Parent field:type
 
-# Testing
+# Testing & Quality
 pnpm uspec                       # Unit specs
 pnpm fspec                       # Feature specs (headless)
 pnpm fspec:visible               # Feature specs (visible browser)
+pnpm build:spec                  # Check for type errors
+pnpm format                      # Apply standard formatting
+pnpm lint                        # Check linting
 ```
+
+## Generator Usage Rules
+
+- **Generator preference order**:
+  1. **Resource generator** (`g:resource`) - preferred when a model may be manipulated via HTTP requests
+  2. **STI-child generator** (`g:sti-child`) - for STI child models building on an existing STI base
+  3. **Model generator** (`g:model`) - when a new model won't be HTTP-accessible
+  4. **Migration generator** (`g:migration`) - for database changes when not generating a new model
+- **CRITICAL: ALWAYS run `pnpm psy <command> --help` before running any generator**
+
+### Generator Workflow
+
+After a generator has run:
+
+1. **Update the migration file as needed** (e.g., add `unique()` to a column)
+2. **Run migrations**: `pnpm psy db:migrate`
+3. **If the generator was a resource generator**:
+   - Update the generated controller spec first
+   - Then update the corresponding generated controller
+   - Note: controller specs will hang if there is no response within a controller action (generated action code starts commented out)
+4. **Commit generated code as its own commit** with a message in this format:
+   ```
+   Generate Room resource
+
+   ```console
+   pnpm psy g:resource --sti-base-serializer --owning-model=Place v1/host/places/rooms Room type:enum:room_types:Bathroom,Bedroom,Kitchen,Den
+   ```
+   ```
+
+### When to Run `pnpm psy sync`
+
+Run `pnpm psy sync` whenever any of the following are added or changed:
+- An association in a Dream model
+- A serializer
+- An OpenAPI decorator on a controller action
+- A route
+
+If controller specs have type errors about what an endpoint accepts or returns, this means the OpenAPI shape is out of sync - run `pnpm psy sync`.
+
+## Adding Properties to Existing Models
+
+- **Always use the migration generator** (`pnpm psy g:migration`) to create a migration for schema changes
+- The generator scaffolding can be modified to make other database changes using DreamMigrationHelpers or Kysely-native calls
+- Prefer a DreamMigrationHelpers method over compound Kysely calls when one is available
+- After generating and running the migration, manually add the property declaration to the model file
+- Example: To add a `timezone` field to User, run `pnpm psy g:migration add_timezone_to_users`, edit the generated migration, then add `public timezone: DreamColumn<User, 'timezone'>` to the User model
 
 ## Models
 
@@ -392,87 +450,9 @@ export const RoomBedroomSerializer = (bedroom: Bedroom) =>
 
 ## Migrations
 
-For detailed migration patterns, see [migrations.md](migrations.md).
+For detailed migration patterns (column types, helpers, etc.), see [migrations.md](migrations.md).
 
-### Quick Reference
-
-```typescript
-import { DreamMigrationHelpers } from '@rvoh/dream/db'
-import { Kysely, sql } from 'kysely'
-
-export async function up(db: Kysely<any>): Promise<void> {
-  // Extensions
-  await DreamMigrationHelpers.createExtension(db, 'citext')
-
-  // Create enum
-  await db.schema.createType('place_styles_enum')
-    .asEnum(['cottage', 'cabin', 'treehouse', 'tent', 'cave'])
-    .execute()
-
-  // Create table
-  await db.schema
-    .createTable('places')
-    .addColumn('id', 'uuid', col => col.primaryKey().defaultTo(sql`uuidv7()`))
-    .addColumn('name', sql`citext`, col => col.notNull())
-    .addColumn('style', sql`place_styles_enum`, col => col.notNull())
-    .addColumn('sleeps', 'integer', col => col.notNull())
-    .addColumn('host_id', 'uuid', col => col.references('hosts.id').onDelete('restrict').notNull())
-    .addColumn('deleted_at', 'timestamp')
-    .addColumn('created_at', 'timestamp', col => col.notNull())
-    .addColumn('updated_at', 'timestamp', col => col.notNull())
-    .execute()
-
-  // Always create indexes for foreign keys
-  await db.schema.createIndex('places_host_id').on('places').column('host_id').execute()
-}
-
-export async function down(db: Kysely<any>): Promise<void> {
-  await db.schema.dropTable('places').execute()
-  await db.schema.dropType('place_styles_enum').execute()
-}
-```
-
-### Common Column Types
-
-| Type | Kysely Syntax | Notes |
-|------|--------------|-------|
-| UUID PK | `'uuid', col => col.primaryKey().defaultTo(sql\`uuidv7()\`)` | Default PK pattern |
-| bigserial PK | `'bigserial', col => col.primaryKey()` | Alternative PK |
-| String | `'varchar'` or `'varchar(128)'` | With optional length |
-| Case-insensitive | `sql\`citext\`` | Requires citext extension |
-| Text | `'text'` | Long text |
-| Integer | `'integer'` | |
-| Decimal | `sql\`decimal(10, 2)\`` | With precision |
-| Boolean | `'boolean'` | |
-| Timestamp | `'timestamp'` | For datetime columns |
-| Date | `'date'` | Date only |
-| Enum | `sql\`enum_name\`` | Must create type first |
-| Enum array | `sql\`enum_name[]\`, col => col.defaultTo('{}')` | Array of enums |
-| JSON | `'jsonb'` | Prefer jsonb over json |
-| FK reference | `col => col.references('table.column').onDelete('restrict')` | Foreign keys |
-
-### Migration Helpers
-
-```typescript
-// Deferrable unique constraint (required for @Sortable)
-await DreamMigrationHelpers.addDeferrableUniqueConstraint(db, 'constraint_name', {
-  table: 'rooms', columns: ['place_id', 'position'],
-})
-
-// GIN index for full-text search
-await DreamMigrationHelpers.createGinIndex(db, 'index_name', {
-  table: 'users', column: 'name',
-})
-
-// Add value to existing enum
-await DreamMigrationHelpers.addEnumValue(db, { enumName: 'styles_enum', value: 'mansion' })
-
-// Drop enum value (complex - requires data migration)
-await DreamMigrationHelpers.dropEnumValue(db, {
-  enumName: 'styles_enum', value: 'dump',
-  replacements: [{ table: 'places', column: 'style', replaceWith: 'cave' }],
-})
-```
+**Migrations are always created via generators** (`g:resource`, `g:model`, `g:sti-child`, or `g:migration`), then edited as needed. Never create migration files by hand.
 
 ## Routing
 
@@ -594,6 +574,15 @@ public currentLocalizedText: LocalizedText
 @deco.HasMany('Tag', { through: 'postTags', distinct: true, order: 'name' })
 public tags: Tag[]
 ```
+
+## Internationalization (i18n)
+
+For detailed i18n patterns, see [i18n.md](i18n.md). Psychic supports two complementary patterns:
+
+- **Code-driven i18n** - Translate enum values and static labels using `I18nProvider` from `@rvoh/psychic/system` with locale files in `src/conf/locales/`
+- **Data-driven i18n** - Translate user-generated content using a polymorphic `LocalizedText` model with `DreamConst.passthrough` for locale-conditioned associations
+
+Both use the `Content-Language` request header, passed to serializers via `serializerPassthrough({ locale })`.
 
 ## Background Workers
 
@@ -722,16 +711,6 @@ describe('Place', () => {
 })
 ```
 
-## Generator Workflow
-
-1. Run generator: `pnpm psy g:resource v1/host/places Place name:citext style:enum:place_styles:cottage,cabin sleeps:integer`
-2. Review and adjust migration if needed
-3. `pnpm psy db:migrate`
-4. `pnpm psy sync` (regenerate types)
-5. Write controller spec
-6. Implement controller logic
-7. Run specs: `pnpm uspec`
-
 ## Naming Conventions
 
 | Context | Convention | Example |
@@ -772,3 +751,7 @@ Automatic error handling:
 - `castParam` invalid -> 400
 - `findOrFail` not found -> 404
 - Validation failure -> 422
+
+## Troubleshooting Migrations
+
+**"Corrupted migrations" error**: When switching between branches with different migrations, `pnpm psy db:migrate` fails with "corrupted migrations" errors. The fix is `pnpm psy db:reset`.

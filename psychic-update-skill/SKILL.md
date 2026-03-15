@@ -25,5 +25,5 @@ rm -rf .claude/skills/psychic-skill && cp -Rf ~/.claude/skills/psychic-skill .cl
 After upgrading, tell the user what version was installed by running:
 
 ```bash
-cd ~/.claude/skills/psychic-skill && git log --oneline -1
+cat ~/.claude/skills/psychic-skill/VERSION
 ```
