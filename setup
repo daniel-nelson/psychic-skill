@@ -4,14 +4,16 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SKILL_NAME="psychic-skill"
 
-# Determine if we're inside a .claude/skills directory
+# Determine if we're inside a compatible skills directory
 PARENT_DIR="$(dirname "$SCRIPT_DIR")"
 PARENT_NAME="$(basename "$PARENT_DIR")"
+GRANDPARENT_NAME="$(basename "$(dirname "$PARENT_DIR")")"
+HOST_DIR_HINT="$GRANDPARENT_NAME"
 
 if [ "$PARENT_NAME" = "skills" ]; then
   SKILLS_DIR="$PARENT_DIR"
 else
-  echo "Warning: $SKILL_NAME is not installed in a .claude/skills/ directory."
+  echo "Warning: $SKILL_NAME is not installed in a */skills/ directory."
   echo "Symlinks will not be created."
   exit 0
 fi
@@ -43,6 +45,9 @@ done
 
 echo ""
 echo "psychic-skill setup complete."
+echo ""
+echo "Skills directory: $SKILLS_DIR"
+echo "Host directory: $HOST_DIR_HINT"
 echo ""
 
 if [ ${#LINKED[@]} -gt 0 ]; then

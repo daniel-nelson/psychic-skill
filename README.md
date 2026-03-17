@@ -1,8 +1,8 @@
 # psychic-skill
 
-**A comprehensive Claude Code skill for developing applications with [Dream ORM](https://github.com/rVOHealth/dream) and [Psychic web framework](https://github.com/rVOHealth/psychic).**
+**A comprehensive AI coding assistant skill for developing applications with [Dream ORM](https://github.com/rVOHealth/dream) and [Psychic web framework](https://github.com/rVOHealth/psychic).**
 
-This skill gives Claude deep knowledge of Dream and Psychic patterns, conventions, and best practices. It auto-loads when working on Dream/Psychic projects and covers the full development lifecycle.
+This skill gives Claude Code and Codex deep knowledge of Dream and Psychic patterns, conventions, and best practices. It auto-loads when working on Dream/Psychic projects and covers the full development lifecycle.
 
 ## What it covers
 
@@ -21,31 +21,54 @@ This skill gives Claude deep knowledge of Dream and Psychic patterns, convention
 
 ## Install
 
-**Requirements:** [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Git](https://git-scm.com/)
+**Requirements:** [Claude Code](https://docs.anthropic.com/en/docs/claude-code) or Codex, plus [Git](https://git-scm.com/)
 
-### Step 1: Install on your machine
+### Claude Code: install on your machine
 
 Open Claude Code and paste this:
 
 > Install psychic-skill: run `git clone https://github.com/daniel-nelson/psychic-skill.git ~/.claude/skills/psychic-skill && cd ~/.claude/skills/psychic-skill && ./setup`
 
-### Step 2: Add to your project so teammates get it (optional)
+### Claude Code: add to your project (optional)
 
 > Add psychic-skill to this project: run `cp -Rf ~/.claude/skills/psychic-skill .claude/skills/psychic-skill && rm -rf .claude/skills/psychic-skill/.git && cd .claude/skills/psychic-skill && ./setup`
 
 Real files get committed to your repo (not a submodule), so `git clone` just works. Teammates just need to run `cd .claude/skills/psychic-skill && ./setup` once.
 
+### Codex: install on your machine
+
+Run this in your terminal:
+
+```bash
+git clone https://github.com/daniel-nelson/psychic-skill.git "${CODEX_HOME:-$HOME/.codex}/skills/psychic-skill"
+cd "${CODEX_HOME:-$HOME/.codex}/skills/psychic-skill"
+./setup
+```
+
+Then restart Codex so it picks up the new skill.
+
+### Codex: add to your project (optional)
+
+```bash
+cp -Rf "${CODEX_HOME:-$HOME/.codex}/skills/psychic-skill" .codex/skills/psychic-skill
+rm -rf .codex/skills/psychic-skill/.git
+cd .codex/skills/psychic-skill
+./setup
+```
+
+Real files get committed to your repo (not a submodule), so teammates just need to run `cd .codex/skills/psychic-skill && ./setup` once.
+
 ### What gets installed
 
-- Skill files (Markdown) in `~/.claude/skills/psychic-skill/` (or `.claude/skills/psychic-skill/` for project installs)
+- Skill files (Markdown) in `~/.claude/skills/psychic-skill/` or `${CODEX_HOME:-~/.codex}/skills/psychic-skill/` (and optional project installs at `.claude/skills/psychic-skill/` or `.codex/skills/psychic-skill/`)
 - `dream-psychic` skill auto-loads when working with Dream/Psychic projects
 - `/psychic-update-skill` slash command (symlinked) for easy upgrades
 
-Everything lives inside `.claude/`. Nothing touches your PATH or runs in the background.
+Everything lives inside your assistant's skills directory (`.claude` or `.codex`). Nothing touches your PATH or runs in the background.
 
 ## How it works
 
-The `dream-psychic` skill has `user-invocable: false` — Claude automatically loads it when it detects you're working with Dream or Psychic (imports from `@rvoh/dream`, `@rvoh/psychic`, `pnpm psy` commands, etc.). You don't need to invoke it manually.
+The `dream-psychic` skill has `user-invocable: false` and auto-load triggers. Claude Code and Codex should automatically load it when they detect Dream/Psychic work (imports from `@rvoh/dream`, `@rvoh/psychic`, `pnpm psy` commands, etc.). You don't need to invoke it manually.
 
 The skill enforces critical conventions:
 - Always run `pnpm psy <command> --help` before using generators
@@ -56,19 +79,47 @@ The skill enforces critical conventions:
 
 ## Upgrading
 
-Paste this into Claude Code:
+In either Claude Code or Codex, run:
 
 > /psychic-update-skill
 
-Or manually:
+Or update manually:
 
-> Update psychic-skill: run `cd ~/.claude/skills/psychic-skill && git fetch origin && git reset --hard origin/main && ./setup`. If this project also has psychic-skill at `.claude/skills/psychic-skill`, update it too: run `rm -rf .claude/skills/psychic-skill && cp -Rf ~/.claude/skills/psychic-skill .claude/skills/psychic-skill && rm -rf .claude/skills/psychic-skill/.git && cd .claude/skills/psychic-skill && ./setup`
+```bash
+# Claude Code personal install
+cd ~/.claude/skills/psychic-skill && git fetch origin && git reset --hard origin/main && ./setup
+
+# Claude Code project install (optional)
+rm -rf .claude/skills/psychic-skill
+cp -Rf ~/.claude/skills/psychic-skill .claude/skills/psychic-skill
+rm -rf .claude/skills/psychic-skill/.git
+cd .claude/skills/psychic-skill && ./setup
+
+# Codex personal install
+cd "${CODEX_HOME:-$HOME/.codex}/skills/psychic-skill" && git fetch origin && git reset --hard origin/main && ./setup
+
+# Codex project install (optional)
+rm -rf .codex/skills/psychic-skill
+cp -Rf "${CODEX_HOME:-$HOME/.codex}/skills/psychic-skill" .codex/skills/psychic-skill
+rm -rf .codex/skills/psychic-skill/.git
+cd .codex/skills/psychic-skill && ./setup
+```
 
 ## Uninstalling
 
-Paste this into Claude Code:
+```bash
+# Claude Code
+rm -f ~/.claude/skills/psychic-update-skill
+rm -rf ~/.claude/skills/psychic-skill
+rm -f .claude/skills/psychic-update-skill
+rm -rf .claude/skills/psychic-skill
 
-> Uninstall psychic-skill: run `rm -f ~/.claude/skills/psychic-update-skill && rm -rf ~/.claude/skills/psychic-skill`. If this project also has psychic-skill at `.claude/skills/psychic-skill`, remove it too: run `rm -f .claude/skills/psychic-update-skill && rm -rf .claude/skills/psychic-skill`
+# Codex
+rm -f "${CODEX_HOME:-$HOME/.codex}/skills/psychic-update-skill"
+rm -rf "${CODEX_HOME:-$HOME/.codex}/skills/psychic-skill"
+rm -f .codex/skills/psychic-update-skill
+rm -rf .codex/skills/psychic-skill
+```
 
 ## Skill files
 
