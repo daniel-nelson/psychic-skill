@@ -66,7 +66,7 @@ api/
 
 ```bash
 pnpm psy db:migrate              # Run migrations, then sync
-pnpm psy db:rollback             # Rollback last migration batch
+pnpm psy db:rollback             # Rollback last run migration (use --steps to specify multiple rollback steps)
 pnpm psy db:reset                # Drop + create + migrate, then sync
 pnpm psy sync                    # Sync types, OpenAPI specs, and cli:sync commands
 pnpm psy routes                  # Display all routes
