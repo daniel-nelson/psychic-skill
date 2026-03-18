@@ -58,6 +58,16 @@ cd .codex/skills/psychic-skill
 
 Real files get committed to your repo (not a submodule), so teammates just need to run `cd .codex/skills/psychic-skill && ./setup` once.
 
+### Install with `npx skills`
+
+You can also install `psychic-skill` with the open agent skills CLI:
+
+```bash
+npx skills add daniel-nelson/psychic-skill
+```
+
+It will prompt you for which agent to install to. For more details, see [vercel-labs/skills](https://github.com/vercel-labs/skills).
+
 ### What gets installed
 
 - Skill files (Markdown) in `~/.claude/skills/psychic-skill/` or `${CODEX_HOME:-~/.codex}/skills/psychic-skill/` (and optional project installs at `.claude/skills/psychic-skill/` or `.codex/skills/psychic-skill/`)
