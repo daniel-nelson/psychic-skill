@@ -272,6 +272,12 @@ await ApplicationModel.transaction(async txn => {
 })
 ```
 
+### Querying Beyond Dream
+
+For detailed query guidance, including when to use `toKysely(...)` and when to start from the project's typed `db()` entrypoint, see [querying.md](querying.md).
+
+The rule is simple: always prefer Dream's built in, public query and association APIs; only drop down to Kysely when Dream's supported APIs do not cover the SQL you need.
+
 ## Controllers
 
 For detailed controller patterns, see [controllers.md](controllers.md).

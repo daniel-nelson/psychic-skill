@@ -128,6 +128,7 @@ rm -rf .codex/skills/psychic-skill
 | `SKILL.md` | Main skill — critical rules, project structure, quick references for all topics |
 | `models.md` | Dream models, associations, hooks, validations, scopes, operators, decorators |
 | `controllers.md` | Psychic controllers, auth, CRUD, OpenAPI, parameters |
+| `querying.md` | Dream query patterns, `toKysely(...)`, and typed project `db()` usage |
 | `serializers.md` | DreamSerializer / ObjectSerializer, composition, STI serializers, passthrough |
 | `sti.md` | Complete STI guide — generation, models, serializers, migrations, controllers, testing |
 | `migrations.md` | Kysely migrations, column types, enums, indexes, helpers |
