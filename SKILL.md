@@ -95,6 +95,7 @@ pnpm lint                        # Check linting
   2. **STI-child generator** (`g:sti-child`) - for STI child models building on an existing STI base
   3. **Model generator** (`g:model`) - when a new model won't be HTTP-accessible
   4. **Migration generator** (`g:migration`) - for database changes when not generating a new model
+- **When in doubt, prefer `g:resource`**. If the model's data will ever be created, edited, or viewed through any UI or API (including admin/internal tools), it needs a controller. `g:resource` generates the controller, specs, and serializer scaffolding that `g:model` does not. It is easier to delete unused controller actions than to retrofit them later.
 - **CRITICAL: ALWAYS run `pnpm psy <command> --help` before running any generator**
 
 ### Generator Workflow
@@ -728,7 +729,7 @@ describe('Place', () => {
 | Serializer files | PascalCase | `PlaceSerializer.ts` |
 | Migration files | timestamp-kebab | `1773151915966-create-place.ts` |
 | Route paths | kebab-case | `localized-texts`, `admin-users` |
-| Generator columns | snake_case | `name:string`, `user_id:uuid` |
+| Generator columns | snake_case | `name:string`, `User:belongs_to` |
 | Enum types (DB) | snake_case + `_enum` | `place_styles_enum` |
 | Enum values | snake_case | `lean_to`, `bath_and_shower` |
 | STI type values | PascalCase | `Bedroom`, `LivingRoom` |
