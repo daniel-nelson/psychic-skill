@@ -143,7 +143,8 @@ rm -rf .codex/skills/psychic-skill
 | `sti.md` | Complete STI guide — generation, models, serializers, migrations, controllers, testing |
 | `migrations.md` | Kysely migrations, column types, enums, indexes, helpers |
 | `testing.md` | Factories, model/controller specs, BDD patterns |
-| `workers-websockets.md` | Background jobs, real-time communication |
+| `workers.md` | Background jobs (BullMQ), services, scheduling, testing |
+| `websockets.md` | Real-time communication (Socket.IO, Redis pub/sub) |
 
 ## License
 

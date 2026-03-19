@@ -593,31 +593,51 @@ Both use the `Content-Language` request header, passed to serializers via `seria
 
 ## Background Workers
 
+For detailed worker patterns (services, models, scheduling, configuration, testing), see [workers.md](workers.md).
+
+### Quick Reference
+
+Backgrounded services use a two-method pattern: a public entry method that exposes an expressive API to callers, and a private implementation method (prefixed with `_`) that does the work. This encapsulates backgrounding as an implementation detail — callers don't need to know the work is backgrounded. **Never pass model data as arguments** — pass only IDs and look up the record in the implementation method. Passing model data bloats Redis, loses type information when serialized to JSON, and creates immediately stale snapshots.
+
 ```typescript
-import { ApplicationBackgroundedService } from './ApplicationBackgroundedService.js'
+import ApplicationBackgroundedService from './ApplicationBackgroundedService.js'
 
-export class EmailService extends ApplicationBackgroundedService {
-  public static async sendWelcome(userId: string) { ... }
+export class NotificationService extends ApplicationBackgroundedService {
+  // Public entry point — called from application code
+  public static async sendWelcome(user: User) {
+    await this.background('_sendWelcome', user.id)
+  }
 
+  // Private implementation — called by the worker
+  public static async _sendWelcome(userId: string) {
+    // Use find (not findOrFail) — the record may have been deleted since the job was queued
+    const user = await User.find(userId)
+    // Exit if target model no longer exists
+    if (!user) return
+    // Welcome notication logic
+  }
+
+  // Optional: configure priority/workstream
   public static override get backgroundJobConfig() {
     return { priority: 'urgent' }
   }
 }
 
-// Queue a background job
-await EmailService.background('sendWelcome', user.id)
+// Called from application code (e.g., controller or model hook):
+await NotificationService.sendWelcome(user)
 
-// With delay
-await EmailService.backgroundWithDelay({ seconds: 300 }, 'sendWelcome', user.id)
-
-// IMPORTANT: Use AfterCreateCommit/AfterUpdateCommit hooks before backgrounding
+// IMPORTANT: When backgrounding from a Dream model lifecycle hook, the `Commit` variant of the hook **MUST** be used, e.g., AfterCreateCommit **NOT** AfterCreate:
 @deco.AfterCreateCommit()
 public async notifyCreation(this: Place) {
-  await NotificationService.background('placeCreated', this.id)
+  await NotificationService.placeCreated(this)
 }
 ```
 
 ## Websockets
+
+For detailed websocket patterns, see [websockets.md](websockets.md).
+
+### Quick Reference
 
 ```typescript
 import { Ws } from '@rvoh/psychic-websockets'
