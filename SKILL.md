@@ -521,7 +521,7 @@ export default class Bedroom extends Room {
 }
 ```
 
-**STI limitations**: STI children cannot define new associations, cannot use `@SoftDelete()` (must be on parent), and cannot use `@ReplicaSafe()`.
+**STI limitations**: STI children cannot use `@SoftDelete()` (must be on parent) and cannot use `@ReplicaSafe()`.
 
 **Creating STI instances in controllers** - MUST use switch on type:
 
@@ -752,7 +752,9 @@ describe('Place', () => {
 | Generator columns | snake_case | `name:string`, `User:belongs_to` |
 | Enum types (DB) | snake_case + `_enum` | `place_styles_enum` |
 | Enum values | snake_case | `lean_to`, `bath_and_shower` |
-| STI type values | PascalCase | `Bedroom`, `LivingRoom` |
+| STI type values | PascalCase (MUST match STI child class names) | `Bedroom`, `LivingRoom` |
+| `date` columns | suffix `On` | `occurred_on`, `started_on`, `born_on` |
+| `datetime` columns | suffix `At` | `occurred_at`, `started_at`, `deleted_at` |
 
 ## OpenAPI Integration
 
