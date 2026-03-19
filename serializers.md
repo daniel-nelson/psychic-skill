@@ -155,6 +155,71 @@ Array of associated objects:
 .rendersMany('appliances', { serializer: ApplianceSerializer })
 ```
 
+## Flattening Associations
+
+Flattening merges a `rendersOne` association's attributes directly into the parent response (instead of nesting them under a key). This is useful when a model wants to present a HasOne or BelongsTo association's data as if it were part of itself.
+
+```typescript
+.rendersOne('candidate', { serializerKey: 'summary', flatten: true })
+```
+
+### Attribute Shadowing
+
+**When flattening, the flattened association's attributes overwrite any same-named attributes on the parent serializer.** The most common collision is `id` — both the parent and the flattened association will typically have an `id` attribute, and the flattened one wins.
+
+**Symptoms:**
+- The `id` in the API response is the associated record's ID, not the parent's
+- Frontend routing or controller specs use the wrong identity
+- Other attributes with the same name (e.g., `name`, `createdAt`) have unexpected values
+
+### Fixing Attribute Shadowing
+
+**Fix 1 (preferred when the shadowing attribute from the flattened association is not needed):** Create a dedicated flattenable serializer that omits the conflicting attribute (e.g., `id`). Build the default serializer from the flattenable serializer, adding the omitted attribute back. This changes the normal composition pattern where the default serializer extends the summary serializer, so some attributes may need to be duplicated.
+
+```typescript
+// CandidateSerializers
+export const CandidateSummarySerializer = (candidate: Candidate) =>
+  DreamSerializer(Candidate, candidate)
+    .attribute('id')
+    .attribute('name')
+
+export const FlattenableCandidateSerializer = (candidate: Candidate) =>
+  DreamSerializer(Candidate, candidate)
+    .attribute('name')
+    .attribute('bio')
+
+export const CandidateSerializer = (candidate: Candidate) =>
+  FlattenableCandidateSerializer(candidate)
+    .attribute('id')
+
+// ClientSerializer — flattens candidate data without the candidate's id
+export const ClientSerializer = (client: Client) =>
+  DreamSerializer(Client, client)
+    .attribute('id')
+    .rendersOne('candidate', { serializer: FlattenableCandidateSerializer, flatten: true })
+```
+
+**Fix 2 (preferred when the shadowed attribute from the parent is not needed — common for join models):** Simply omit the shadowed attribute from the parent serializer. This is typical when the parent is a join model (e.g., `HostPlace`) where the join model's own `id` is not useful to the consumer, and the real identity is the flattened association's `id`.
+
+```typescript
+// HostPlace only contributes `position`; Place's attributes (including id) are flattened in
+const HostPlaceSerializer = (hostPlace: HostPlace) =>
+  DreamSerializer(HostPlace, hostPlace)
+    .attribute('position')
+    .rendersOne('place', { flatten: true })
+```
+
+### Controller Spec Expectations with Flattening
+
+When a serializer uses flattening, controller specs should assert the serialized API contract, not the raw model shape:
+
+```typescript
+// If ClientSerializer flattens candidate data and exposes:
+//   - client's id as 'id' would be shadowed, so client omits it or renames it
+//   - candidate's 'id', 'name', 'bio' flattened into the response
+// Then specs should assert against the serialized shape, not model property names
+```
+
 ## Composition Pattern
 
 Build complex serializers by extending simpler ones:
@@ -306,3 +371,15 @@ this.ok(places)  // Serializer accesses already-loaded associations
 const places = await Place.all()
 this.ok(places)  // Associations not loaded -> empty/missing data
 ```
+
+## Sync After Serializer Changes
+
+**Always run `pnpm psy sync` after changing serializer attributes, field names, or OpenAPI-visible response shapes.** This regenerates:
+
+- OpenAPI specs
+- Controller spec request/response typings
+- Generated frontend API clients (if configured via `setup:sync:openapi-*`)
+
+**Symptoms of a missing sync:**
+- Controller specs have type errors against stale response fields
+- Generated frontend clients don't reflect renamed or added serializer attributes
