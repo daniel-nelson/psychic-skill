@@ -451,3 +451,42 @@ describe('Host creates a Place', () => {
   })
 })
 ```
+
+### Avoiding Race Conditions in Feature Specs
+
+**Always wait for a browser-visible signal that the API response has completed before asserting on the database.** The test process and the browser run concurrently — if you query the database immediately after a browser action (e.g., clicking "Create"), the API request may not have finished yet, causing flaky test failures.
+
+The safest signals are UI changes that only happen after the server responds:
+
+```typescript
+// CORRECT — wait for navigation that proves the 201 response completed
+await clickButton(page, 'Create Place')
+await expect(page).toHavePath('/places')        // proves the response arrived
+const place = await Place.firstOrFail()          // safe to query now
+
+// WRONG — no proof the API call finished before querying the database
+await clickButton(page, 'Create Place')
+const place = await Place.firstOrFail()          // race condition!
+```
+
+#### When No Natural UI Signal Exists
+
+Sometimes the UI doesn't visibly change after a successful API call (e.g., a background action, an inline update without navigation). In these cases, render test-only confirmation text that the feature spec can wait on. Gate it behind the test environment to avoid polluting production UI:
+
+```typescript
+// In the frontend component
+const isTest = (import.meta as unknown as { env: Record<'VITE_PSYCHIC_ENV', string> }).env.VITE_PSYCHIC_ENV === 'test'
+
+// After a successful API response:
+{isTest && <span data-testid="test-confirmation">Comment created for Post {post.id}</span>}
+```
+
+```typescript
+// In the feature spec
+await clickButton(page, 'Add Comment')
+await expect(page).toMatchTextContent(`Comment created for Post ${post.id}`)
+
+// Now it's safe to assert on the database
+const comment = await post.associationQuery('comments').firstOrFail()
+expect(comment.body).toEqual('Great post!')
+```
