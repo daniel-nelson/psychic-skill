@@ -242,16 +242,65 @@ public static active(query: Query<Place>) {
 
 // Default scope - applied to ALL queries automatically
 @deco.Scope({ default: true })
-public static hideDeleted(query: Query<Place>) {
-  return query.where({ deletedAt: null })
+public static hideArchived(query: Query<Post>) {
+  return query.where({ archivedAt: null })
 }
 
 // Usage
 const places = await Place.scope('active').all()
 
 // Bypass default scopes
-const allPlaces = await Place.removeAllDefaultScopes().all()
-const withDeleted = await Place.removeDefaultScope('hideDeleted').all()
+const withArchived = await Post.removeDefaultScope('hideArchived').all()
+const specificPlace = await Place.removeAllDefaultScopes().findOrFail(id)
+```
+
+### Default Scopes
+
+Default scopes are automatically applied to every query. They are used sparingly for cross-cutting concerns that should always apply unless explicitly removed.
+
+Dream provides two built-in default scopes:
+- **`dream:SoftDelete`** — added by `@SoftDelete()`, hides records where `deletedAt` is not null. See [soft-delete.md](soft-delete.md).
+- **`dream:STI`** — added by `@STI()`, restricts STI child queries to their type
+
+Models can also define custom default scopes:
+
+```typescript
+@deco.Scope({ default: true })
+public static hideArchived(query: Query<Post>) {
+  return query.where({ archivedAt: null })
+}
+```
+
+### Removing Default Scopes
+
+Use `removeDefaultScope('scopeName')` to remove a specific scope, or `removeAllDefaultScopes()` to remove all of them. Both work on model classes and query chains.
+
+**Which to use:** Use `removeDefaultScope` when querying for a plurality (e.g. `.all()`) so that other default scopes remain in effect and don't bring extra records into scope. Use `removeAllDefaultScopes` when targeting a specific record (e.g. `.find(id)`, `.findOrFail(id)`) where you want to ensure the record is found regardless of any default scope.
+
+```typescript
+// Plurality — remove only the scope you need to bypass
+await Place.removeDefaultScope('dream:SoftDelete').where({ style: 'cabin' }).all()
+await Post.removeDefaultScope('hideArchived').all()
+
+// Specific record — safe to remove all scopes since you're targeting one record
+await Place.removeAllDefaultScopes().findOrFail(id)
+```
+
+Both methods also work on query chains:
+
+```typescript
+await user.associationQuery('places').removeDefaultScope('dream:SoftDelete').all()
+```
+
+### Inspecting Default Scopes (for AI agents)
+
+The `schema` exported from `api/src/types/dream.ts` (`src/types/dream.ts` for api-only applications) contains the default scopes for any model:
+
+```typescript
+import schema from '@src/types/dream.js'
+
+// schema[dreamModelInstance.table].scopes.default
+// Returns an array of strings, e.g. ['dream:STI', 'dream:SoftDelete']
 ```
 
 ## Query Operators
@@ -293,7 +342,8 @@ await Model.whereNot({ field: null }).all()    // IS NOT NULL
 ## Special Decorators
 
 ```typescript
-// Soft Delete - adds default scope excluding deleted records
+// Soft Delete - adds deletedAt-based soft deletion and a default scope (dream:SoftDelete)
+// that hides deleted records. See soft-delete.md for full documentation.
 @SoftDelete()
 export default class Place extends ApplicationModel { ... }
 
@@ -327,6 +377,36 @@ public computedField: string | null
 export default class Bedroom extends Room { ... }
 ```
 
+## Creating and Updating
+
+**Instantiation**: Use `ModelName.new()` to create an unpersisted model instance. `new ModelName()` does not work and will throw a type error.
+
+```typescript
+// Create in one call
+const user = await User.create({ email: 'charlie@peanuts.com', name: 'Charlie Brown' })
+
+// Instantiate, assign, and save
+const user = User.new({ email: 'charlie@peanuts.com' })
+user.name = 'Charlie Brown'
+await user.save()
+
+// Update in one call
+await user.update({ name: 'New Name' })
+
+// Assign and save — equivalent to update
+user.name = 'New Name'
+await user.save()
+
+// Assign and update — also valid (update persists any prior assignments too)
+user.name = 'New Name'
+await user.update({ email: 'gary@farside.com' })
+```
+
+`save()` and `update()` trigger the same lifecycle hooks and are largely interchangeable:
+- `save()` persists all dirty attributes but does not accept attributes itself
+- `update()` accepts attributes, applies them, and persists — it also persists any attributes previously assigned via `=`
+- On an unpersisted instance (`User.new()`), both `save()` and `update({})` will create the record
+
 ## Dirty Tracking
 
 ```typescript
@@ -357,14 +437,114 @@ await User.pluckEach('email', async (email) => {
 })
 ```
 
+## Find-or-Create and Upsert Methods
+
+Dream provides four methods for atomically finding or creating/updating records. Each takes a set of lookup attributes and an options object. None of these methods can be chained with other query methods.
+
+### findOrCreateBy
+
+Finds a record matching the given attributes, or creates one if none exists. Safe to use in transactions.
+
+```typescript
+const user = await User.findOrCreateBy(
+  { email: 'how@yadoin' },
+  { createWith: { name: 'Chalupa Joe' } }
+)
+
+// With a transaction
+await ApplicationModel.transaction(async txn => {
+  const user = await User.txn(txn).findOrCreateBy(
+    { email: 'how@yadoin' },
+    { createWith: { name: 'Chalupa Joe' } }
+  )
+})
+```
+
+`createWith` attributes are applied only when creating a new record. There is a race condition risk between the find and create steps — if concurrent requests could match the same lookup attributes, prefer `createOrFindBy`.
+
+### createOrFindBy
+
+Like `findOrCreateBy`, but attempts to create first. Relies on a **unique constraint** at the DB level to reject the create if a matching record already exists, then falls back to finding it. This avoids the race condition in `findOrCreateBy`. **Cannot be used in a transaction** (since it relies on the create failing at the DB level).
+
+```typescript
+// Requires a unique index on the lookup column(s)
+const user = await User.createOrFindBy(
+  { email: 'how@yadoin' },
+  { createWith: { name: 'Chalupa Joe' } }
+)
+```
+
+### updateOrCreateBy
+
+Finds a record and updates it, or creates one if none exists. Functionally equivalent to an upsert, but runs as two queries. Safe to use in transactions. There is a race condition risk between the find and create steps — if concurrent requests could match the same lookup attributes, prefer `createOrUpdateBy`.
+
+```typescript
+const user = await User.updateOrCreateBy(
+  { email: 'how@yadoin' },
+  { with: { name: 'New Name' } }
+)
+
+// With a transaction
+await ApplicationModel.transaction(async txn => {
+  const user = await User.txn(txn).updateOrCreateBy(
+    { email: 'how@yadoin' },
+    { with: { name: 'New Name' } }
+  )
+})
+```
+
+### createOrUpdateBy
+
+Like `updateOrCreateBy`, but attempts to create first. Relies on a **unique constraint** at the DB level to reject the create if a matching record already exists, then falls back to updating. This avoids the race condition in `updateOrCreateBy`. **Cannot be used in a transaction**.
+
+```typescript
+// Requires a unique index on the lookup column(s)
+const user = await User.createOrUpdateBy(
+  { email: 'how@yadoin' },
+  { with: { name: 'New Name' } }
+)
+```
+
+### Skipping hooks
+
+All four methods run lifecycle hooks by default. Pass `skipHooks: true` to bypass them:
+
+```typescript
+const user = await User.updateOrCreateBy(
+  { email: 'how@yadoin' },
+  { with: { name: 'New Name' }, skipHooks: true }
+)
+```
+
+### Which method to use
+
+| Method | Order | Requires unique constraint | Transaction-safe | Use when |
+|--------|-------|---------------------------|------------------|----------|
+| `findOrCreateBy` | find, then create | No | Yes | Finding is the common case, creating is rare |
+| `createOrFindBy` | create, then find | **Yes** | **No** | Concurrent requests may race on the same lookup |
+| `updateOrCreateBy` | find, then upsert | No | Yes | Need to update existing or create new |
+| `createOrUpdateBy` | create, then update | **Yes** | **No** | Concurrent requests may race on the same lookup |
+
 ## Transactions
+
+Two ways to start a transaction:
+
+1. **Class-level** — `ApplicationModel.transaction(async (txn) => { ... })`
+2. **Instance-level** — `someModel.transaction(async (txn) => { ... })`
+
+If the callback throws, the entire transaction rolls back.
+
+**Every model operation inside a transaction must be explicitly bound via `.txn(txn)`.** This includes creates, updates, destroys, queries, association operations — everything. If you forget `.txn(txn)`, the operation runs outside the transaction and won't roll back on failure.
 
 ```typescript
 // Class-level transaction
 await ApplicationModel.transaction(async (txn) => {
   const user = await User.txn(txn).create({ email: 'test@test.com' })
   const post = await Post.txn(txn).create({ userId: user.id, title: 'Test' })
-  // If any error thrown, entire transaction rolls back
+  await user.txn(txn).createAssociation('profile', {})
+
+  // Queries also need .txn(txn) to see uncommitted data
+  const found = await User.txn(txn).findBy({ email: 'test@test.com' })
 })
 
 // Instance-level transaction
@@ -373,6 +553,10 @@ await user.transaction(async (txn) => {
   await user.txn(txn).createAssociation('profile', {})
 })
 ```
+
+**Restrictions inside transactions:** Methods that rely on foreign key violations to function (`createOrFindBy`, `createOrUpdateBy`) cannot be used inside a transaction. Use their transaction-safe counterparts (`findOrCreateBy`, `updateOrCreateBy`) instead. See the [find-or-create methods](#find-or-create-and-upsert-methods) table for details.
+
+**Background jobs and transactions:** When queuing background work from a Dream lifecycle hook, always use the `Commit` variant of the hook (e.g., `@deco.AfterCreateCommit` instead of `@deco.AfterCreate`). Regular hooks run inside the transaction, so the worker may execute before the transaction commits. See [workers.md](workers.md) for details.
 
 ## Date/Time
 

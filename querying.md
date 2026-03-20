@@ -173,6 +173,136 @@ Association mutation helpers:
 
 These methods are often the correct answer for "query the children of this parent", "load nested serializer data", "update all related rows", or "delete associated rows", without writing custom SQL.
 
+## Association Chaining
+
+**This is the most important concept to understand about Dream's query API.** It differs fundamentally from Rails' ActiveRecord.
+
+In Dream, the string arguments passed to `preload`, `leftJoinPreload`, `innerJoin`, `leftJoin`, `load`, and `leftJoinLoad` form an **association chain** — a traversal path through related models. Multiple string arguments are **NOT** parallel associations; they describe a single path from one association to the next.
+
+### Single association
+
+```typescript
+// Preload a direct association
+const users = await User.preload('posts').all()
+users[0].posts // [Post{}, Post{}, ...]
+```
+
+### Association chain (nested traversal)
+
+```typescript
+// Chain: User → posts → comments
+// Loads posts on each user, AND comments on each post
+const users = await User.preload('posts', 'comments').all()
+users[0].posts[0].comments // [Comment{}, Comment{}, ...]
+```
+
+This is NOT loading both `posts` and `comments` as separate associations on User. It traverses User → posts → comments.
+
+### Parallel associations (separate method calls)
+
+To load multiple unrelated associations, use separate calls:
+
+```typescript
+// Load BOTH posts and pets on User (parallel, not chained)
+const users = await User.preload('posts').preload('pets').all()
+users[0].posts // [Post{}, ...]
+users[0].pets  // [Pet{}, ...]
+```
+
+### Branching with arrays
+
+The last argument can be an array to branch the chain into multiple associations at the same level:
+
+```typescript
+// Chain through posts, then branch to load comments, ratings, AND images on each post
+const users = await User.preload('posts', ['comments', 'ratings', 'images']).all()
+users[0].posts[0].comments // loaded
+users[0].posts[0].ratings  // loaded
+users[0].posts[0].images   // loaded
+```
+
+### Complex nested loading
+
+Combine chaining and parallel calls for complex loading:
+
+```typescript
+// Two separate chains through posts:
+// 1. posts → comments and ratings
+// 2. posts → images → credits and captions
+const users = await User
+  .preload('posts', ['comments', 'ratings'])
+  .preload('posts', 'images', ['credits', 'captions'])
+  .all()
+```
+
+### Conditions on associations in the chain
+
+All chainable methods (`preload`, `leftJoinPreload`, `innerJoin`, `leftJoin`, `load`, `leftJoinLoad`) support `and`, `andNot`, and `andAny` condition objects placed after an association name in the chain. The condition object applies to the association immediately before it:
+
+```typescript
+// innerJoin with conditions on each association
+const hosts = await Host.innerJoin(
+  'places', { and: { style: 'cabin' } },
+  'rooms', { and: { type: 'Bedroom' } }
+).all()
+
+// Condition on last association only
+const hosts = await Host.innerJoin('places', 'rooms', {
+  and: { type: 'Bedroom' },
+}).all()
+
+// preload with conditions
+const users = await User.preload('posts', { and: { published: true } }, 'comments').all()
+
+// load with shorthand conditions (plain object = and)
+user = await user.load('posts', { body: null }).load('pets').execute()
+```
+
+### Where clauses on joined/preloaded associations
+
+After joining or preloading an association, you can reference its columns in `where` clauses using `'associationName.column'` syntax:
+
+```typescript
+const posts = await user
+  .associationQuery('posts')
+  .preload('comments')
+  .whereAny([{ body: null }, { 'comments.body': null }])
+  .all()
+```
+
+### Instance-level loading
+
+`load` and `leftJoinLoad` follow the same chaining pattern on instances:
+
+```typescript
+// Chain: load posts, then comments on each post
+let user = await User.firstOrFail()
+user = await user.load('posts', 'comments').execute()
+user.posts[0].comments // loaded
+
+// Parallel loads with conditions
+user = await user.load('posts', { body: null }).load('pets').execute()
+```
+
+### Serializer-driven loading (preferred)
+
+For controller/serializer use cases, `preloadFor` and `loadFor` automatically determine the full chain:
+
+```typescript
+// Automatically preloads everything the serializer needs
+const users = await User.preloadFor('detail').all()
+
+// Equivalent to manually specifying the full chain
+const users = await User
+  .preload('posts', 'comments', ['images', 'videos'])
+  .preload('posts', ['likes', 'similarPosts'])
+  .all()
+```
+
+### Incompatibilities
+
+`leftJoinPreload` and `preload` cannot be combined in the same query. Use one or the other.
+
 ## What To Reach For First
 
 Use this order when reasoning about a query:

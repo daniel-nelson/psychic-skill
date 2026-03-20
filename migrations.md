@@ -123,6 +123,20 @@ await db.schema
 .addColumn('bed_types', sql`bed_types_enum[]`, col => col.notNull().defaultTo('{}'))
 ```
 
+Array columns (enum arrays, `text[]`, `integer[]`, etc.) work seamlessly with Dream — set and read them as regular arrays. **In-place mutations (e.g. `.push()`) are not detected by dirty tracking** because the check compares array identity, not contents. Always reassign the entire array to trigger an update.
+
+```typescript
+await Kitchen.create({ appliances: ['microwave', 'stove'] })
+
+const kitchen = await Kitchen.findOrFail(id)
+
+// Create a new array to trigger dirty tracking:
+await kitchen.update({ appliances: [...kitchen.appliances, 'dishwasher'] })
+// Or the assign and save equivalent:
+kitchen.appliances = [...kitchen.appliances, 'dishwasher']
+await kitchen.save()
+```
+
 ### Modify Enum
 
 ```typescript

@@ -64,6 +64,8 @@ api/
 
 ## Key Commands
 
+**CRITICAL: All `pnpm psy` commands default to `NODE_ENV=test`.** To operate on the development database, prefix with `NODE_ENV=development`. See [console.md](console.md) for details.
+
 ```bash
 pnpm psy db:migrate              # Run migrations, then sync
 pnpm psy db:rollback             # Rollback last run migration (use --steps to specify multiple rollback steps)
@@ -71,6 +73,9 @@ pnpm psy db:reset                # Drop + create + migrate, then sync
 pnpm psy sync                    # Sync types, OpenAPI specs, and cli:sync commands
 pnpm psy routes                  # Display all routes
 pnpm psy --help                  # List all psy commands
+
+# Console (for interactive exploration and scripts)
+NODE_ENV=development pnpm console   # Launch Dream console against dev DB
 
 # Generators (ALWAYS run --help first)
 pnpm psy g:resource path/Name ModelName field:type   # Preferred for HTTP-accessible models
@@ -213,10 +218,8 @@ export default class Place extends ApplicationModel {
     return query.where({ status: 'active' })
   }
 
-  @deco.Scope({ default: true })
-  public static hideDeleted(query: Query<Place>) {
-    return query.where({ deletedAt: null })
-  }
+  // Note: @SoftDelete() above automatically adds a default scope (dream:SoftDelete)
+  // that hides records where deletedAt is not null. No manual default scope needed.
 
   // Sortable (requires deferrable unique constraint in migration)
   @deco.Sortable({ scope: 'place' })
@@ -240,7 +243,14 @@ await place.update({ name: 'New Name' })
 
 // Destroy (soft delete if @SoftDelete)
 await place.destroy()
-await place.reallyDestroy()  // permanent
+await place.undestroy()       // restore soft-deleted record
+await place.reallyDestroy()   // permanent delete
+
+// Find-or-create / upsert (see models.md for full reference)
+await User.findOrCreateBy({ email }, { createWith: { name } })       // find first, create if missing
+await User.createOrFindBy({ email }, { createWith: { name } })       // create first (needs unique constraint, no txn)
+await User.updateOrCreateBy({ email }, { with: { name } })           // find & update, or create
+await User.createOrUpdateBy({ email }, { with: { name } })           // create first (needs unique constraint, no txn)
 
 // Query
 const places = await Place.where({ style: 'cabin' }).order('createdAt', 'desc').all()
@@ -258,18 +268,23 @@ const rooms = await place.associationQuery('rooms').where({ type: 'Bedroom' }).a
 const room = await place.createAssociation('rooms', { type: 'Bedroom' })
 await place.load('rooms').execute()
 
-// Preloading (prevents N+1)
-const places = await Place.preload('rooms').all()
-const places = await Place.preloadFor('summary').all()  // based on serializer needs
+// Preloading (prevents N+1) — see querying.md for full association chaining docs
+// IMPORTANT: multiple string args form a CHAIN, not parallel loads
+const places = await Place.preload('rooms').all()                  // preload rooms on each place
+const places = await Place.preload('rooms').preload('hosts').all() // preload rooms AND hosts (parallel)
+const users = await User.preload('posts', 'comments').all()        // chain: posts → comments (nested)
+const places = await Place.preloadFor('summary').all()              // serializer-driven (preferred)
 
 // Pagination
 const result = await Place.cursorPaginate({ cursor: cursorString })
 // Returns: { cursor: string | null, results: Place[] }
 
-// Transactions
+// Transactions — EVERY operation inside must use .txn(txn)
+// If you forget .txn(txn), the operation runs outside the transaction
 await ApplicationModel.transaction(async txn => {
   const place = await Place.txn(txn).create({ ... })
   await HostPlace.txn(txn).create({ host, place })
+  const found = await Place.txn(txn).findBy({ name: 'x' }) // queries too
 })
 ```
 
@@ -497,6 +512,52 @@ export default function routes(r: PsychicRouter) {
   })
 }
 ```
+
+## Soft Delete
+
+For detailed soft delete patterns, see [soft-delete.md](soft-delete.md).
+
+### Quick Reference
+
+The `@SoftDelete()` decorator makes `destroy()` set `deletedAt` instead of removing the row. A default scope (`dream:SoftDelete`) automatically hides soft-deleted records from all queries.
+
+```typescript
+import { SoftDelete } from '@rvoh/dream'
+
+@SoftDelete()
+export default class Place extends ApplicationModel {
+  public deletedAt: DreamColumn<Place, 'deletedAt'>
+}
+```
+
+```typescript
+await place.destroy()                  // Sets deletedAt (soft delete)
+await place.undestroy()                // Restores (sets deletedAt to null)
+await place.reallyDestroy()            // Permanent delete
+
+// Query multiple soft-deleted records — removeDefaultScope preserves other scopes
+await Place.removeDefaultScope('dream:SoftDelete').all()
+
+// Find a specific soft-deleted record — removeAllDefaultScopes ensures it's found
+await Place.removeAllDefaultScopes().findOrFail(id)
+```
+
+**Key rules:**
+- Requires a `deleted_at` datetime column (nullable)
+- Use `restrict` (the default) for foreign key constraints, not `cascade`
+- **Every model in a `dependent: 'destroy'` chain MUST also have `@SoftDelete()`** — otherwise those associated records will be permanently deleted
+- Both `destroy()` and `undestroy()` cascade through `dependent: 'destroy'` associations
+- STI children cannot use `@SoftDelete()` — it must be on the STI parent
+
+## Default Scopes
+
+Default scopes are query conditions automatically applied to every query on a model. For full documentation, see [models.md - Default Scopes](models.md#default-scopes).
+
+Dream provides built-in default scopes:
+- **`dream:SoftDelete`** — added by `@SoftDelete()`, hides records where `deletedAt` is not null
+- **`dream:STI`** — added by `@STI()`, restricts STI child queries to their type
+
+Models can define custom default scopes with `@deco.Scope({ default: true })`. Use `removeDefaultScope('scopeName')` when querying for a plurality (preserves other scopes). Use `removeAllDefaultScopes()` when targeting a specific record.
 
 ## Single Table Inheritance (STI)
 
