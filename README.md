@@ -21,35 +21,37 @@ This skill gives Claude Code and Codex deep knowledge of Dream and Psychic patte
 
 ## Install
 
-**Requirements:** [Claude Code](https://docs.anthropic.com/en/docs/claude-code) or Codex, plus [Git](https://git-scm.com/)
+### Install via your agent
 
-### Claude Code: install on your machine
+Requires [Git](https://git-scm.com/).
 
-Open Claude Code and paste this:
+Open your agent and paste the install prompt. Then optionally add to your project so teammates get the skill too.
+
+#### Claude Code
+
+**1. Install on your machine** — open Claude Code and paste:
 
 > Install psychic-skill: run `git clone https://github.com/daniel-nelson/psychic-skill.git ~/.claude/skills/psychic-skill && cd ~/.claude/skills/psychic-skill && ./setup`
 
-### Claude Code: add to your project (optional)
+**2. Add to your project (optional):**
 
 > Add psychic-skill to this project: run `cp -Rf ~/.claude/skills/psychic-skill .claude/skills/psychic-skill && rm -rf .claude/skills/psychic-skill/.git && cd .claude/skills/psychic-skill && ./setup`
 
 Real files get committed to your repo (not a submodule), so `git clone` just works. Teammates just need to run `cd .claude/skills/psychic-skill && ./setup` once.
 
-### Codex: install on your machine
+#### Codex
 
-Open Codex and paste this:
+**1. Install on your machine** — open Codex and paste:
 
 > Install psychic-skill: run `git clone https://github.com/daniel-nelson/psychic-skill.git ~/.codex/skills/psychic-skill && cd ~/.codex/skills/psychic-skill && ./setup`
 
-### Codex: add to your project (optional)
+**2. Add to your project (optional):**
 
 > Add psychic-skill to this project: run `cp -Rf ~/.codex/skills/psychic-skill .codex/skills/psychic-skill && rm -rf .codex/skills/psychic-skill/.git && cd .codex/skills/psychic-skill && ./setup`
 
 Real files get committed to your repo (not a submodule), so teammates just need to run `cd .codex/skills/psychic-skill && ./setup` once.
 
-### Install with `npx skills`
-
-You can also install `psychic-skill` with the open agent skills CLI:
+### Install via `npx skills`
 
 ```bash
 npx skills add daniel-nelson/psychic-skill
