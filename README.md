@@ -37,24 +37,13 @@ Real files get committed to your repo (not a submodule), so `git clone` just wor
 
 ### Codex: install on your machine
 
-Run this in your terminal:
+Open Codex and paste this:
 
-```bash
-git clone https://github.com/daniel-nelson/psychic-skill.git "${CODEX_HOME:-$HOME/.codex}/skills/psychic-skill"
-cd "${CODEX_HOME:-$HOME/.codex}/skills/psychic-skill"
-./setup
-```
-
-Then restart Codex so it picks up the new skill.
+> Install psychic-skill: run `git clone https://github.com/daniel-nelson/psychic-skill.git ~/.codex/skills/psychic-skill && cd ~/.codex/skills/psychic-skill && ./setup`
 
 ### Codex: add to your project (optional)
 
-```bash
-cp -Rf "${CODEX_HOME:-$HOME/.codex}/skills/psychic-skill" .codex/skills/psychic-skill
-rm -rf .codex/skills/psychic-skill/.git
-cd .codex/skills/psychic-skill
-./setup
-```
+> Add psychic-skill to this project: run `cp -Rf ~/.codex/skills/psychic-skill .codex/skills/psychic-skill && rm -rf .codex/skills/psychic-skill/.git && cd .codex/skills/psychic-skill && ./setup`
 
 Real files get committed to your repo (not a submodule), so teammates just need to run `cd .codex/skills/psychic-skill && ./setup` once.
 
@@ -70,7 +59,7 @@ It will prompt you for which agent to install to. For more details, see [vercel-
 
 ### What gets installed
 
-- Skill files (Markdown) in `~/.claude/skills/psychic-skill/` or `${CODEX_HOME:-~/.codex}/skills/psychic-skill/` (and optional project installs at `.claude/skills/psychic-skill/` or `.codex/skills/psychic-skill/`)
+- Skill files (Markdown) in `~/.claude/skills/psychic-skill/` or `~/.codex/skills/psychic-skill/` (and optional project installs at `.claude/skills/psychic-skill/` or `.codex/skills/psychic-skill/`)
 - `dream-psychic` skill auto-loads when working with Dream/Psychic projects
 - `/psychic-update-skill` slash command (symlinked) for easy upgrades
 
@@ -106,11 +95,11 @@ rm -rf .claude/skills/psychic-skill/.git
 cd .claude/skills/psychic-skill && ./setup
 
 # Codex personal install
-cd "${CODEX_HOME:-$HOME/.codex}/skills/psychic-skill" && git fetch origin && git reset --hard origin/main && ./setup
+cd ~/.codex/skills/psychic-skill && git fetch origin && git reset --hard origin/main && ./setup
 
 # Codex project install (optional)
 rm -rf .codex/skills/psychic-skill
-cp -Rf "${CODEX_HOME:-$HOME/.codex}/skills/psychic-skill" .codex/skills/psychic-skill
+cp -Rf ~/.codex/skills/psychic-skill .codex/skills/psychic-skill
 rm -rf .codex/skills/psychic-skill/.git
 cd .codex/skills/psychic-skill && ./setup
 ```
@@ -125,8 +114,8 @@ rm -f .claude/skills/psychic-update-skill
 rm -rf .claude/skills/psychic-skill
 
 # Codex
-rm -f "${CODEX_HOME:-$HOME/.codex}/skills/psychic-update-skill"
-rm -rf "${CODEX_HOME:-$HOME/.codex}/skills/psychic-skill"
+rm -f ~/.codex/skills/psychic-update-skill
+rm -rf ~/.codex/skills/psychic-skill
 rm -f .codex/skills/psychic-update-skill
 rm -rf .codex/skills/psychic-skill
 ```
