@@ -348,6 +348,69 @@ expect(body.results).toHaveLength(1)
 expect(place.name).toEqual('Expected Name')
 ```
 
+## Feature Spec Matchers
+
+Feature specs use assertion-style matchers from `@rvoh/psychic-spec-helpers` on the globally provided `page` object. All matchers are async and used with `await expect(page)`.
+
+### Action Matchers
+
+These attempt an action and fail the test if the target element isn't found:
+
+```typescript
+await expect(page).toClick('Submit')              // Click element with text
+await expect(page).toClickButton('Save Changes')  // Click a <button> with text
+await expect(page).toClickLink('View Details')     // Click an <a> tag with text
+await expect(page).toClickSelector('.submit-btn')  // Click element by CSS selector
+await expect(page).toFill('#email', 'a@b.com')    // Fill a text field
+await expect(page).toSelect('#country', 'us')     // Select an option from a dropdown
+await expect(page).toCheck('Terms of Service')     // Check a checkbox
+await expect(page).toUncheck('Send newsletter')    // Uncheck a checkbox
+```
+
+### Expectation Matchers
+
+These assert on the current state of the page:
+
+```typescript
+await expect(page).toMatchTextContent('Welcome back')      // Page contains text
+await expect(page).toNotMatchTextContent('Error')           // Page does not contain text
+await expect(page).toHaveSelector('.success-banner')        // Page has CSS selector
+await expect(page).toNotHaveSelector('.error-message')      // Page does not have selector
+await expect(page).toHavePath('/dashboard')                 // Current path matches
+await expect(page).toHaveUrl('https://example.com/dash')   // Current full URL matches
+await expect(page).toHaveLink('Documentation')              // Page has a link with text
+await expect(page).toHaveChecked('Remember me')             // Checkbox with text is checked
+await expect(page).toHaveUnchecked('Opt out')               // Checkbox with text is unchecked
+```
+
+### Full Example
+
+```typescript
+import City from '@models/City.js'
+import createAdminUser from '@spec/factories/AdminUserFactory.js'
+import adminSignIn from '@spec/features/helpers/adminSignIn.js'
+
+describe('Cities create', () => {
+  it('allows an admin to create a new city from the index', async () => {
+    const adminUser = await createAdminUser()
+
+    await adminSignIn(adminUser, '/cities')
+
+    await expect(page).toClickLink('New City')
+    await expect(page).toHavePath('/cities/new')
+
+    await expect(page).toFill('#name', 'Denver')
+    await expect(page).toFill('#stateOrProvince', 'Colorado')
+    await expect(page).toSelect('#country', 'united_states')
+    await expect(page).toClickButton('Create City')
+
+    await expect(page).toHavePath('/cities')
+    await expect(page).toMatchTextContent('Denver')
+    await expect(page).toMatchTextContent('Colorado')
+  })
+})
+```
+
 ## Spec Organization
 
 ### When spec'ing a function
