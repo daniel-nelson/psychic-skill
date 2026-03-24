@@ -14,9 +14,9 @@ allowed-tools: Read, Grep, Glob, Bash, Edit, Write
 
 You are working with **Dream** (a TypeScript Active Record ORM) and **Psychic** (a batteries-included TypeScript web framework built on Koa). Both are open source packages published under the `@rvoh` npm scope.
 
-**Installed skill version**: !`for d in "${CLAUDE_SKILL_DIR:-}" "${CODEX_SKILL_DIR:-}" "$HOME/.codex/skills/psychic-skill" "$HOME/.claude/skills/psychic-skill" ".codex/skills/psychic-skill" ".claude/skills/psychic-skill"; do [ -n "$d" ] && [ -f "$d/VERSION" ] && cat "$d/VERSION" && exit 0; done; echo "unknown"`
-To check for updates, fetch the latest version: !`curl -sf https://raw.githubusercontent.com/daniel-nelson/psychic-skill/main/VERSION 2>/dev/null || echo "unable to check"`
-If the remote version is newer than the installed version, suggest running `/psychic-update-skill`.
+**Update check**: !`for d in "${CLAUDE_SKILL_DIR:-}" "${CODEX_SKILL_DIR:-}" "$HOME/.codex/skills/psychic-skill" "$HOME/.claude/skills/psychic-skill" ".codex/skills/psychic-skill" ".claude/skills/psychic-skill"; do [ -n "$d" ] && [ -x "$d/bin/psychic-skill-update-check" ] && "$d/bin/psychic-skill-update-check" 2>/dev/null && exit 0; done`
+If the output above says `UPGRADE_AVAILABLE <old> <new>`, follow the inline upgrade flow in `/psychic-update-skill`.
+If the output says `JUST_UPGRADED <old> <new>`, tell the user: "psychic-skill upgraded from v{old} to v{new}!" and continue.
 
 All CLI commands in this document are run via the local project's package manager (e.g., `pnpm psy sync`, `yarn psy sync`, `npm run psy sync`). Examples use `pnpm` but substitute the project's actual package manager.
 
