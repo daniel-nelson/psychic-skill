@@ -650,7 +650,7 @@ For detailed i18n patterns, see [i18n.md](i18n.md). Psychic supports two complem
 - **Code-driven i18n** - Translate enum values and static labels using `I18nProvider` from `@rvoh/psychic/system` with locale files in `src/conf/locales/`
 - **Data-driven i18n** - Translate user-generated content using a polymorphic `LocalizedText` model with `DreamConst.passthrough` for locale-conditioned associations
 
-Both use the `Content-Language` request header, passed to serializers via `serializerPassthrough({ locale })`.
+Both use the `Accept-Language` request header, passed to serializers via `serializerPassthrough({ locale })`.
 
 ## Background Workers
 
