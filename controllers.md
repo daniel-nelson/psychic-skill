@@ -6,7 +6,7 @@ Psychic controllers use inheritance for authentication and resource loading:
 
 ```
 ApplicationController (base - defines psychicTypes)
-├── AuthedController (@BeforeAction for auth)
+├── AuthedController (@BeforeAction for auth, 401 if no user)
 │   ├── V1BaseController
 │   │   ├── V1HostBaseController (@BeforeAction loads currentHost)
 │   │   │   ├── V1HostPlacesController (CRUD)
@@ -16,6 +16,9 @@ ApplicationController (base - defines psychicTypes)
 │   │       └── V1GuestPlacesController (read-only)
 │   ├── Admin/AuthedController
 │   └── Internal/AuthedController
+├── MaybeAuthedController (attempts auth, currentUser null if absent)
+│   └── V1MaybeAuthedGuestBaseController
+│       └── V1MaybeAuthedGuestPlacesController (public browse with optional auth)
 └── UnauthedController
 ```
 
@@ -33,6 +36,14 @@ export default class ApplicationController extends PsychicController {
 ```
 
 ## Authentication Pattern
+
+`create-psychic` generates three controller base classes for authentication:
+
+- **AuthedController** — requires authentication, returns 401 if no user found
+- **MaybeAuthedController** — attempts authentication but does NOT 401 on failure. Sets `currentUser` to null if no token or invalid token. Use for public endpoints that behave differently when logged in (e.g., showing favorite indicators on public browse pages).
+- **UnauthedController** — no authentication at all
+
+Both `AuthedController` and `MaybeAuthedController` delegate to a shared `resolveCurrentUser(controller)` helper in `controllers/helpers/resolveCurrentUser.ts`. The only difference is what happens when the result is null (401 vs. silent null).
 
 ```typescript
 import { BeforeAction } from '@rvoh/psychic'
@@ -55,6 +66,35 @@ export default class AuthedController extends ApplicationController {
     this.currentUser = user
   }
 }
+```
+
+### MaybeAuthed Namespace Pattern
+
+When a namespace has both authenticated and maybe-authenticated endpoints, use separate controller directories with different base controllers:
+
+```
+V1/Guest/           → extends AuthedController (bookings, favorites, reviews)
+V1/MaybeAuthedGuest/ → extends MaybeAuthedController (public browse with optional auth)
+```
+
+Do NOT put authenticated actions under a MaybeAuthed base controller. The controller hierarchy enforces auth by default — authenticated actions should always be under AuthedController to prevent accidentally exposing endpoints without auth.
+
+### Routing MaybeAuthed Controllers Without Leaking Internal Names
+
+When the controller directory name is an internal concern (like `MaybeAuthedGuest`) that shouldn't appear in public URLs, use an explicit controller reference instead of a namespace:
+
+```typescript
+// BAD — "maybe-authed-guest" leaks into the URL: /v1/maybe-authed-guest/places
+r.namespace('maybe-authed-guest', r => {
+  r.resources('places', { only: ['index', 'show'] })
+})
+
+// GOOD — clean URL: /v1/places, controller explicitly specified
+import V1MaybeAuthedGuestPlacesController from '@controllers/V1/MaybeAuthedGuest/PlacesController.js'
+r.resources('places', { only: ['index', 'show'], controller: V1MaybeAuthedGuestPlacesController })
+```
+
+The controller directory structure (`V1/MaybeAuthedGuest/`) still enforces the auth inheritance chain, but the URL stays clean.
 ```
 
 ## Nested Resource Base Controller Pattern
@@ -279,6 +319,40 @@ this.paramsFor(Place, { including: ['specialField'] })
 this.paramsFor(Place, { key: 'place' })
 ```
 
+`paramsFor` provides default protection by automatically excluding certain columns that should never be set from user input. **This cannot be overridden** by `paramSafeColumns` or `paramUnsafeColumns`:
+
+- The primary key (defaults to `id`)
+- `createdAt` / `updatedAt` / `deletedAt`
+- The `type` field of STI models
+- Foreign keys of BelongsTo associations
+- The polymorphic type field of polymorphic BelongsTo associations
+
+Models can further restrict allowed params via `paramSafeColumns` (allowlist) or `paramUnsafeColumns` (blocklist):
+
+```typescript
+// Only allow these specific columns via paramsFor
+public get paramSafeColumns(): DreamColumnNames<CoachingSession>[] {
+  return ['rated', 'meetingIntent', 'topic']
+}
+
+// Block specific columns (in addition to the defaults above)
+public get paramUnsafeColumns(): DreamColumnNames<Friend>[] {
+  return ['bff']
+}
+```
+
+Since foreign keys are excluded, find the resource explicitly and pass it as an association:
+
+```typescript
+const place = await Place.findOrFail(this.castParam('placeId', 'uuid'))
+const favoritePlace = await this.currentUser.createAssociation('favoritePlaces', {
+  ...this.paramsFor(FavoritePlace),
+  place,
+})
+```
+
+Use `requestBody: { including: ['placeId'] }` in the `@OpenAPI` decorator to add the FK to the OpenAPI request body shape (for typed spec helpers and client SDKs). This only affects the OpenAPI spec — `paramsFor` still excludes the column, so you must handle it explicitly via `castParam`.
+
 ## Response Methods
 
 ```typescript
@@ -407,3 +481,7 @@ if (model.isPersisted) {
 }
 this.created(model)
 ```
+
+## Generator Gotcha: Duplicate Route Namespaces
+
+When running `pnpm psy g:resource` for a resource in an existing namespace (e.g., generating `v1/guest/reviews` when `v1/guest/bookings` already exists), the generator may add a second `r.namespace('guest', ...)` block in `routes.ts`. Always check `routes.ts` and consolidate duplicate namespace blocks after running a generator.

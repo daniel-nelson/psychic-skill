@@ -19,6 +19,10 @@ pnpm fspec                                    # Feature specs (headless)
 pnpm fspec:visible                            # Feature specs (visible browser)
 ```
 
+**Always run migrations before specs.** After generating a resource or migration, run `pnpm psy db:migrate` before `pnpm uspec` or `pnpm fspec`. The integrity check will fail with "Migrations need to be run on default database" if migrations are pending.
+
+**Feature spec server management:** `pnpm fspec` automatically starts AND stops the frontend servers (client, admin, internal). Do NOT manually start them before running fspec — that will cause fspec to fail because it can't bind the ports.
+
 **Run specific specs within a file** using `.only` or `.skip`:
 ```typescript
 it.only('returns the index of Places', async () => { ... })  // Run only this
@@ -94,6 +98,26 @@ export default async function createBedroom(
     bedTypes: ['queen'],
     ...attrs,
   })
+}
+```
+
+### Factories for AfterCreate Auto-Created Associations
+
+When a model's AfterCreate hook automatically creates an associated record (e.g., User auto-creates Guest), the factory for the associated model should return the auto-created record, NOT create a duplicate:
+
+```typescript
+// BAD — creates a duplicate Guest, may violate unique constraint on userId
+export default async function createGuest(attrs = {}) {
+  return await Guest.create({ user: await createUser(), ...attrs })
+}
+
+// GOOD — returns the Guest auto-created by User's AfterCreate hook
+export default async function createGuest(attrs = {}) {
+  const user = attrs.user ? null : await createUser()
+  const userId = attrs.user?.id ?? user!.id
+  const guest = await Guest.findBy({ userId })
+  if (!guest) throw new Error(`Guest not found for userId ${userId}`)
+  return guest
 }
 ```
 
@@ -515,41 +539,45 @@ describe('Host creates a Place', () => {
 })
 ```
 
-### Avoiding Race Conditions in Feature Specs
+### Debugging Feature Specs Visually
 
-**Always wait for a browser-visible signal that the API response has completed before asserting on the database.** The test process and the browser run concurrently — if you query the database immediately after a browser action (e.g., clicking "Create"), the API request may not have finished yet, causing flaky test failures.
+When a feature spec fails, see what the browser is actually rendering — it's much faster than guessing from assertion failure messages.
 
-The safest signals are UI changes that only happen after the server responds:
+1. **Human:** Run `pnpm fspec:visible` and watch the browser.
+2. **AI agent:** Add `await page.screenshot({ path: '/tmp/debug.png' })` before the failing assertion, run the spec, then read the screenshot file. The agent can see validation errors, missing elements, or unexpected page state.
+
+### Native Date Inputs
+
+Native `<input type="date">` inputs don't accept programmatic value setting via `toFill`, `$eval` setter tricks, or React state manipulation. The browser renders separate mm/dd/yyyy segments that must be typed through individually.
+
+Use `page.keyboard.type('MMDDYYYY')` after clicking the input:
 
 ```typescript
-// CORRECT — wait for navigation that proves the 201 response completed
-await clickButton(page, 'Create Place')
-await expect(page).toHavePath('/places')        // proves the response arrived
-const place = await Place.firstOrFail()          // safe to query now
-
-// WRONG — no proof the API call finished before querying the database
-await clickButton(page, 'Create Place')
-const place = await Place.firstOrFail()          // race condition!
+const dateInput = await page.$('input[name="arriveOn"]')
+await dateInput!.click()
+await page.keyboard.type('06012026')  // types 06/01/2026 through segments
 ```
 
-#### When No Natural UI Signal Exists
+### Waiting for the Browser
 
-Sometimes the UI doesn't visibly change after a successful API call (e.g., a background action, an inline update without navigation). In these cases, render test-only confirmation text that the feature spec can wait on. Gate it behind the test environment to avoid polluting production UI:
-
-```typescript
-// In the frontend component
-const isTest = (import.meta as unknown as { env: Record<'VITE_PSYCHIC_ENV', string> }).env.VITE_PSYCHIC_ENV === 'test'
-
-// After a successful API response:
-{isTest && <span data-testid="test-confirmation">Comment created for Post {post.id}</span>}
-```
+The test process and the browser run concurrently. Before asserting on the database or interacting with the page, you must wait for the browser to be ready. Use `page.waitForNetworkIdle({ idleTime: 500 })` as the general-purpose wait — it covers hydration, API calls, and navigation:
 
 ```typescript
-// In the feature spec
+// After sign-in or navigation — wait for React hydration before interacting
+await hostSignIn(page, user)
+await page.waitForNetworkIdle({ idleTime: 500 })
+
+// After a browser action that triggers an API call — wait before asserting on the database
 await clickButton(page, 'Add Comment')
-await expect(page).toMatchTextContent(`Comment created for Post ${post.id}`)
-
-// Now it's safe to assert on the database
+await page.waitForNetworkIdle({ idleTime: 500 })
 const comment = await post.associationQuery('comments').firstOrFail()
 expect(comment.body).toEqual('Great post!')
+```
+
+When the UI visibly changes after the API call (e.g., navigation to a new path), waiting on that UI change is a cleaner signal:
+
+```typescript
+await clickButton(page, 'Create Place')
+await expect(page).toHavePath('/places')        // proves the response completed
+const place = await Place.firstOrFail()          // safe to query now
 ```

@@ -147,6 +147,17 @@ Query-level write methods also exist and are easy to miss:
 - `query.reallyDestroy(...)`
 - `query.undestroy(...)`
 
+```typescript
+// Update matching records — leverages `findEach` to efficiently bring individual records into scope and updates each one, running lifecycle hooks
+await LocalizedText.where({ localizableId: host.id, locale: 'en-US' }).update({ title: 'New Title' })
+
+// Update in a single SQL call (skips lifecycle hooks)
+await LocalizedText.where({ localizableId: host.id, locale: 'en-US' }).update({ title: 'New Title' }, { skipHooks: true })
+
+// Delete matching records
+await Tag.where({ postId: post.id }).delete()
+```
+
 ### Association and instance entrypoints
 
 These are the methods agents most often forget when they jump too quickly to Kysely.
@@ -172,6 +183,25 @@ Association mutation helpers:
 - `instance.undestroyAssociation(...)`
 
 These methods are often the correct answer for "query the children of this parent", "load nested serializer data", "update all related rows", or "delete associated rows", without writing custom SQL.
+
+### Loading Associations on Instances
+
+Use `await model.association('name')` to access an association. This loads the association only if it hasn't already been preloaded — it's the idiomatic, efficient approach.
+
+```typescript
+// PREFERRED — loads only if not preloaded
+const hosts = await place.association('hosts')
+
+// ALSO CORRECT — but always loads (returns a clone, not the original)
+const loadedPlace = await place.load('hosts').execute()
+const hosts = loadedPlace.hosts
+
+// WRONG — load().execute() returns a clone; the original is unchanged
+await place.load('hosts').execute()
+place.hosts  // ERROR: association not loaded on this instance
+```
+
+Key: `load().execute()` does NOT modify the original instance. It returns a new clone with the association loaded. If you forget to use the return value, accessing the association on the original instance throws.
 
 ## Association Chaining
 

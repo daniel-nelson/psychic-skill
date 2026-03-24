@@ -114,14 +114,26 @@ public visiblePosts: Post[]
 @deco.HasMany('Post', { andNot: { archived: true } })
 public activePosts: Post[]
 
-// Self join conditions — join a column on the associated model to a column on THIS model
-// e.g., only load posts whose regionId matches this user's regionId
-@deco.HasMany('Post', { selfAnd: { regionId: 'regionId' } })
-public regionalPosts: Post[]
+// selfAnd — join where a column on the associated model matches a column on THIS model.
+// Format: { associatedColumn: 'thisModelColumn' }
+// Here, UserChallengeProgress links to DailyChallenge by matching position values
+// instead of a direct FK, so DailyChallenges can be re-shuffled without affecting progress.
+@deco.HasOne('DailyChallenge', {
+  on: 'position',
+  selfAnd: { position: 'currentPosition' },
+})
+public currentChallenge: DailyChallenge
+// SQL: WHERE daily_challenges.position = user_challenge_progresses.current_position
 
-// Self NOT join conditions — the inverse: exclude associated records where columns match
-@deco.HasMany('Post', { selfAndNot: { teamId: 'teamId' } })
-public otherTeamPosts: Post[]
+// selfAndNot — exclude associated records where columns match.
+// Here, a TreeNode's siblings are its parent's children excluding itself.
+@deco.HasMany('TreeNode', {
+  through: 'parent',
+  source: 'children',
+  selfAndNot: { id: 'id' },
+})
+public siblings: TreeNode[]
+// SQL: WHERE tree_nodes.id != this.id
 
 // Through (many-to-many)
 @deco.HasMany('Host', { through: 'hostPlaces' })
@@ -161,8 +173,8 @@ public allPosts: Post[]  // includes soft-deleted posts
 | `order` | column name \| order object | Default ordering for the association |
 | `polymorphic` | boolean | Enables polymorphic association (requires `on`) |
 | `primaryKeyOverride` | column name \| null | Override the primary key column used for the join |
-| `selfAnd` | conditions object | Adds a join condition between a column on the associated model and a column on this model (e.g., `{ regionId: 'regionId' }` joins where `associated.regionId = this.regionId`) |
-| `selfAndNot` | conditions object | Inverse of `selfAnd` — excludes associated records where the specified columns match columns on this model |
+| `selfAnd` | `{ associatedCol: 'thisCol' }` | Adds a join condition where a column on the associated model must equal a column on this model (e.g., `{ position: 'currentPosition' }` → `WHERE associated.position = this.currentPosition`) |
+| `selfAndNot` | `{ associatedCol: 'thisCol' }` | Inverse of `selfAnd` — excludes associated records where the columns match (e.g., `{ id: 'id' }` → `WHERE associated.id != this.id`) |
 | `source` | association name | For through associations: the association name on the intermediate model |
 | `through` | association name | Load through an intermediate association (many-to-many) |
 | `withoutDefaultScopes` | scope name[] | Default scopes to skip when loading this association |
@@ -205,9 +217,12 @@ public primaryAddress: Address
 @deco.HasOne('Profile', { andNot: { deactivated: true } })
 public activeProfile: Profile
 
-// Self join conditions — join a column on the associated model to a column on THIS model
-@deco.HasOne('Setting', { selfAnd: { regionId: 'regionId' } })
-public regionalSetting: Setting
+// selfAnd — see HasMany section for detailed examples
+@deco.HasOne('DailyChallenge', {
+  on: 'position',
+  selfAnd: { position: 'currentPosition' },
+})
+public currentChallenge: DailyChallenge
 
 // Through
 @deco.HasOne('CompositionAsset', { through: 'mainComposition' })
@@ -229,8 +244,8 @@ public profileIncludingDeleted: Profile
 | `on` | column name | Custom foreign key column name on the associated model |
 | `polymorphic` | boolean | Enables polymorphic association (requires `on`) |
 | `primaryKeyOverride` | column name \| null | Override the primary key column used for the join |
-| `selfAnd` | conditions object | Adds a join condition between a column on the associated model and a column on this model (e.g., `{ regionId: 'regionId' }` joins where `associated.regionId = this.regionId`) |
-| `selfAndNot` | conditions object | Inverse of `selfAnd` — excludes associated records where the specified columns match columns on this model |
+| `selfAnd` | `{ associatedCol: 'thisCol' }` | Adds a join condition where a column on the associated model must equal a column on this model (e.g., `{ position: 'currentPosition' }` → `WHERE associated.position = this.currentPosition`) |
+| `selfAndNot` | `{ associatedCol: 'thisCol' }` | Inverse of `selfAnd` — excludes associated records where the columns match (e.g., `{ id: 'id' }` → `WHERE associated.id != this.id`) |
 | `source` | association name | For through associations: the association name on the intermediate model |
 | `through` | association name | Load through an intermediate association |
 | `withoutDefaultScopes` | scope name[] | Default scopes to skip when loading this association |
@@ -257,8 +272,39 @@ public currentLocalizedText: LocalizedText
 public requiredLocalizedText: LocalizedText
 ```
 
-- **`DreamConst.passthrough`** — the condition value comes from the query's passthrough context at runtime. If not provided, the condition is silently skipped.
-- **`DreamConst.required`** — like passthrough, but raises an error if the value is not provided at query time. Use this when the association should never be loaded without the condition.
+- **`DreamConst.passthrough`** — the value is provided at query time via `.passthrough({ column: value })`. Throws `MissingRequiredPassthroughForAssociationAndClause` if the value is `undefined`.
+- **`DreamConst.required`** — the value must be provided via `{ and: { column: value } }` conditions whenever the association is used in any query — `load`, `preload`, `innerJoin`, `leftJoin`, `associationQuery`, `association`, etc. Throws `MissingRequiredAssociationAndClause` if the value is not provided.
+
+Both are required — the difference is *how* the value is supplied. Use `passthrough` when the value comes from broad query context (e.g., locale from a request header). Use `required` when the value is specific to a particular association loading call.
+
+**Neither can be combined with `dependent: 'destroy'`.**
+
+```typescript
+// passthrough — value supplied via .passthrough() on the query
+@deco.HasOne('LocalizedText', {
+  polymorphic: true, on: 'localizableId',
+  and: { locale: DreamConst.passthrough },
+})
+public currentLocalizedText: LocalizedText
+
+// Query must include .passthrough({ locale: 'en-US' })
+await Place.passthrough({ locale: 'en-US' }).preloadFor('default').all()
+
+// undefined causes MissingRequiredPassthroughForAssociationAndClause — use null instead
+await Place.passthrough({ locale: this.currentUser?.locale ?? null }).preloadFor('default').all()
+
+// required — value supplied via { and: {...} } in the chain
+@deco.HasOne('Preference', {
+  and: { category: DreamConst.required },
+})
+public preference: Preference
+
+// The value must be provided in any query that touches this association:
+await user.load('preference', { and: { category: 'notifications' } }).execute()
+await user.associationQuery('preference').where({ category: 'notifications' }).first()
+await User.preload('preference', { and: { category: 'notifications' } }).all()
+await User.innerJoin('preference', { and: { category: 'notifications' } }).all()
+```
 
 ## Hooks - Full Reference
 

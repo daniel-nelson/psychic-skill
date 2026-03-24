@@ -643,23 +643,34 @@ public visiblePosts: Post[]
 @deco.HasMany('Post', { andNot: { archived: true } })
 public activePosts: Post[]
 
-// Self join conditions — join a column on the associated model to a column on THIS model
-@deco.HasMany('Post', { selfAnd: { regionId: 'regionId' } })
-public regionalPosts: Post[]
+// selfAnd — join where associated column matches a column on THIS model
+// Format: { associatedColumn: 'thisModelColumn' }
+// Links to DailyChallenge by position instead of FK, allowing re-shuffling
+@deco.HasOne('DailyChallenge', {
+  on: 'position',
+  selfAnd: { position: 'currentPosition' },
+})
+public currentChallenge: DailyChallenge
 
-// DreamConst.passthrough — value supplied at query time
+// selfAndNot — exclude where columns match (e.g., siblings = parent's children minus self)
+@deco.HasMany('TreeNode', {
+  through: 'parent', source: 'children',
+  selfAndNot: { id: 'id' },
+})
+public siblings: TreeNode[]
+
+// DreamConst.passthrough — value supplied at query time via .passthrough({ locale: 'en-US' })
 @deco.HasOne('LocalizedText', {
   polymorphic: true, on: 'localizableId',
   and: { locale: DreamConst.passthrough },
 })
 public currentLocalizedText: LocalizedText
 
-// DreamConst.required — like passthrough but raises if value not provided
-@deco.HasOne('LocalizedText', {
-  polymorphic: true, on: 'localizableId',
-  and: { locale: DreamConst.required },
+// DreamConst.required — value supplied via { and: { category: value } } in the loading chain
+@deco.HasOne('Preference', {
+  and: { category: DreamConst.required },
 })
-public requiredLocalizedText: LocalizedText
+public preference: Preference
 
 // With order and distinct
 @deco.HasMany('Tag', { through: 'postTags', distinct: true, order: 'name' })
@@ -670,8 +681,8 @@ public tags: Tag[]
 public allPosts: Post[]
 
 // Override primary key used for join
-@deco.BelongsTo('User', { primaryKeyOverride: 'externalId' })
-public user: User
+@deco.BelongsTo('Widget', { primaryKeyOverride: 'legacyId' })
+public widget: Widget
 ```
 
 ### Association Option Summary
