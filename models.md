@@ -64,7 +64,27 @@ public authorId: DreamColumn<Post, 'authorId'>
 public localizable: Host | Place | Room
 public localizableType: DreamColumn<LocalizedText, 'localizableType'>
 public localizableId: DreamColumn<LocalizedText, 'localizableId'>
+
+// Override the primary key used for the join
+@deco.BelongsTo('User', { primaryKeyOverride: 'externalId' })
+public user: User
+public userId: DreamColumn<Post, 'userId'>
+
+// Skip default scopes when loading
+@deco.BelongsTo('Place', { withoutDefaultScopes: ['dream:SoftDelete'] })
+public place: Place
+public placeId: DreamColumn<Booking, 'placeId'>
 ```
+
+#### BelongsTo Options
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `on` | column name | Custom foreign key column name |
+| `optional` | boolean | Makes the association nullable (FK can be null) |
+| `polymorphic` | boolean | Enables polymorphic association (requires `on`, model arg becomes an array) |
+| `primaryKeyOverride` | column name \| null | Override the primary key column used for the join (defaults to `id`) |
+| `withoutDefaultScopes` | scope name[] | Default scopes to skip when loading this association |
 
 ### HasMany
 
@@ -82,9 +102,26 @@ public posts: Post[]
 @deco.HasMany('Room', { order: 'position' })
 public rooms: Room[]
 
-// With conditions
+// With conditions on the associated model
 @deco.HasMany('Post', { and: { published: true } })
 public publishedPosts: Post[]
+
+// OR conditions — matches posts that are EITHER featured OR published
+@deco.HasMany('Post', { andAny: [{ featured: true }, { published: true }] })
+public visiblePosts: Post[]
+
+// NOT conditions — excludes archived posts
+@deco.HasMany('Post', { andNot: { archived: true } })
+public activePosts: Post[]
+
+// Self join conditions — join a column on the associated model to a column on THIS model
+// e.g., only load posts whose regionId matches this user's regionId
+@deco.HasMany('Post', { selfAnd: { regionId: 'regionId' } })
+public regionalPosts: Post[]
+
+// Self NOT join conditions — the inverse: exclude associated records where columns match
+@deco.HasMany('Post', { selfAndNot: { teamId: 'teamId' } })
+public otherTeamPosts: Post[]
 
 // Through (many-to-many)
 @deco.HasMany('Host', { through: 'hostPlaces' })
@@ -101,14 +138,47 @@ public localizedTexts: LocalizedText[]
 // With distinct
 @deco.HasMany('Tag', { through: 'postTags', distinct: true })
 public uniqueTags: Tag[]
+
+// Override the primary key used for the join
+@deco.HasMany('Post', { primaryKeyOverride: 'externalId' })
+public posts: Post[]
+
+// Skip default scopes when loading
+@deco.HasMany('Post', { withoutDefaultScopes: ['dream:SoftDelete'] })
+public allPosts: Post[]  // includes soft-deleted posts
 ```
+
+#### HasMany Options
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `and` | conditions object | WHERE conditions on the associated model's columns. Supports `DreamConst.passthrough` and `DreamConst.required` values |
+| `andAny` | conditions object[] | OR conditions — association matches records satisfying ANY of the condition sets |
+| `andNot` | conditions object | NOT conditions — excludes associated records matching these conditions |
+| `dependent` | `'destroy'` | Cascade-delete the associated record(s) when this record is destroyed |
+| `distinct` | column name \| boolean | Apply DISTINCT to the query (pass `true` for the primary key, or a specific column name) |
+| `on` | column name | Custom foreign key column name on the associated model |
+| `order` | column name \| order object | Default ordering for the association |
+| `polymorphic` | boolean | Enables polymorphic association (requires `on`) |
+| `primaryKeyOverride` | column name \| null | Override the primary key column used for the join |
+| `selfAnd` | conditions object | Adds a join condition between a column on the associated model and a column on this model (e.g., `{ regionId: 'regionId' }` joins where `associated.regionId = this.regionId`) |
+| `selfAndNot` | conditions object | Inverse of `selfAnd` — excludes associated records where the specified columns match columns on this model |
+| `source` | association name | For through associations: the association name on the intermediate model |
+| `through` | association name | Load through an intermediate association (many-to-many) |
+| `withoutDefaultScopes` | scope name[] | Default scopes to skip when loading this association |
+
+**Through associations** (`through` option) cannot use: `dependent`, `primaryKeyOverride`, `withoutDefaultScopes`, `on`, or `polymorphic`.
 
 ### HasOne
 
-Like HasMany but returns single instance.
+Like HasMany but returns a single instance.
 
 ```typescript
 @deco.HasOne('Profile')
+public profile: Profile
+
+// With cascade delete
+@deco.HasOne('Profile', { dependent: 'destroy' })
 public profile: Profile
 
 // With condition using passthrough
@@ -119,10 +189,76 @@ public profile: Profile
 })
 public currentLocalizedText: LocalizedText
 
+// With required condition — query will fail if the passthrough value is not provided
+@deco.HasOne('LocalizedText', {
+  polymorphic: true,
+  on: 'localizableId',
+  and: { locale: DreamConst.required },
+})
+public requiredLocalizedText: LocalizedText
+
+// OR conditions
+@deco.HasOne('Address', { andAny: [{ type: 'home' }, { primary: true }] })
+public primaryAddress: Address
+
+// NOT conditions
+@deco.HasOne('Profile', { andNot: { deactivated: true } })
+public activeProfile: Profile
+
+// Self join conditions — join a column on the associated model to a column on THIS model
+@deco.HasOne('Setting', { selfAnd: { regionId: 'regionId' } })
+public regionalSetting: Setting
+
 // Through
 @deco.HasOne('CompositionAsset', { through: 'mainComposition' })
 public mainCompositionAsset: CompositionAsset
+
+// Skip default scopes
+@deco.HasOne('Profile', { withoutDefaultScopes: ['dream:SoftDelete'] })
+public profileIncludingDeleted: Profile
 ```
+
+#### HasOne Options
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `and` | conditions object | WHERE conditions on the associated model's columns. Supports `DreamConst.passthrough` and `DreamConst.required` values |
+| `andAny` | conditions object[] | OR conditions — association matches records satisfying ANY of the condition sets |
+| `andNot` | conditions object | NOT conditions — excludes associated records matching these conditions |
+| `dependent` | `'destroy'` | Cascade-delete the associated record when this record is destroyed |
+| `on` | column name | Custom foreign key column name on the associated model |
+| `polymorphic` | boolean | Enables polymorphic association (requires `on`) |
+| `primaryKeyOverride` | column name \| null | Override the primary key column used for the join |
+| `selfAnd` | conditions object | Adds a join condition between a column on the associated model and a column on this model (e.g., `{ regionId: 'regionId' }` joins where `associated.regionId = this.regionId`) |
+| `selfAndNot` | conditions object | Inverse of `selfAnd` — excludes associated records where the specified columns match columns on this model |
+| `source` | association name | For through associations: the association name on the intermediate model |
+| `through` | association name | Load through an intermediate association |
+| `withoutDefaultScopes` | scope name[] | Default scopes to skip when loading this association |
+
+**Through associations** (`through` option) cannot use: `dependent`, `primaryKeyOverride`, `withoutDefaultScopes`, `on`, or `polymorphic`.
+
+### DreamConst in Association Conditions
+
+The `and` option on HasMany and HasOne supports two special `DreamConst` values instead of fixed values:
+
+```typescript
+import { DreamConst } from '@rvoh/dream'
+
+// passthrough — value is supplied at query time via passthrough context, optional
+@deco.HasOne('LocalizedText', {
+  and: { locale: DreamConst.passthrough },
+})
+public currentLocalizedText: LocalizedText
+
+// required — like passthrough, but the query will raise an error if the value is not provided
+@deco.HasOne('LocalizedText', {
+  and: { locale: DreamConst.required },
+})
+public requiredLocalizedText: LocalizedText
+```
+
+- **`DreamConst.passthrough`** — the condition value comes from the query's passthrough context at runtime. If not provided, the condition is silently skipped.
+- **`DreamConst.required`** — like passthrough, but raises an error if the value is not provided at query time. Use this when the association should never be loaded without the condition.
 
 ## Hooks - Full Reference
 

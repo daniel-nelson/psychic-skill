@@ -599,6 +599,8 @@ switch (roomType) {
 
 ## Associations
 
+For the full reference including all options and option tables, see [models.md](models.md).
+
 ### Types
 
 ```typescript
@@ -631,17 +633,54 @@ public localizedTexts: LocalizedText[]
 @deco.BelongsTo(['Host', 'Place', 'Room'], { polymorphic: true, on: 'localizableId' })
 public localizable: Host | Place | Room
 
-// With conditions
+// With conditions (and, andAny, andNot)
+@deco.HasMany('Post', { and: { published: true } })
+public publishedPosts: Post[]
+
+@deco.HasMany('Post', { andAny: [{ featured: true }, { published: true }] })
+public visiblePosts: Post[]
+
+@deco.HasMany('Post', { andNot: { archived: true } })
+public activePosts: Post[]
+
+// Self join conditions — join a column on the associated model to a column on THIS model
+@deco.HasMany('Post', { selfAnd: { regionId: 'regionId' } })
+public regionalPosts: Post[]
+
+// DreamConst.passthrough — value supplied at query time
 @deco.HasOne('LocalizedText', {
   polymorphic: true, on: 'localizableId',
   and: { locale: DreamConst.passthrough },
 })
 public currentLocalizedText: LocalizedText
 
+// DreamConst.required — like passthrough but raises if value not provided
+@deco.HasOne('LocalizedText', {
+  polymorphic: true, on: 'localizableId',
+  and: { locale: DreamConst.required },
+})
+public requiredLocalizedText: LocalizedText
+
 // With order and distinct
 @deco.HasMany('Tag', { through: 'postTags', distinct: true, order: 'name' })
 public tags: Tag[]
+
+// Skip default scopes when loading
+@deco.HasMany('Post', { withoutDefaultScopes: ['dream:SoftDelete'] })
+public allPosts: Post[]
+
+// Override primary key used for join
+@deco.BelongsTo('User', { primaryKeyOverride: 'externalId' })
+public user: User
 ```
+
+### Association Option Summary
+
+**BelongsTo**: `on`, `optional`, `polymorphic`, `primaryKeyOverride`, `withoutDefaultScopes`
+
+**HasMany / HasOne**: `and`, `andAny`, `andNot`, `dependent`, `on`, `order` (HasMany only), `distinct` (HasMany only), `polymorphic`, `primaryKeyOverride`, `selfAnd`, `selfAndNot`, `through`, `source`, `withoutDefaultScopes`
+
+**Through associations** cannot use: `dependent`, `primaryKeyOverride`, `withoutDefaultScopes`, `on`, or `polymorphic`.
 
 ## Internationalization (i18n)
 
