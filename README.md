@@ -71,6 +71,8 @@ Everything lives inside your assistant's skills directory (`.claude` or `.codex`
 
 The `dream-psychic` skill has `user-invocable: false` and auto-load triggers. Claude Code and Codex should automatically load it when they detect Dream/Psychic work (imports from `@rvoh/dream`, `@rvoh/psychic`, `pnpm psy` commands, etc.). You don't need to invoke it manually.
 
+Skill metadata note: keep `SKILL.md` front matter in the same minimal format used by the working installed skills. Do not add one-off fields such as `argument-hint`, and do not switch `allowed-tools` to a multiline YAML list unless the loader is known to accept it. The safer pattern here is simple scalar fields only.
+
 The skill enforces critical conventions:
 - Always run `pnpm psy <command> --help` before using generators
 - Never use JavaScript `Date` — use `DateTime` / `CalendarDate` from Dream

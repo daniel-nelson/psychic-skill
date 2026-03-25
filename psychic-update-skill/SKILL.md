@@ -1,12 +1,7 @@
 ---
 name: psychic-update-skill
 description: Update the psychic-skill to the latest version from GitHub
-argument-hint: ''
-allowed-tools:
-  - Bash
-  - Read
-  - Write
-  - AskUserQuestion
+allowed-tools: Bash, Read, Write
 ---
 
 # /psychic-update-skill
