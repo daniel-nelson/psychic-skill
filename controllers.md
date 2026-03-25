@@ -2,25 +2,97 @@
 
 ## Controller Hierarchy
 
-Psychic controllers use inheritance for authentication and resource loading:
+The controller directory structure **is** the authentication and authorization architecture. Each directory branch has its own `AuthedController` (and optionally `UnauthedController`, `MaybeAuthedController`) at its root, and every controller in that branch extends downward from it. By looking at the `@BeforeAction` methods in any directory's base controller, you can know exactly what rules are in force for the entire subtree.
+
+**The cardinal rule:** never introduce a looser authentication pattern deeper in a directory hierarchy. Authentication flows downhill — it gets stricter, never weaker.
+
+### Directory Structure
+
+Each application surface (client-facing, admin, internal) gets its own directory branch with its own auth base controllers:
 
 ```
-ApplicationController (base - defines psychicTypes)
-├── AuthedController (@BeforeAction for auth, 401 if no user)
-│   ├── V1BaseController
-│   │   ├── V1HostBaseController (@BeforeAction loads currentHost)
-│   │   │   ├── V1HostPlacesController (CRUD)
-│   │   │   └── V1HostPlacesBaseController (@BeforeAction loads currentPlace)
-│   │   │       └── V1HostPlacesRoomsController (nested CRUD)
-│   │   └── V1GuestBaseController
-│   │       └── V1GuestPlacesController (read-only)
-│   ├── Admin/AuthedController
-│   └── Internal/AuthedController
-├── MaybeAuthedController (attempts auth, currentUser null if absent)
-│   └── V1MaybeAuthedGuestBaseController
-│       └── V1MaybeAuthedGuestPlacesController (public browse with optional auth)
-└── UnauthedController
+controllers/
+├── ApplicationController.ts          (base — defines psychicTypes and universal methods such as extracting Accept-Language header; sets openapi namespaces)
+├── AuthedController.ts               (client auth — @BeforeAction, 401 if no user)
+├── MaybeAuthedController.ts          (client auth — currentUser null if absent)
+├── UnauthedController.ts             (no auth)
+│
+├── V1/                               (client API namespace)
+│   ├── SignInController.ts           (extends UnauthedController)
+│   ├── SignOutController.ts          (extends AuthedController)
+│   ├── Visitor/                      (public browse with optional auth)
+│   │   ├── BaseController.ts         (extends MaybeAuthedController)
+│   │   └── PlacesController.ts       (extends Visitor/BaseController)
+│   ├── Guest/                        (authed Guest endpoints)
+│   │   ├── BaseController.ts         (extends AuthedController, loads currentGuest, 403 if current User has no Guest)
+│   │   ├── PlacesController.ts       (extends Guest/BaseController)
+│   │   └── FavoritesController.ts    (extends Guest/BaseController)
+│   └── Host/                         (authed Host endpoints)
+│       ├── BaseController.ts         (extends AuthedController, loads currentHost, 403 if current User has no Host)
+│       ├── PlacesController.ts       (extends Host/BaseController)
+│       └── Places/
+│           ├── BaseController.ts     (extends Host/BaseController, loads currentPlace)
+│           └── RoomsController.ts    (extends Host/Places/BaseController)
+│
+├── Admin/                            (admin surface — separate auth chain)
+│   ├── AuthedController.ts           (admin auth — validates admin user; overrides openapi namespaces to: 'admin', 'tests')
+│   ├── UnauthedController.ts         (admin unauthed; overrides openapi namespaces to: 'admin', 'tests')
+│   ├── UsersController.ts            (extends Admin/AuthedController)
+│   ├── CitiesController.ts           (extends Admin/AuthedController)
+│   ├── SignInController.ts           (extends Admin/UnauthedController)
+│   ├── SignOutController.ts          (extends Admin/AuthedController)
+│   └── Cities/
+│       ├── BaseController.ts         (extends Admin/AuthedController, loads currentCity)
+│       └── TravelTimesController.ts  (extends Admin/Cities/BaseController)
+│
+├── Internal/                         (internal employee surface — separate auth chain)
+│   ├── AuthedController.ts           (internal auth — validates internal user; overrides openapi namespaces to: 'internal', 'tests')
+│   ├── UnauthedController.ts         (internal unauthed; overrides openapi namespaces to: 'internal', 'tests')
+│   ├── PlacesController.ts           (extends Internal/AuthedController)
+│   ├── SignInController.ts           (extends Internal/UnauthedController)
+│   ├── SignOutController.ts          (extends Internal/AuthedController)
+│   └── Places/
+│       ├── BaseController.ts         (extends Internal/AuthedController, loads currentPlace)
+│       ├── RoomsController.ts        (extends Internal/Places/BaseController)
 ```
+
+### Key Principles
+
+1. **Each surface has its own auth controllers.** `Admin/AuthedController` and `Internal/AuthedController` each extend `ApplicationController` directly — they do NOT extend the client `AuthedController`. Each authenticates its own user type (AdminUser, InternalUser, etc.).
+
+2. **Every controller extends the base controller in its own directory** (or the authed/unauthed controller if at the top of its branch). Controllers never reach across branches or skip levels.
+
+3. **Dedicated directories for each auth level.** If a surface needs both authenticated and unauthenticated endpoints, it has separate base controllers in the same directory (e.g., `Admin/AuthedController` and `Admin/UnauthedController`). If client-facing code needs both authed and maybe-authed endpoints, use separate directories (`V1/Guest/` and `V1/Visitor/`).
+
+4. **Use generators** to create controllers. `pnpm psy g:resource` and `pnpm psy g:controller` set up the correct inheritance chain automatically.
+
+### Verifying the Hierarchy
+
+```bash
+# Visually inspect the controller inheritance tree
+pnpm psy inspect:controller-hierarchy
+
+# CI check — exits with 1 if a controller extends too far up the tree
+# or crosses into another branch
+pnpm psy check:controller-hierarchy
+```
+
+### Routing Controllers When Directory Names Don't Map to URLs
+
+Controller directory names reflect the auth architecture, not URL structure. When the directory name shouldn't appear in the URL (e.g., `Visitor/` is the auth context, but `/v1/visitor/places` isn't a natural public URL), use an explicit `controller` reference instead of a namespace:
+
+```typescript
+// BAD — "visitor" leaks into the URL: /v1/visitor/places
+r.namespace('visitor', r => {
+  r.resources('places', { only: ['index', 'show'] })
+})
+
+// GOOD — clean URL: /v1/places, controller explicitly specified
+import V1VisitorPlacesController from '@controllers/V1/Visitor/PlacesController.js'
+r.resources('places', { only: ['index', 'show'], controller: V1VisitorPlacesController })
+```
+
+The controller directory structure (`V1/Visitor/`) still enforces the auth inheritance chain, but the URL stays clean.
 
 ## ApplicationController
 
@@ -35,15 +107,9 @@ export default class ApplicationController extends PsychicController {
 }
 ```
 
-## Authentication Pattern
+## Authentication Examples
 
-`create-psychic` generates three controller base classes for authentication:
-
-- **AuthedController** — requires authentication, returns 401 if no user found
-- **MaybeAuthedController** — attempts authentication but does NOT 401 on failure. Sets `currentUser` to null if no token or invalid token. Use for public endpoints that behave differently when logged in (e.g., showing favorite indicators on public browse pages).
-- **UnauthedController** — no authentication at all
-
-Both `AuthedController` and `MaybeAuthedController` delegate to a shared `resolveCurrentUser(controller)` helper in `controllers/helpers/resolveCurrentUser.ts`. The only difference is what happens when the result is null (401 vs. silent null).
+### Client AuthedController
 
 ```typescript
 import { BeforeAction } from '@rvoh/psychic'
@@ -68,34 +134,88 @@ export default class AuthedController extends ApplicationController {
 }
 ```
 
-### MaybeAuthed Namespace Pattern
+### MaybeAuthedController
 
-When a namespace has both authenticated and maybe-authenticated endpoints, use separate controller directories with different base controllers:
+Attempts authentication but does NOT 401 on failure. Sets `currentUser` to null if no token or invalid token. Use for public endpoints that behave differently when logged in (e.g., showing favorite indicators on public browse pages).
 
-```
-V1/Guest/           → extends AuthedController (bookings, favorites, reviews)
-V1/MaybeAuthedGuest/ → extends MaybeAuthedController (public browse with optional auth)
-```
+Both `AuthedController` and `MaybeAuthedController` delegate to a shared `resolveCurrentUser(controller)` helper in `controllers/helpers/resolveCurrentUser.ts`. The only difference is what happens when the result is null (401 vs. silent null).
 
-Do NOT put authenticated actions under a MaybeAuthed base controller. The controller hierarchy enforces auth by default — authenticated actions should always be under AuthedController to prevent accidentally exposing endpoints without auth.
+### Surface-Specific Auth (Admin, Internal)
 
-### Routing MaybeAuthed Controllers Without Leaking Internal Names
-
-When the controller directory name is an internal concern (like `MaybeAuthedGuest`) that shouldn't appear in public URLs, use an explicit controller reference instead of a namespace:
+Each surface authenticates its own user type independently and overrides `openapiNames` to route its endpoints into the correct OpenAPI spec:
 
 ```typescript
-// BAD — "maybe-authed-guest" leaks into the URL: /v1/maybe-authed-guest/places
-r.namespace('maybe-authed-guest', r => {
-  r.resources('places', { only: ['index', 'show'] })
+// Admin/AuthedController.ts — authenticates AdminUser
+export default class AdminAuthedController extends ApplicationController {
+  public static override get openapiNames(): PsychicOpenapiNames<ApplicationController> {
+    return ['admin', 'tests']
+  }
+
+  protected currentAdminUser: AdminUser
+
+  @BeforeAction()
+  protected async authenticate() {
+    // admin-specific auth logic (e.g., Firebase with domain restriction)
+    ...
+  }
+}
+
+// Internal/AuthedController.ts — authenticates InternalUser
+export default class InternalAuthedController extends ApplicationController {
+  public static override get openapiNames(): PsychicOpenapiNames<ApplicationController> {
+    return ['internal', 'tests']
+  }
+
+  protected currentInternalUser: InternalUser
+
+  @BeforeAction()
+  protected async authenticate() {
+    // internal-specific auth logic
+    ...
+  }
+}
+```
+
+### OpenAPI Namespaces
+
+Each surface's controllers are routed to separate OpenAPI spec files via `openapiNames`. This prevents internal or admin endpoints from being exposed when you publish a public API spec. Namespaces are configured in `src/conf/app.ts`:
+
+```typescript
+// Default (client-facing) — all controllers without an openapiNames override
+psy.set('openapi', {
+  outputFilepath: path.join('src', 'openapi', 'openapi.json'),
+  validate: { requestBody: true, headers: true, query: true, responseBody: AppEnv.isTest },
 })
 
-// GOOD — clean URL: /v1/places, controller explicitly specified
-import V1MaybeAuthedGuestPlacesController from '@controllers/V1/MaybeAuthedGuest/PlacesController.js'
-r.resources('places', { only: ['index', 'show'], controller: V1MaybeAuthedGuestPlacesController })
+// Named namespaces — controllers opt in via openapiNames
+psy.set('openapi', 'admin', {
+  outputFilepath: path.join('src', 'openapi', 'admin.openapi.json'),
+  validate: { requestBody: true, headers: true, query: true, responseBody: AppEnv.isTest },
+})
+
+psy.set('openapi', 'internal', {
+  outputFilepath: path.join('src', 'openapi', 'internal.openapi.json'),
+  validate: { requestBody: true, headers: true, query: true, responseBody: AppEnv.isTest },
+})
+
+// Tests namespace — all surfaces include 'tests' so controller specs can type-check against one spec
+psy.set('openapi', 'tests', {
+  outputFilepath: path.join('src', 'openapi', 'tests.openapi.json'),
+  syncTypes: true,
+})
 ```
 
-The controller directory structure (`V1/MaybeAuthedGuest/`) still enforces the auth inheritance chain, but the URL stays clean.
+Run `pnpm psy sync` after adding a new namespace for the `openapiNames` types to update.
+
+Surface auth controllers (both `AuthedController` and `UnauthedController` within each surface) override `openapiNames` to include their surface name plus `'tests'`:
+
+```typescript
+public static override get openapiNames(): PsychicOpenapiNames<ApplicationController> {
+  return ['admin', 'tests']
+}
 ```
+
+All controllers inheriting from these base controllers automatically inherit the same `openapiNames`.
 
 ## Nested Resource Base Controller Pattern
 
