@@ -539,6 +539,44 @@ describe('Host creates a Place', () => {
 })
 ```
 
+## Organize Feature Specs by Actor and Scenario
+
+Follow the BDD convention from Cucumber/RSpec: organize by **actor** (role/persona), with filenames as **third-person verb phrases** that describe what the actor does. The directory provides the subject; the filename completes the sentence — read as "**guest** browses places", "**host** creates a place".
+
+```
+spec/features/
+  guest/
+    places/
+      browses-places.spec.ts
+      views-place.spec.ts
+      searches-places.spec.ts
+      books-place.spec.ts
+    favorites/
+      manages-favorites.spec.ts
+  host/
+    places/
+      creates-place.spec.ts
+      updates-place.spec.ts
+      deletes-place.spec.ts
+      views-places.spec.ts
+    rooms/
+      creates-room.spec.ts
+      updates-room.spec.ts
+      deletes-room.spec.ts
+      views-rooms.spec.ts
+  visitor/
+    places/
+      browses-places.spec.ts
+      searches-places.spec.ts
+      views-place.spec.ts
+    sign-up/
+      signs-up-from-booking.spec.ts
+      signs-up-from-favorite.spec.ts
+```
+
+Avoid flat naming like `guest-browses-places.spec.ts` — the directory structure carries the actor context. Avoid bare CRUD names like `create.spec.ts` or `index.spec.ts` — those are resource-oriented, not behavior-oriented.
+
+
 ### Debugging Feature Specs Visually
 
 When a feature spec fails, see what the browser is actually rendering — it's much faster than guessing from assertion failure messages.
