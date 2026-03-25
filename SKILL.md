@@ -35,6 +35,7 @@ All CLI commands in this document are run via the local project's package manage
 9. **Run `pnpm psy sync`** after changing associations, serializers, OpenAPI decorators, or routes.
 10. **Only use comments to explain "why", not "what"** - prefer expressive code over comments. TSDoc comments explaining "how" or "when" to use a function/method/class are welcome.
 11. **Use Dream's built-in utilities** (`@rvoh/dream/utils`) instead of lodash or hand-rolled equivalents. See [utils.md](utils.md) for the full list.
+12. **NEVER use `process.env` directly** - always use `AppEnv` (`api/src/conf/AppEnv.ts`) to access environment variables. `AppEnv` validates that required variables are present at boot time with clear error messages, and decouples the application from the container environment (enabling secret injection from external sources like AWS Secrets Manager).
 
 ## Project Structure
 
@@ -893,6 +894,10 @@ Automatic error handling:
 - `castParam` invalid -> 400
 - `findOrFail` not found -> 404
 - Validation failure -> 422
+
+## Deploying
+
+For deployment guidance (runtime model, build output, health checks, required environment variables, TLS, and debugging), see [deploying.md](deploying.md).
 
 ## Troubleshooting Migrations
 
