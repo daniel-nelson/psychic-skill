@@ -736,6 +736,28 @@ await user.transaction(async (txn) => {
 })
 ```
 
+### Optional transaction participation with `.txn(null)`
+
+`.txn()` accepts `null` as well as a `DreamTransaction`. When `null` is passed, the operation runs without a transaction — it's a no-op. This lets methods that _optionally_ participate in a transaction use a single code path instead of branching:
+
+```typescript
+async function doWork(user: User, txn: DreamTransaction<ApplicationModel> | null = null) {
+  // No if/else needed — .txn(null) is a no-op
+  await user.txn(txn).update({ status: 'done' })
+  await user.txn(txn).createAssociation('posts', { title: 'New' })
+}
+
+// Call with a transaction
+await ApplicationModel.transaction(async txn => {
+  await doWork(user, txn)
+})
+
+// Call without — works the same, just no transaction wrapping
+await doWork(user)
+```
+
+Both `Model.txn(null)` (class-level) and `instance.txn(null)` (instance-level) work the same way.
+
 **Restrictions inside transactions:** Methods that rely on foreign key violations to function (`createOrFindBy`, `createOrUpdateBy`) cannot be used inside a transaction. Use their transaction-safe counterparts (`findOrCreateBy`, `updateOrCreateBy`) instead. See the [find-or-create methods](#find-or-create-and-upsert-methods) table for details.
 
 **Background jobs and transactions:** When queuing background work from a Dream lifecycle hook, always use the `Commit` variant of the hook (e.g., `@deco.AfterCreateCommit` instead of `@deco.AfterCreate`). Regular hooks run inside the transaction, so the worker may execute before the transaction commits. See [workers.md](workers.md) for details.
