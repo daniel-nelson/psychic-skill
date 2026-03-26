@@ -36,6 +36,7 @@ All CLI commands in this document are run via the local project's package manage
 10. **Only use comments to explain "why", not "what"** - prefer expressive code over comments. TSDoc comments explaining "how" or "when" to use a function/method/class are welcome.
 11. **Use Dream's built-in utilities** (`@rvoh/dream/utils`) instead of lodash or hand-rolled equivalents. See [utils.md](utils.md) for the full list.
 12. **NEVER use `process.env` directly** - always use `AppEnv` (`api/src/conf/AppEnv.ts`) to access environment variables. `AppEnv` validates that required variables are present at boot time with clear error messages, and decouples the application from the container environment (enabling secret injection from external sources like AWS Secrets Manager).
+13. **NEVER add try/catch blocks unless handling a specific, expected error.** Dead programs tell no lies — an unhandled exception with a stack trace is far more useful than a program that silently swallows errors and continues with corrupted state. Psychic already converts common errors to appropriate HTTP responses automatically (e.g., `findOrFail` → 404, `castParam` → 400, validation failure → 400). If you must catch, handle only the specific error you expect and re-throw everything else. Never wrap large blocks of code in a catch-all try/catch.
 
 ## Project Structure
 

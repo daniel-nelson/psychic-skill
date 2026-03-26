@@ -568,9 +568,11 @@ Psychic automatically converts certain errors to HTTP responses:
 |---|---|---|
 | `castParam` fails | 400 | Invalid parameter type/value |
 | `paramsFor` fails | 400 | Invalid model attributes |
+| Model validation fails | 400 | `isInvalid` with errors |
 | `findOrFail` no match | 404 | Record not found |
 | `firstOrFail` no match | 404 | Record not found |
-| Model validation fails | 422 | `isInvalid` with errors |
+
+All validation-layer errors return 400 by design — this prevents attackers from distinguishing which layer rejected a request. To explicitly return 422 with field-level validation errors intended for the end user, call `this.unprocessableContent({ errors: { fieldName: ['message'] } })`.
 
 ## Session & Cookie Management
 
