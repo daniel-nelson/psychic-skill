@@ -31,11 +31,15 @@ Open your agent and paste the install prompt. Then optionally add to your projec
 
 **1. Install on your machine** — open Claude Code and paste:
 
-> Install psychic-skill: run `git clone https://github.com/daniel-nelson/psychic-skill.git ~/.claude/skills/psychic-skill && cd ~/.claude/skills/psychic-skill && ./setup`
+```
+Install psychic-skill: run `git clone https://github.com/daniel-nelson/psychic-skill.git ~/.claude/skills/psychic-skill && cd ~/.claude/skills/psychic-skill && ./setup`
+```
 
 **2. Add to your project (optional):**
 
-> Add psychic-skill to this project: run `cp -Rf ~/.claude/skills/psychic-skill .claude/skills/psychic-skill && rm -rf .claude/skills/psychic-skill/.git && cd .claude/skills/psychic-skill && ./setup`
+```
+Add psychic-skill to this project: run `cp -Rf ~/.claude/skills/psychic-skill .claude/skills/psychic-skill && rm -rf .claude/skills/psychic-skill/.git && cd .claude/skills/psychic-skill && ./setup`
+```
 
 Real files get committed to your repo (not a submodule), so `git clone` just works. Teammates just need to run `cd .claude/skills/psychic-skill && ./setup` once.
 
@@ -43,11 +47,15 @@ Real files get committed to your repo (not a submodule), so `git clone` just wor
 
 **1. Install on your machine** — open Codex and paste:
 
-> Install psychic-skill: run `git clone https://github.com/daniel-nelson/psychic-skill.git ~/.codex/skills/psychic-skill && cd ~/.codex/skills/psychic-skill && ./setup`
+```
+Install psychic-skill: run `git clone https://github.com/daniel-nelson/psychic-skill.git ~/.codex/skills/psychic-skill && cd ~/.codex/skills/psychic-skill && ./setup`
+```
 
 **2. Add to your project (optional):**
 
-> Add psychic-skill to this project: run `cp -Rf ~/.codex/skills/psychic-skill .codex/skills/psychic-skill && rm -rf .codex/skills/psychic-skill/.git && cd .codex/skills/psychic-skill && ./setup`
+```
+Add psychic-skill to this project: run `cp -Rf ~/.codex/skills/psychic-skill .codex/skills/psychic-skill && rm -rf .codex/skills/psychic-skill/.git && cd .codex/skills/psychic-skill && ./setup`
+```
 
 Real files get committed to your repo (not a submodule), so teammates just need to run `cd .codex/skills/psychic-skill && ./setup` once.
 
