@@ -588,6 +588,60 @@ this.getCookie<string>('theme')
 this.setCookie('theme', 'dark', { expires: new Date('2025-12-31') })
 ```
 
+### Cookie Encryption
+
+`this.setCookie()` **always encrypts** the cookie value — there is no option to disable this. This is the correct behavior for cookies the Psychic application both writes and reads (e.g., session data, user preferences), since `this.getCookie()` automatically decrypts.
+
+Cookie encryption requires an encryption key configured in `conf/app.ts`:
+
+```typescript
+psy.set('encryption', {
+  cookies: {
+    current: {
+      algorithm: 'aes-256-gcm',
+      key: AppEnv.string('COOKIE_ENCRYPTION_KEY'),
+    },
+  },
+})
+```
+
+### Setting Cookies for External Services (Bypassing Encryption)
+
+When setting cookies intended for a different service to consume — e.g., CloudFront signed cookies for private content access — `this.setCookie()` will not work because the consuming service cannot decrypt Psychic's encrypted values.
+
+Instead, use `ctx.append('Set-Cookie', ...)` directly on the Koa context:
+
+```typescript
+// In a controller action:
+this.ctx.append(
+  'Set-Cookie',
+  `CloudFront-Key-Pair-Id=${keyPairId}; Path=/; Domain=.example.com; SameSite=Lax; Secure`
+)
+this.ctx.append(
+  'Set-Cookie',
+  `CloudFront-Signature=${signature}; Path=/; Domain=.example.com; SameSite=Lax; Secure`
+)
+```
+
+Key points:
+- Use `ctx.append` (not `ctx.set`) to allow multiple `Set-Cookie` headers without overwriting each other
+- This bypasses both Psychic's encryption and Koa's cookie signing
+- The Koa context is accessible in any controller action via `this.ctx` and can be passed to service methods
+
+### Proxy Configuration for Secure Cookies
+
+When the app runs behind a reverse proxy that terminates TLS (load balancers, Cloud Run, Cloudflare Tunnel, dev tunnels like ngrok), the Koa server receives plain HTTP and will reject `secure: true` cookies with "Cannot send secure cookie over unencrypted connection".
+
+Set `app.proxy = true` in `conf/app.ts` to trust `X-Forwarded-Proto` headers from the proxy:
+
+```typescript
+psy.on('server:init:after-middleware', psychicServer => {
+  psychicServer.koaApp.proxy = true
+})
+```
+
+This may be necessary during development with tunneling tools (e.g., ngrok) or in environments where TLS is terminated at the proxy without re-encryption to the container. However, re-encrypting traffic between the proxy and the application is recommended — and required by security frameworks like HIPAA that mandate encryption in transit — so prefer configuring TLS on the application (see [deploying.md](deploying.md#tls-behind-a-reverse-proxy)) over enabling `app.proxy`.
+
 ## Nested Resource Creation via Association
 
 ```typescript
