@@ -325,6 +325,24 @@ export const RoomBedroomSerializer = (bedroom: Bedroom) =>
     .attribute('bedTypes')  // Bedroom-specific field
 ```
 
+### Explicit Type Variable in Generic Serializers
+
+In generic (STI base) serializers, `delegatedAttribute`, `rendersOne`, and `rendersMany` cannot infer the model type from the generic parameter `T`. You must pass the base model class explicitly as a type variable, or TypeScript will error:
+
+```typescript
+export const CandidateInternalSerializer = <T extends Candidate>(
+  StiChildClass: typeof Candidate,
+  candidate: T,
+) =>
+  CandidateInternalSummarySerializer(StiChildClass, candidate)
+    .attribute('type', { openapi: { type: 'string', enum: [(StiChildClass ?? Candidate).sanitizedName] } })
+    .delegatedAttribute<Candidate>('profile', 'preferredName')
+    .rendersOne<Candidate>('resume')
+    .rendersMany<Candidate>('supportingDocuments')
+```
+
+Non-generic serializers (including STI child serializers) do not need this — the type is inferred automatically.
+
 ## preloadFor Integration
 
 The `preloadFor(serializerKey)` method analyzes the serializer and automatically preloads all needed associations:
