@@ -38,6 +38,34 @@ All CLI commands in this document are run via the local project's package manage
 12. **NEVER use `process.env` directly** - always use `AppEnv` (`api/src/conf/AppEnv.ts`) to access environment variables. `AppEnv` validates that required variables are present at boot time with clear error messages, and decouples the application from the container environment (enabling secret injection from external sources like AWS Secrets Manager).
 13. **NEVER add try/catch blocks unless handling a specific, expected error.** Dead programs tell no lies — an unhandled exception with a stack trace is far more useful than a program that silently swallows errors and continues with corrupted state. Psychic already converts common errors to appropriate HTTP responses automatically (e.g., `findOrFail` → 404, `castParam` → 400, validation failure → 400). If you must catch, handle only the specific error you expect and re-throw everything else. Never wrap large blocks of code in a catch-all try/catch.
 
+## Creating a New Psychic Application
+
+If you are not already inside a Psychic project, use `create-psychic` to scaffold one:
+
+```bash
+npx @rvoh/create-psychic new <app-name> [options]
+```
+
+**Every option must be provided**, or `create-psychic` will enter interactive mode to prompt for unanswered questions. Boolean options can be negated with `--no-` (e.g., `--no-workers`).
+
+| Option | Description |
+|--------|-------------|
+| `--package-manager <pm>` | `pnpm`, `yarn`, or `npm` |
+| `--primary-key-type <type>` | `uuid7`, `uuid4`, `bigserial`, `bigint`, or `integer` |
+| `--workers` / `--no-workers` | Include or exclude background workers (`@rvoh/psychic-workers`) |
+| `--websockets` / `--no-websockets` | Include or exclude websockets (`@rvoh/psychic-websockets`) |
+| `--client <type>` | Client app: `nextjs`, `react`, `vue`, `nuxt`, or `none` |
+| `--admin-client <type>` | Admin client app (same options as `--client`) |
+| `--internal-client <type>` | Internal client app (same options as `--client`) |
+| `--claude-psychic-skill` / `--no-claude-psychic-skill` | Install or exclude psychic-skill for Claude Code |
+| `--codex-psychic-skill` / `--no-codex-psychic-skill` | Install or exclude psychic-skill for Codex |
+
+Example:
+
+```bash
+npx @rvoh/create-psychic new my-app --package-manager pnpm --primary-key-type uuid7 --workers --no-websockets --client react --admin-client none --internal-client none --claude-psychic-skill --no-codex-psychic-skill
+```
+
 ## Project Structure
 
 ```
