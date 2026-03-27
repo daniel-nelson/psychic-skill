@@ -155,6 +155,22 @@ Array of associated objects:
 .rendersMany('appliances', { serializer: ApplianceSerializer })
 ```
 
+### serializerKey Does Not Cascade
+
+The `serializerKey` chosen by the `@OpenAPI` decorator (or by a parent serializer's `rendersOne`/`rendersMany`) does **not** automatically propagate to nested `rendersOne`/`rendersMany` calls. Each nested render defaults to the `'default'` serializer unless an explicit `serializerKey` is provided.
+
+For example, if a controller action uses `serializerKey: 'internal'`, the top-level model's `'internal'` serializer is selected, but any associations it renders will use their `'default'` serializer — not `'internal'` — unless explicitly specified:
+
+```typescript
+// The 'internal' serializer for Place
+export const PlaceInternalSerializer = (place: Place) =>
+  PlaceInternalSummarySerializer(place)
+    .rendersMany('rooms')                                  // uses Room's 'default' serializer
+    .rendersMany('rooms', { serializerKey: 'internal' })   // uses Room's 'internal' serializer
+```
+
+When building a family of serializers around a key (e.g., `'summary'`, `'internal'`, `'forGuests'`), pass the `serializerKey` explicitly at every level.
+
 ## Flattening Associations
 
 Flattening merges a `rendersOne` association's attributes directly into the parent response (instead of nesting them under a key). This is useful when a model wants to present a HasOne or BelongsTo association's data as if it were part of itself.
@@ -337,8 +353,8 @@ export const CandidateInternalSerializer = <T extends Candidate>(
   CandidateInternalSummarySerializer(StiChildClass, candidate)
     .attribute('type', { openapi: { type: 'string', enum: [(StiChildClass ?? Candidate).sanitizedName] } })
     .delegatedAttribute<Candidate>('profile', 'preferredName')
-    .rendersOne<Candidate>('resume')
-    .rendersMany<Candidate>('supportingDocuments')
+    .rendersOne<Candidate>('resume', { serializerKey: 'internal' })
+    .rendersMany<Candidate>('supportingDocuments', { serializerKey: 'internal' })
 ```
 
 Non-generic serializers (including STI child serializers) do not need this — the type is inferred automatically.
