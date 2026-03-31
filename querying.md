@@ -333,6 +333,53 @@ const users = await User
 
 `leftJoinPreload` and `preload` cannot be combined in the same query. Use one or the other.
 
+## Type Cast for Conditional Query Building with Joins
+
+When conditionally building a query that may include `leftJoin` or `innerJoin`, TypeScript infers increasingly specific types for each join. This prevents reassigning the result back to the original `let` variable:
+
+```typescript
+let query = Place.preloadFor('summary')
+
+// ERROR: leftJoin returns a Query with a different joinedAssociations tuple,
+// which is not assignable back to the original narrow type
+if (withoutPhoto)
+  query = query.leftJoin('placePhotos').where({ 'placePhotos.id': null })
+```
+
+**Fix:** Cast the join expression back to the original query type using `as unknown as typeof query`:
+
+```typescript
+let query = Place.preloadFor('summary')
+
+if (search) query = query.where({ name: ops.like(`${search}%`) })
+if (withoutPhoto)
+  query = query
+    .leftJoin('placePhotos')
+    .where({ 'placePhotos.id': null }) as unknown as typeof query
+if (type?.length) query = query.where({ type })
+
+const results = await query.cursorPaginate({ cursor })
+```
+
+The cast is safe because the runtime query object has the same shape — only the type-level join tracking differs. The narrower `typeof query` type is preserved for all subsequent method calls.
+
+For helper functions that accept queries with varying join states, use `Query<Model, any>` for parameter and return types (since there's no `typeof query` to reference):
+
+```typescript
+import { Query } from '@rvoh/dream'
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function applyFilters(query: Query<Place, any>, params: FilterParams): Query<Place, any> {
+  if (params.withoutPhoto)
+    query = query.leftJoin('placePhotos').where({ 'placePhotos.id': null })
+  return query
+}
+```
+
+**What you lose at the cast site:** Joined column name validation — `where({ 'placePhotos.id': null })` won't be type-checked to confirm the join exists. `leftJoin` itself still validates the association name.
+
+**What you keep:** Full type safety on the model type, incompatibility guards on all other calls, and unchanged runtime behavior.
+
 ## What To Reach For First
 
 Use this order when reasoning about a query:
