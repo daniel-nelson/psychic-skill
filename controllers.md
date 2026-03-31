@@ -599,10 +599,32 @@ psy.set('encryption', {
   cookies: {
     current: {
       algorithm: 'aes-256-gcm',
-      key: AppEnv.string('COOKIE_ENCRYPTION_KEY'),
+      key: AppEnv.string('APP_ENCRYPTION_KEY'),
+    },
+    legacy: {
+      algorithm: 'aes-256-gcm',
+      key: AppEnv.string('LEGACY_APP_ENCRYPTION_KEY'),
     },
   },
 })
+```
+
+The optional `legacy` key enables seamless key rotation: `getCookie()` first tries the `current` key, and if decryption fails, retries with the `legacy` key.
+
+### Decrypting Cookies Outside a Controller
+
+Koa middleware that runs outside Psychic's controller layer (e.g., protecting a bull-board dashboard) cannot use `this.getCookie()`. To decrypt a Psychic-encrypted cookie in plain middleware, use `Encrypt` from Dream directly:
+
+```typescript
+import { Encrypt } from '@rvoh/dream'
+
+const encrypted = ctx.cookies.get('cookie_name')
+if (encrypted) {
+  const decrypted = Encrypt.decrypt(encrypted, {
+    algorithm: 'aes-256-gcm',
+    key: AppEnv.string('APP_ENCRYPTION_KEY'),
+  })
+}
 ```
 
 ### Setting Cookies for External Services (Bypassing Encryption)
