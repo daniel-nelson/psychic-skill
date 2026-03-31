@@ -115,6 +115,9 @@ Access a property on a loaded association:
 
 // Gets `user.profile.avatarUrl`
 .delegatedAttribute('profile', 'avatarUrl', { openapi: 'string' })
+
+// When the association may be null (e.g., a HasOne that isn't always present)
+.delegatedAttribute('profile', 'avatarUrl', { openapi: 'string', optional: true })
 ```
 
 ### .rendersOne(name, options?)
@@ -261,6 +264,49 @@ export const PlaceAdminSerializer = (place: Place) =>
     .attribute('updatedAt')
     .rendersMany('hostPlaces')
 ```
+
+## Action-Specific Serializer Keys
+
+When a model has virtual attributes that are only populated in certain contexts (e.g., upload URLs set during creation but absent when loading from DB), don't include those attributes in the general-purpose serializer. Instead, create a separate serializer that extends the base one and register it under its own key.
+
+This avoids OpenAPI response validation failures when the virtuals are undefined in other actions (e.g., show/index).
+
+```typescript
+// DocumentSerializer.ts — base serializer omits context-specific fields
+export const PlacePhotoSerializer = (PlacePhoto: PlacePhoto) =>
+  PlacePhotoSummarySerializer(PlacePhoto)
+
+// Create-specific serializer adds upload fields only present after creation
+export const PlacePhotoCreateSerializer = (PlacePhoto: PlacePhoto) =>
+  PlacePhotoSerializer(PlacePhoto)
+    .attribute('uploadUrl')
+    .attribute('uploadHeaders')
+```
+
+Register the action-specific serializer under its own key:
+
+```typescript
+// Document.ts model
+public get serializers(): DreamSerializers<PlacePhoto> {
+  return {
+    default: 'Place/PhotoSerializer',
+    create: 'Place/PhotoCreateSerializer',
+  }
+}
+```
+
+Use that key in the controller action:
+
+```typescript
+// DocumentsController.ts
+@OpenAPI(PlacePhoto, { status: 201, serializerKey: 'create' })
+public async create() {
+  // ... creation logic that populates uploadUrl/uploadHeaders ...
+  this.created(Document)
+}
+```
+
+After adding a new serializer key, run `pnpm psy sync` so the global types pick up the new key.
 
 ## Passthrough Context
 
