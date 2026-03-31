@@ -387,6 +387,27 @@ export const RoomBedroomSerializer = (bedroom: Bedroom) =>
     .attribute('bedTypes')  // Bedroom-specific field
 ```
 
+### Generic Parameter on `rendersOne`, `rendersMany`, and `delegatedAttribute`
+
+When an STI child serializer extends an STI base serializer and calls `rendersOne`, `rendersMany`, or `delegatedAttribute`, it must pass the STI child class as a generic parameter. Without it, TypeScript cannot resolve the association types correctly because the base serializer's generic context is lost at the call site.
+
+`.attribute` infers types correctly without a generic argument, and `.customAttribute` doesn't do type inference, so neither needs this.
+
+```typescript
+// CORRECT — pass <Bedroom> so rendersMany can resolve Bedroom's associations
+export const RoomBedroomForGuestsSerializer = (bedroom: Bedroom, passthrough: { locale: LocalesEnum }) =>
+  RoomForGuestsSerializer(Bedroom, bedroom, passthrough)
+    .rendersMany<Bedroom>('bedTypes', { serializer: BedTypeSerializer })
+
+// CORRECT — pass <Bathroom> for rendersOne
+export const RoomBathroomForGuestsSerializer = (bathroom: Bathroom, passthrough: { locale: LocalesEnum }) =>
+  RoomForGuestsSerializer(Bathroom, bathroom, passthrough)
+    .rendersOne<Bathroom>('bathOrShowerStyle', { serializer: BathOrShowerStyleSerializer })
+
+// WRONG — omitting the generic causes type errors
+  .rendersMany('bedTypes', { serializer: BedTypeSerializer })
+```
+
 ## preloadFor Integration
 
 The `preloadFor(serializerKey)` method analyzes the serializer and automatically preloads all needed associations:
