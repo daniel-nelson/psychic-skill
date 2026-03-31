@@ -120,7 +120,10 @@ pnpm psy g:sti-child Model/Child extends Parent field:type
 pnpm uspec                       # Unit specs
 pnpm fspec                       # Feature specs (headless)
 pnpm fspec:visible               # Feature specs (visible browser)
-pnpm build:spec                  # Check for type errors
+pnpm build:spec                  # Check for type errors in src and spec directories (uses tsconfig.build-spec.json)
+pnpm build                       # Production build or check for type errors only in src directory (uses tsconfig.build.json)
+# NEVER use `npx tsc --noEmit` — it fails with spurious errors because the base
+# tsconfig references spec types that aren't resolvable from a bare tsc invocation.
 pnpm format                      # Apply standard formatting
 pnpm lint                        # Check linting
 ```
