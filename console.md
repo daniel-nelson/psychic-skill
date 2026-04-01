@@ -87,7 +87,9 @@ Key points:
 
 ## Running Scripts Against the Development Database
 
-For scripts that need the full Dream environment (models, associations, DB connection), use this boilerplate:
+**For ad hoc DB/model inspection** (counting records, checking data, exploring associations), use the console or pipe commands into it — not a custom script. See "Piping Commands from Claude Code" above.
+
+For standalone scripts that need the full Dream environment (models, associations, DB connection), use this boilerplate:
 
 ```typescript
 import '@conf/loadEnv.js'
@@ -103,3 +105,5 @@ Run with:
 ```bash
 NODE_ENV=development npx tsx my-script.ts
 ```
+
+**Do not hand-roll app initialization** with ad hoc `tsx -e` one-liners that manually import `loadEnv`, `initializePsychicApp`, and individual models. This skips important initialization steps and will fail. Use the boilerplate above for scripts, or `pnpm console` for interactive inspection.
