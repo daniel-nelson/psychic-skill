@@ -286,6 +286,20 @@ const users = await User.preload('posts', { and: { published: true } }, 'comment
 
 // load with shorthand conditions (plain object = and)
 user = await user.load('posts', { body: null }).load('pets').execute()
+
+// andAny follows the same semantics as whereAny: each object is OR'd,
+// multiple keys within one object are AND'd
+const users = await User.preload('posts', {
+  andAny: [
+    { title: ops.like('Dream%') },
+    { title: ops.like('Psychic%'), published: true },
+  ],
+}).all()
+
+// andNot follows the same semantics as whereNot
+const users = await User.preload('posts', {
+  andNot: { archived: true },
+}).all()
 ```
 
 ### Where clauses on joined/preloaded associations
@@ -298,6 +312,28 @@ const posts = await user
   .preload('comments')
   .whereAny([{ body: null }, { 'comments.body': null }])
   .all()
+```
+
+### `whereAny` semantics
+
+`whereAny` takes an array of condition objects. Each object in the array is OR'd together; multiple keys within the same object are AND'd together:
+
+```typescript
+// Each object in the array is OR'd; multiple keys within one object are AND'd:
+// (givenName LIKE 'Anna%') OR (givenName LIKE 'Anna%' AND familyName LIKE 'Maria%')
+query.whereAny([
+  { givenName: ops.like('Anna%') },
+  { givenName: ops.like('Anna%'), familyName: ops.like('Maria%') },
+])
+```
+
+### `whereNot` semantics
+
+`whereNot` takes a single condition object. All keys are AND'd and negated:
+
+```typescript
+// WHERE NOT (status = 'archived' AND role = 'guest')
+query.whereNot({ status: 'archived', role: 'guest' })
 ```
 
 ### Instance-level loading
