@@ -156,6 +156,72 @@ await DreamMigrationHelpers.dropEnumValue(db, {
 })
 ```
 
+### Renaming an Enum Value (Two-Migration Pattern)
+
+PostgreSQL cannot add and use a new enum value in the same transaction, and Dream runs all pending migrations in a single transaction by default. To rename an enum value (add the new name, migrate data from old to new, drop the old name), you must use **two separate migration files**.
+
+**Migration 1** — add the new enum value:
+
+```bash
+pnpm psy g:migration add-treehouse-to-place-styles
+```
+
+```typescript
+export async function up(db: Kysely<any>): Promise<void> {
+  await DreamMigrationHelpers.addEnumValue(db, {
+    enumName: 'place_styles_enum',
+    value: 'treehouse',
+  })
+}
+
+export async function down(): Promise<void> {}
+```
+
+**Migration 2** — replace the old value with the new one and drop it:
+
+```bash
+pnpm psy g:migration replace-lean-to-with-treehouse
+```
+
+```typescript
+export async function up(db: Kysely<any>): Promise<void> {
+  await DreamMigrationHelpers.dropEnumValue(db, {
+    enumName: 'place_styles_enum',
+    value: 'lean_to',
+    replacements: [
+      {
+        table: 'places',
+        column: 'style',
+        behavior: 'replace',
+        replaceWith: 'treehouse',
+      },
+    ],
+  })
+}
+
+export async function down(db: Kysely<any>): Promise<void> {
+  await DreamMigrationHelpers.addEnumValue(db, {
+    enumName: 'place_styles_enum',
+    value: 'lean_to',
+  })
+}
+```
+
+Dream automatically starts a new transaction when it encounters `dropEnumValue` in a migration, ensuring the new enum value from Migration 1 is committed and visible before Migration 2 tries to use it as a replacement. If an enum is used on multiple tables/columns, add a separate entry in the `replacements` array for each.
+
+### Forcing a New Transaction in Migrations
+
+Dream runs all pending migrations in a single transaction by default. If a migration file contains the string `DreamMigrationHelpers.dropEnumValue` or `DreamMigrationHelpers.newTransaction()`, Dream runs that file in its own transaction, separate from the migrations before and after it.
+
+This detection is a naive string search on the file contents — it looks for those exact strings. Do not rename `DreamMigrationHelpers` on import (e.g., `import { DreamMigrationHelpers as DMH }`) or the transaction boundary will not be detected.
+
+```typescript
+export async function up(db: Kysely<any>): Promise<void> {
+  DreamMigrationHelpers.newTransaction()
+  await db.schema.alterTable('places')...
+}
+```
+
 ## Foreign Keys
 
 ```typescript
