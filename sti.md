@@ -440,7 +440,7 @@ export default class V1HostPlacesRoomsController extends V1HostPlacesBaseControl
 
 **Key points:**
 - `RoomTypesEnumValues` is auto-generated from the enum in `types/db.ts`
-- `this.paramsFor(Room)` uses the **parent** class for param extraction
+- `this.paramsFor(Room)` uses the parent class — this works because `paramsFor` reads from the **database table**, not the model class. Since all STI children share the same table, `paramsFor(Room)` accepts all columns in the table (including child-specific ones like `bedTypes`) subject to the standard safe-params filtering. This also means `update` doesn't need a switch statement — `paramsFor(Room)` already includes all child-specific columns.
 - Each `case` creates via the **child** class (e.g., `Bedroom.create(...)`)
 - The `default` branch with `const _never: never = roomType` ensures compile-time exhaustiveness
 - `show`, `update`, `destroy` work on the parent `Room` type - Dream returns the correct child instance

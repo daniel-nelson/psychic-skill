@@ -539,15 +539,24 @@ public position: DreamColumn<Room, 'position'>
 public phone: DreamColumn<User, 'encryptedPhone'>
 // DB column is 'encrypted_phone', model property is 'phone'
 
-// Virtual - not stored in DB, not sent to DB on save
-@deco.Virtual('string')
-public password: string | undefined
+// Virtual — accepted by update() and paramsFor() but not stored directly in DB.
+// Use getter/setter pairs to transform between the virtual and the actual DB column.
+// Decorator goes on whichever accessor is declared first.
+// Note the use of `DreamColumn<Place, 'grams'>` to specify the type of the
+// getter return type and setter params because these types are simply
+// mutations of what is in the database and the database is the source
+// of truth for the type.
+const GRAMS_PER_POUND = 453.592
 
-@deco.Virtual('integer')
-public age: number
+@deco.Virtual(['number', 'null'])
+public get pounds(): DreamColumn<Place, 'grams'> {
+  const grams = this.getAttribute('grams')
+  return grams === null ? null : grams / GRAMS_PER_POUND
+}
 
-@deco.Virtual(['string', 'null'])
-public computedField: string | null
+public set pounds(pounds: DreamColumn<Place, 'grams'>) {
+  this.setAttribute('grams', pounds === null ? null : pounds * GRAMS_PER_POUND)
+}
 
 // All Virtual types: 'boolean', 'date-time', 'date', 'integer', 'null', 'number',
 // 'string', 'decimal', 'json', and array variants: 'boolean[]', 'date-time[]',

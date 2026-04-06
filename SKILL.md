@@ -214,9 +214,23 @@ export default class Place extends ApplicationModel {
   @deco.Encrypted()
   public phone: DreamColumn<Place, 'encryptedPhone'>
 
-  // Virtual (non-database) columns
-  @deco.Virtual('integer')
-  public age: number
+  // Virtual — accepted by update()/paramsFor() but not stored directly in DB.
+  // Decorator goes on whichever accessor is declared first.
+  // Note the use of `DreamColumn<Place, 'grams'>` to specify the type of the
+  // getter return type and setter params because these types are simply
+  // mutations of what is in the database and the database is the source
+  // of truth for the type.
+  const GRAMS_PER_POUND = 453.592
+
+  @deco.Virtual(['number', 'null'])
+  public get pounds(): DreamColumn<Place, 'grams'> {
+    const grams = this.getAttribute('grams')
+    return grams === null ? null : grams / GRAMS_PER_POUND
+  }
+
+  public set pounds(pounds: DreamColumn<Place, 'grams'>) {
+    this.setAttribute('grams', pounds === null ? null : pounds * GRAMS_PER_POUND)
+  }
 
   // Associations
   @deco.HasMany('Room', { order: 'position', dependent: 'destroy' })

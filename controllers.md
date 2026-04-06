@@ -423,7 +423,7 @@ this.castParam('status', 'string', { enum: ['active', 'inactive'], allowNull: tr
 
 ### paramsFor
 
-Extracts and validates params matching model's safe columns:
+Extracts and validates params based on the model's database table columns, `@Virtual()` columns, and `@Encrypted()` columns, filtered by safe-params rules:
 
 ```typescript
 // Basic
