@@ -139,6 +139,7 @@ pnpm lint                        # Check linting
 - **`g:resource` first argument is a plural kebab-case route path** (e.g., `v1/host/places` or `internal/action-plans`), not a class name or namespace. The second argument is the model file path relative to `src/app/models/` without `.ts` (e.g., `Place`, `Place/Room`). The class name defaults from the path but can be overridden with `--model-name`.
 - **CRITICAL: Run `pnpm psy <command> --help` and read its output BEFORE running any generator or CLI command.** Do not infer syntax from examples in this skill or from prior experience — argument formats vary between commands and between Dream/Psychic versions. This is a hard prerequisite, not a suggestion.
 - `g:resource`, `g:model`, and `g:sti-child` automatically include `id`, `created_at`, and `updated_at` columns in the generated migration — do not specify these in the generator command.
+- **If a model has a `type` column, consider whether it should use STI.** If different types will have different behavior, validations, serializers, or child-specific columns, use STI (`--sti-base-serializer` on the parent resource + `g:sti-child` for each child). The STI generators handle significant subtle scaffolding (check constraints, per-type serializers, type-discriminated OpenAPI schemas) that is much easier to get right at generation time than to refactor later. See [sti.md](sti.md).
 
 ### Generator Workflow
 
