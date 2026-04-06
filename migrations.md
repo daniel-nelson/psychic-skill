@@ -432,7 +432,9 @@ await DreamMigrationHelpers.addDeferrableUniqueConstraint(db, 'room_position_con
 
 ## Generator Column Syntax
 
-When using `pnpm psy g:model` or `pnpm psy g:migration`:
+All columns default to NOT NULL. Append `:optional` to make a column nullable.
+
+When using `pnpm psy g:model`, `pnpm psy g:resource`, or `pnpm psy g:migration`:
 
 ```
 name:string                    # varchar(255)

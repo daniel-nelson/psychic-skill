@@ -99,10 +99,10 @@ api/
 **CRITICAL: All `pnpm psy` commands default to `NODE_ENV=test`.** To operate on the development database, prefix with `NODE_ENV=development`. See [console.md](console.md) for details.
 
 ```bash
-pnpm psy db:migrate              # Run migrations, then sync
+pnpm psy db:migrate              # Run migrations, then automatically runs sync — do NOT follow with a separate `pnpm psy sync`
 pnpm psy db:rollback             # Rollback last run migration (use --steps to specify multiple rollback steps)
 pnpm psy db:reset                # Drop + create + migrate, then sync
-pnpm psy sync                    # Sync types, OpenAPI specs, and cli:sync commands
+pnpm psy sync                    # Sync types, OpenAPI specs, and cli:sync commands (only needed standalone when no migration was run)
 pnpm psy routes                  # Display all routes
 pnpm psy --help                  # List all psy commands
 
@@ -110,7 +110,7 @@ pnpm psy --help                  # List all psy commands
 NODE_ENV=development pnpm console   # Launch Dream console against dev DB
 
 # Generators (ALWAYS run --help first)
-pnpm psy g:resource path/Name ModelName field:type   # Preferred for HTTP-accessible models
+pnpm psy g:resource path/to/plural-resources Model/Path field:type   # Preferred for HTTP-accessible models
 pnpm psy g:model ModelName field:type                # When model won't be HTTP-accessible
 pnpm psy g:controller Path/Name action1 action2
 pnpm psy g:migration description                     # For schema changes without a new model
@@ -131,12 +131,14 @@ pnpm lint                        # Check linting
 ## Generator Usage Rules
 
 - **Generator preference order**:
-  1. **Resource generator** (`g:resource`) - preferred when a model may be manipulated via HTTP requests
+  1. **Resource generator** (`g:resource`) - the default for almost all new models
   2. **STI-child generator** (`g:sti-child`) - for STI child models building on an existing STI base
-  3. **Model generator** (`g:model`) - when a new model won't be HTTP-accessible
+  3. **Model generator** (`g:model`) - only for models that will never be exposed via any API
   4. **Migration generator** (`g:migration`) - for database changes when not generating a new model
-- **When in doubt, prefer `g:resource`**. If the model's data will ever be created, edited, or viewed through any UI or API (including admin/internal tools), it needs a controller. `g:resource` generates the controller, specs, and serializer scaffolding that `g:model` does not. It is easier to delete unused controller actions than to retrofit them later.
-- **CRITICAL: ALWAYS run `pnpm psy <command> --help` before running any generator**
+- **Most models should use `g:resource`.** It is rare for a model to not be exposed via *some* API — whether end-user facing, internal, or admin. `g:resource` generates the controller, controller specs, and route scaffolding that `g:model` does not. It is easier to delete unused controller actions than to retrofit them later. Only use `g:model` for models that are purely internal (e.g., join tables, audit logs).
+- **`g:resource` first argument is a plural kebab-case route path** (e.g., `v1/host/places` or `internal/action-plans`), not a class name or namespace. The second argument is the model file path relative to `src/app/models/` without `.ts` (e.g., `Place`, `Place/Room`). The class name defaults from the path but can be overridden with `--model-name`.
+- **CRITICAL: Run `pnpm psy <command> --help` and read its output BEFORE running any generator or CLI command.** Do not infer syntax from examples in this skill or from prior experience — argument formats vary between commands and between Dream/Psychic versions. This is a hard prerequisite, not a suggestion.
+- `g:resource`, `g:model`, and `g:sti-child` automatically include `id`, `created_at`, and `updated_at` columns in the generated migration — do not specify these in the generator command.
 
 ### Generator Workflow
 
