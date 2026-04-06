@@ -6,6 +6,10 @@ Dream migrations use Kysely under the hood. **Migrations are always created via 
 
 **CRITICAL: Never modify an existing migration file that has already been merged into main.** Use `pnpm psy g:migration` to create a new migration for additional changes.
 
+Conversely, migrations on an unmerged branch may be freely edited. There is no existing production data to worry about, so create columns with the correct constraints (e.g., `NOT NULL`) directly — don't write backfill `UPDATE` statements for data that doesn't exist yet.
+
+`pnpm psy db:migrate` runs migrations then sync. If post-sync fails (e.g., a model references an old table name), the migration itself is not reverted — `db.ts` has already been regenerated from the current database state. Fix the problem and run `pnpm psy sync` to complete the process.
+
 ## DreamMigrationHelpers
 
 `DreamMigrationHelpers` (imported from `@rvoh/dream/db`) provides convenience methods for common migration operations. **Prefer a DreamMigrationHelpers method over compound Kysely calls whenever one is available.** Consult the TSDocs on `DreamMigrationHelpers` for the full list of available methods and their signatures - methods include helpers for extensions, enum manipulation, deferrable constraints, GIN indexes, table renaming, and more.
@@ -39,6 +43,29 @@ export async function down(db: Kysely<any>): Promise<void> {
   await db.schema.dropTable('places').execute()
 }
 ```
+
+## Rename Table
+
+Use `DreamMigrationHelpers.renameTable` instead of Kysely's `alterTable(...).renameTo(...)` — it automatically renames the associated sequence (for tables with serial primary keys) in addition to the table itself:
+
+```typescript
+export async function up(db: Kysely<any>): Promise<void> {
+  await DreamMigrationHelpers.renameTable(db, 'host_places', 'host_listings')
+}
+
+export async function down(db: Kysely<any>): Promise<void> {
+  await DreamMigrationHelpers.renameTable(db, 'host_listings', 'host_places')
+}
+```
+
+**Full workflow for renaming a table:**
+
+1. `pnpm psy g:migration rename-host-places-to-host-listings`
+2. Edit the migration to use `DreamMigrationHelpers.renameTable(db, 'host_places', 'host_listings')`
+3. Update all models referencing the old table: change `return 'host_places' as const` to `return 'host_listings' as const` in each model's `table` getter
+4. `pnpm psy db:migrate`
+
+Step 3 must happen before step 4. `db:migrate` runs migrations then sync. The sync step regenerates `db.ts` from database introspection (which now sees the new table name), then runs post-sync which boots the app and loads models. If any model's `table` getter still returns the old name, post-sync fails with `InvalidTableName`.
 
 ## Primary Key Patterns
 

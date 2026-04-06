@@ -552,12 +552,88 @@ this.ok(places)
     'X-Custom': { required: false },
   },
 
-  // Custom responses
+  // Custom responses (additional error descriptions)
   responses: {
     400: { description: 'Bad request' },
     404: { description: 'Not found' },
   },
 })
+```
+
+### Custom Response Envelopes
+
+When an endpoint returns a custom object shape instead of a serialized model or pagination result, use `responses` to define the response contract. Psychic uses a **shorthand format** — schema properties go directly on the status code object, not nested inside `content: { 'application/json': { schema: ... } }`:
+
+```typescript
+@OpenAPI({
+  status: 200,
+  fastJsonStringify: true,
+  responses: {
+    200: {
+      type: 'object',
+      required: ['place', 'nearby'],
+      properties: {
+        place: { $serializable: Place, $serializableSerializerKey: 'summary' },
+        nearby: { $serializable: Place, $serializableSerializerKey: 'summary', many: true },
+      },
+    },
+  },
+})
+```
+
+The `$serializable` shorthand references a Dream model's serializer within a custom schema, so you don't need to redeclare every field. Options: `$serializableSerializerKey` for a specific serializer key, `many: true` for arrays, `maybeNull: true` for nullable.
+
+**Pre-render nested models in custom envelopes.** Raw Dream model instances inside a custom object will not be automatically serialized. Explicitly render nested models before calling `this.ok(...)`:
+
+```typescript
+@OpenAPI({
+  status: 200,
+  fastJsonStringify: true,
+  responses: {
+    200: {
+      type: 'object',
+      required: ['place', 'nearby'],
+      properties: {
+        place: { $serializable: Place, $serializableSerializerKey: 'summary' },
+        nearby: { $serializable: Place, $serializableSerializerKey: 'summary', many: true },
+      },
+    },
+  },
+})
+public async show() {
+  const place = await this.place()
+  const nearby = await Place.preloadFor('summary').where({ city: place.city }).limit(5).all()
+
+  this.ok({
+    place: PlaceSummarySerializer(place).render(),
+    nearby: nearby.map(p => PlaceSummarySerializer(p).render()),
+  })
+}
+```
+
+Alternatively, formalize the response with an `ObjectSerializer`. This generates the OpenAPI schema automatically via `rendersOne` and `rendersMany`, avoiding the hand-written `responses` block:
+
+```typescript
+// PlaceWithNearbySerializer.ts
+import { ObjectSerializer } from '@rvoh/dream'
+import Place from '@models/Place.js'
+import { PlaceSummarySerializer } from '@serializers/PlaceSerializer.js'
+
+export const PlaceWithNearbySerializer = (place: Place, nearby: Place[]) =>
+  ObjectSerializer({ place, nearby })
+    .rendersOne('place', { serializer: PlaceSummarySerializer })
+    .rendersMany('nearby', { serializer: PlaceSummarySerializer })
+```
+
+```typescript
+// In the controller
+@OpenAPI(PlaceWithNearbySerializer, { status: 200 })
+public async show() {
+  const place = await this.place()
+  const nearby = await Place.preloadFor('summary').where({ city: place.city }).limit(5).all()
+
+  this.ok(PlaceWithNearbySerializer(place, nearby))
+}
 ```
 
 ## Automatic Error Handling
