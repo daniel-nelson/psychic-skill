@@ -158,6 +158,19 @@ await LocalizedText.where({ localizableId: host.id, locale: 'en-US' }).update({ 
 await Tag.where({ postId: post.id }).delete()
 ```
 
+### Ordering
+
+```typescript
+// Single column, ascending (default)
+Place.order('name')
+
+// Single column, explicit direction
+Place.order({ name: 'desc' })
+
+// Multiple columns
+Place.order({ position: 'asc', createdAt: 'desc' })
+```
+
 ### Association and instance entrypoints
 
 These are the methods agents most often forget when they jump too quickly to Kysely.
