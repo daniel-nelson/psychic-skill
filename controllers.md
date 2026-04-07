@@ -418,7 +418,19 @@ this.castParam('tags', 'string[]')
 // With options
 this.castParam('cursor', 'string', { allowNull: true })
 this.castParam('style', 'string', { enum: PlaceStylesEnumValues })
-this.castParam('status', 'string', { enum: ['active', 'inactive'], allowNull: true })
+this.castParam('roomType', 'string', { enum: RoomTypesEnumValues, allowNull: true })
+```
+
+When restricting to a subset of a database enum, use `Extract` to maintain compile-time type safety:
+
+```typescript
+import { RoomTypesEnum, RoomTypesEnumValues } from '@src/types/db.js'
+
+// Subset — Extract ensures a compile error if the source enum changes
+const BOOKABLE_ROOM_TYPES: Extract<RoomTypesEnum, 'Bedroom' | 'Den' | 'LivingRoom'>[] =
+  ['Bedroom', 'Den', 'LivingRoom']
+
+this.castParam('roomType', 'string', { enum: BOOKABLE_ROOM_TYPES })
 ```
 
 ### paramsFor
