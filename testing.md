@@ -121,6 +121,47 @@ export default async function createGuest(attrs = {}) {
 }
 ```
 
+### Factories for Models with Side-Effect Hooks
+
+When a model's AfterCreate hook creates side-effect records that aren't a single auto-associated child (e.g., Place auto-creates default rooms, default photos, default amenities — multiple records), the factory should pass `skipHooks: true` so test data stays minimal and predictable:
+
+```typescript
+// PlaceFactory — bypasses the AfterCreate hook that auto-seeds rooms.
+// Tests that want to verify the auto-seed flow should call Place.create() directly.
+export default async function createPlace(attrs: UpdateableProperties<Place> = {}) {
+  return await Place.create(
+    {
+      host: attrs.host ?? (await createHost()),
+      name: 'Test Place',
+      ...attrs,
+    },
+    { skipHooks: true },
+  )
+}
+```
+
+**Why:** if the factory fires the hook, every spec that creates a Place gets the auto-seeded rooms. Index queries, count assertions, and isolation tests break in confusing ways. The factory's job is to provide a minimal valid record; tests that need the full hook flow can call `Model.create()` directly without `skipHooks`.
+
+**Test the hook itself in the model spec.** Have explicit tests for both paths:
+
+```typescript
+it('auto-seeds default rooms', async () => {
+  const place = await Place.create({ host: await createHost(), name: 'Test' })
+  const rooms = await place.associationQuery('rooms').all()
+  expect(rooms.length).toBeGreaterThan(0)
+})
+
+it('does NOT auto-seed when skipHooks is true', async () => {
+  const place = await Place.create({ host: await createHost(), name: 'Test' }, { skipHooks: true })
+  const rooms = await place.associationQuery('rooms').all()
+  expect(rooms).toEqual([])
+})
+```
+
+**When to use which pattern:**
+- **Return the auto-created record** when the hook creates a single 1:1 child with a unique constraint (e.g., User → Guest). Calling the factory directly would violate the constraint.
+- **Bypass with `skipHooks`** when the hook creates multiple side-effect records that pollute test data and aren't usually needed by every spec.
+
 ## Model Specs
 
 ```typescript

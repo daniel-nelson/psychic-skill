@@ -167,7 +167,7 @@ public allPosts: Post[]  // includes soft-deleted posts
 | `and` | conditions object | WHERE conditions on the associated model's columns. Supports `DreamConst.passthrough` and `DreamConst.required` values |
 | `andAny` | conditions object[] | OR conditions — association matches records satisfying ANY of the condition sets |
 | `andNot` | conditions object | NOT conditions — excludes associated records matching these conditions |
-| `dependent` | `'destroy'` | Cascade-delete the associated record(s) when this record is destroyed |
+| `dependent` | `'destroy'` | Cascade-delete the associated record(s) when this record is destroyed. **This is the standard answer when destroying a parent fails because of an FK constraint from a child.** Add `dependent: 'destroy'` to the parent's HasMany/HasOne — do not write a `BeforeDestroy` hook to manually delete children, and do not change the FK to `ON DELETE CASCADE` at the database level (which would bypass Dream's lifecycle and soft-delete handling). |
 | `distinct` | column name \| boolean | Apply DISTINCT to the query (pass `true` for the primary key, or a specific column name) |
 | `on` | column name | Custom foreign key column name on the associated model |
 | `order` | column name \| order object | Default ordering for the association |
@@ -335,9 +335,18 @@ public validateNewEmail(this: User) { ... }
 ### After Hooks (run in same transaction, after DB write)
 
 ```typescript
+import { Dream, DreamTransaction } from '@rvoh/dream'
+
 @deco.AfterCreate()
-public createDefaults(this: User) {
-  await this.createAssociation('profile', {})
+public async createDefaults(this: Host, txn: DreamTransaction<Dream> | null) {
+  // Inline for simple cases
+  await this.createAssociation('profile', {}, { txn })
+}
+
+@deco.AfterCreate()
+public async seedRooms(this: Place, txn: DreamTransaction<Dream> | null) {
+  // Delegate to a service for non-trivial logic; pass txn so all writes are atomic
+  await SeedDefaultRooms.seed(this, txn)
 }
 
 @deco.AfterUpdate({ ifChanged: ['status'] })
@@ -349,6 +358,25 @@ public updateCache(this: Place) { ... }
 @deco.AfterDestroy()
 public cleanupReferences(this: Place) { ... }
 ```
+
+**Hook signature.** Non-commit hooks (`AfterCreate`, `AfterUpdate`, `AfterSave`, `AfterDestroy`, and their `Before*` counterparts) receive the current transaction as a single argument. Type it as `DreamTransaction<Dream> | null` (imported from `@rvoh/dream`). Pass it through to any service the hook delegates to so all DB writes participate in the same transaction:
+
+```typescript
+import { Dream, DreamTransaction } from '@rvoh/dream'
+
+export default class SeedDefaultRooms {
+  public static async call(place: Place, txn: DreamTransaction<Dream> | null = null) {
+    await Bedroom.txn(txn).create({ place })
+    await Bathroom.txn(txn).create({ place })
+  }
+}
+```
+
+**`txn` is `null` unless the caller explicitly started a transaction.** Dream does NOT automatically wrap `Model.create()` in a transaction. The `txn` parameter is only non-null when the caller wraps the create in `ApplicationModel.transaction(async txn => await Model.txn(txn).create(...))`. Hooks should still accept and propagate `txn` so that *if* the create happens inside a transaction, the side effects are atomic with it.
+
+`Model.txn(null).create(...)` is a no-op variant — the same service can be called from a hook (with `txn` possibly null) or from a controller (with `null`).
+
+**Commit hooks do not receive a txn argument** because the transaction has already committed by the time they run.
 
 ### After Commit Hooks (run AFTER transaction commits)
 
@@ -591,6 +619,11 @@ await user.save()
 // Assign and update — also valid (update persists any prior assignments too)
 user.name = 'New Name'
 await user.update({ email: 'gary@farside.com' })
+
+// Skip lifecycle hooks — useful for bulk imports and historical data backfills
+// where the new-record side effects shouldn't fire
+await User.create({ email: 'imported@example.com' }, { skipHooks: true })
+await user.update({ name: 'Updated' }, { skipHooks: true })
 ```
 
 `save()` and `update()` trigger the same lifecycle hooks and are largely interchangeable:
