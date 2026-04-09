@@ -147,6 +147,145 @@ public async notifyCreation(this: Place) {
 }
 ```
 
+### Imperative Form: Never Enqueue from Inside an Active Transaction
+
+The same race applies to **services** that take a `txn` parameter and call `background()` directly. BullMQ is not transactional with Postgres — anything you enqueue from inside an open transaction is visible to workers immediately, but the records you just created via `txn(txn).create(...)` are not yet visible to other connections. The worker dequeues, calls `Model.find(id)`, gets `null`, and silently returns success. The job is marked complete, no retry, no alerting, data stranded.
+
+```typescript
+// WRONG — bgjob races the transaction commit
+await ApplicationModel.transaction(async txn => {
+  const photo = await Photo.txn(txn).create({ ... })
+  await PhotoProcessingService.background('process', photo.id)
+  // ↑ Redis sees the job NOW; Postgres won't see `photo` until commit
+})
+
+// RIGHT — enqueue after commit
+let photoId: string
+await ApplicationModel.transaction(async txn => {
+  const photo = await Photo.txn(txn).create({ ... })
+  photoId = photo.id
+})
+await PhotoProcessingService.background('process', photoId)
+
+// ALSO RIGHT — let the model's @AfterCreateCommit hook do the enqueue
+// (don't ALSO do it manually inside the txn)
+```
+
+**Red flag:** if a service takes a `txn` parameter AND its method body contains `background(`, it is almost always a bug.
+
+## Never Rescue Exceptions Inside Backgrounded Services
+
+Inside any class extending `ApplicationBackgroundedService` or `ApplicationBackgroundedModel`, the bar for adding a `try/catch` is much higher than [SKILL.md rule #13](SKILL.md). The default is **no catch, ever**, and you need a named, justified reason to deviate.
+
+BullMQ relies on thrown exceptions to detect failure. A caught-and-not-rethrown error inside a backgrounded method causes the job to be marked successful, which means:
+
+- No failed-job marker in BullMQ
+- No automatic retry
+- No alerting hook fires
+- The work is silently lost and only discoverable by reading worker logs
+
+```typescript
+// WRONG — log-and-continue inside a backgrounded service
+private static async _importAll(records: Record[]) {
+  for (const record of records) {
+    try {
+      await this.importOne(record)
+    } catch (error) {
+      console.error('Failed:', error)  // ← BullMQ never sees this; job marks success
+    }
+  }
+}
+
+// RIGHT — let the first failure propagate, let BullMQ retry the whole job
+private static async _importAll(records: Record[]) {
+  for (const record of records) {
+    await this.importOne(record)
+  }
+}
+
+// ALSO RIGHT — fan out to per-record jobs, each retried independently by BullMQ
+public static async importAll(records: Record[]) {
+  for (const record of records) {
+    await this.background('_importOne', record.id)
+  }
+}
+```
+
+If your motivation for adding a catch is "I want to be resilient to one bad input out of many", the right answer is **separate background jobs per input**. A try/catch loop inside a single job that fakes per-iteration success gives up the retry property entirely.
+
+## Fanning Out Background Jobs for Very Large Record Sets
+
+When you need to background work across a very large number of records (hundreds of thousands to millions), don't enqueue all individual jobs up front. Creating a million jobs at once has several problems:
+
+- **Redis memory pressure** from holding a million job payloads at once
+- **Interruption risk** — the enqueuing loop itself can be killed by a deployment, `SIGTERM`, or a Node process crash, and if it restarts from the beginning it will create duplicate jobs
+- **Queue observability collapses** — dashboards become unusable
+
+The idiomatic pattern is a **two-level fan-out** using `pluckEach` and priority levels:
+
+1. A kickoff job uses `pluckEach` to pluck IDs in batches (default batch size is 1000).
+2. For each batch, it enqueues an **expander job** (priority `not_urgent`) with just that batch of IDs.
+3. Each expander job iterates its batch and enqueues an **individual worker job** (priority `default`) per ID.
+4. Each individual worker job loads the record and does the real work.
+
+Because expanders run at `not_urgent` priority, they only claim worker slots when no `default`-priority individual jobs are pending. With 10 workers, that means at most ~10 batches are expanded at a time (producing ~10,000 individual jobs in flight), and the individual jobs are drained before more batches are expanded. The queue depth stays bounded regardless of the total record count.
+
+```typescript
+export default class ReprocessAllPhotosService extends ApplicationBackgroundedService {
+  public static override get backgroundJobConfig() {
+    return { priority: 'not_urgent' as const }
+  }
+
+  // Step 1: kickoff — iterates the table in batches and enqueues one expander per batch
+  public static async reprocessAll() {
+    await this.background('_reprocessAll')
+  }
+
+  public static async _reprocessAll() {
+    let batch: string[] = []
+    await Photo.pluckEach('id', async (id: string) => {
+      batch.push(id)
+      if (batch.length >= 1000) {
+        await this.background('_expandBatch', batch)
+        batch = []
+      }
+    })
+    if (batch.length > 0) await this.background('_expandBatch', batch)
+  }
+
+  // Step 2: expander — fans the batch into individual high-priority jobs
+  public static async _expandBatch(ids: string[]) {
+    for (const id of ids) {
+      await PhotoProcessingService.processOne(id)
+    }
+  }
+}
+
+export default class PhotoProcessingService extends ApplicationBackgroundedService {
+  public static override get backgroundJobConfig() {
+    return { priority: 'default' as const }
+  }
+
+  // Step 3: individual worker — loads the record and does the actual work
+  public static async processOne(id: string) {
+    await this.background('_processOne', id)
+  }
+
+  public static async _processOne(id: string) {
+    const photo = await Photo.find(id)
+    if (!photo) return
+    // ...do the real work
+  }
+}
+```
+
+Key points:
+
+- **`pluckEach` selects only the `id` column** — no hydration, minimal memory.
+- **Priorities create natural backpressure.** Expanders (`not_urgent`) yield to individual jobs (`default`), so the in-flight count of individual jobs never exceeds roughly `worker_count * concurrency * batch_size`.
+- **If the kickoff is interrupted,** only the expanders already enqueued will run, and if the kickoff job itself is retried it will re-pluck from the beginning — but because each individual job is independent and idempotent (via the `find`/early-return pattern), re-runs are safe.
+- **Individual jobs still follow the standard rule of passing IDs, not model instances.** Hydrate inside `_processOne`.
+
 ## Priority Levels
 
 The priority of each backgrounded service/model is customizable via `backgroundJobConfig`:

@@ -802,7 +802,56 @@ Both `Model.txn(null)` (class-level) and `instance.txn(null)` (instance-level) w
 
 **Restrictions inside transactions:** Methods that rely on foreign key violations to function (`createOrFindBy`, `createOrUpdateBy`) cannot be used inside a transaction. Use their transaction-safe counterparts (`findOrCreateBy`, `updateOrCreateBy`) instead. See the [find-or-create methods](#find-or-create-and-upsert-methods) table for details.
 
-**Background jobs and transactions:** When queuing background work from a Dream lifecycle hook, always use the `Commit` variant of the hook (e.g., `@deco.AfterCreateCommit` instead of `@deco.AfterCreate`). Regular hooks run inside the transaction, so the worker may execute before the transaction commits. See [workers.md](workers.md) for details.
+**Background jobs and transactions:** When queuing background work from a Dream lifecycle hook, always use the `Commit` variant of the hook (e.g., `@deco.AfterCreateCommit` instead of `@deco.AfterCreate`). Regular hooks run inside the transaction, so the worker may execute before the transaction commits. This also applies to imperative `background()` calls from services with a `txn` parameter — see [workers.md](workers.md) for both forms.
+
+**What goes inside `ApplicationModel.transaction(...)` is database writes only.** HTTP fetches, S3 / object-storage uploads, sending email, calling third-party APIs, file I/O, sleeps, and any other non-DB work belong outside the transaction.
+
+Holding an open transaction across long-running I/O has three failure modes:
+
+1. **Connection pool starvation.** A long-running txn pins a Postgres connection. Other requests block waiting for a free connection.
+2. **Vacuum interference.** Open transactions hold the horizon for vacuum, preventing dead-tuple cleanup on hot tables until the txn closes.
+3. **BullMQ race exposure.** If work inside the txn enqueues background jobs, workers dequeue immediately and race the commit.
+
+**Do the external I/O *before* the transaction**, then record the result in a tight transaction at the end. If you invert this — commit first, then do the I/O — and the I/O fails, the database will claim work happened that actually didn't, and you have to write reconciliation code to find and recover those records.
+
+```typescript
+// WRONG — long-running I/O inside the txn
+await ApplicationModel.transaction(async txn => {
+  for (const record of records) {
+    const place = await Place.txn(txn).create({ ... })
+    await fetch(record.photoUrl)                          // ← network I/O
+    await s3.send(new PutObjectCommand({ ... }))          // ← network I/O
+  }
+})
+
+// ALSO WRONG — DB says the work happened, but if the I/O fails, external state is missing
+const created: Place[] = []
+await ApplicationModel.transaction(async txn => {
+  for (const record of records) {
+    created.push(await Place.txn(txn).create({ ... }))
+  }
+})
+for (const place of created) {
+  await s3.send(new PutObjectCommand({ ... }))  // ← if this fails, the DB row is orphaned
+}
+
+// RIGHT — do the I/O first, then record the result in a single fast transaction
+const prepared: Array<{ record: Record; bucketPath: string }> = []
+for (const record of records) {
+  const buffer = await (await fetch(record.photoUrl)).arrayBuffer()
+  const bucketPath = PlacePhotoMediaService.objectKey(host.id, record)
+  await s3.send(new PutObjectCommand({ Bucket, Key: bucketPath, Body: Buffer.from(buffer) }))
+  prepared.push({ record, bucketPath })
+}
+
+await ApplicationModel.transaction(async txn => {
+  for (const { record, bucketPath } of prepared) {
+    await Place.txn(txn).create({ ...record, bucketPath })
+  }
+})
+```
+
+If the I/O phase fails partway, nothing is in the database and the caller can safely retry. The transaction at the end is short, predictable, and never held open across network round-trips. If a later failure requires cleanup, orphaned S3 objects are cheaper to reconcile than orphaned DB rows pointing at nothing.
 
 ## Date/Time
 
