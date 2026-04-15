@@ -11,9 +11,9 @@ Common use cases:
 
 ## Setup
 
-### 1. Add a `deletedAt` column
+Generators (`g:resource`, `g:model`, `g:sti-child`) automatically include `@SoftDelete()` and a `deleted_at` column. The setup below is only needed when adding soft delete to an existing model that was generated with `--no-soft-delete`.
 
-If the model was not generated with `deleted_at:datetime:optional`, create a migration:
+### 1. Add a `deletedAt` column
 
 ```bash
 pnpm psy g:migration add-deleted-at-to-places deleted_at:datetime:optional

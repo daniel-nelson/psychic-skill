@@ -140,7 +140,7 @@ pnpm lint                        # Check linting
 - **Most models should use `g:resource`.** It is rare for a model to not be exposed via *some* API — whether end-user facing, internal, or admin. `g:resource` generates the controller, controller specs, and route scaffolding that `g:model` does not. It is easier to delete unused controller actions than to retrofit them later. Only use `g:model` for models that are purely internal (e.g., join tables, audit logs).
 - **`g:resource` first argument is a plural kebab-case route path** (e.g., `v1/host/places` or `internal/action-plans`), not a class name or namespace. The second argument is the model file path relative to `src/app/models/` without `.ts` (e.g., `Place`, `Place/Room`). The class name defaults from the path but can be overridden with `--model-name`.
 - **CRITICAL: Run `pnpm psy <command> --help` and read its output BEFORE running any generator or CLI command.** Do not infer syntax from examples in this skill or from prior experience — argument formats vary between commands and between Dream/Psychic versions. This is a hard prerequisite, not a suggestion.
-- `g:resource`, `g:model`, and `g:sti-child` automatically include `id`, `created_at`, and `updated_at` columns in the generated migration — do not specify these in the generator command.
+- `g:resource` and `g:model` automatically include `id`, `created_at`, `updated_at`, and `deleted_at` columns and decorate the model with `@SoftDelete()`. Do not specify these in the generator command. Use `--no-soft-delete` to opt out since hard deletion should be an intentional decision.
 - **If a model has a `type` column, consider whether it should use STI.** If different types will have different behavior, validations, serializers, or child-specific columns, use STI (`--sti-base-serializer` on the parent resource + `g:sti-child` for each child). The STI generators handle significant subtle scaffolding (check constraints, per-type serializers, type-discriminated OpenAPI schemas) that is much easier to get right at generation time than to refactor later. See [sti.md](sti.md).
 
 ### Generator Workflow
@@ -573,7 +573,7 @@ For detailed soft delete patterns, see [soft-delete.md](soft-delete.md).
 
 ### Quick Reference
 
-The `@SoftDelete()` decorator makes `destroy()` set `deletedAt` instead of removing the row. A default scope (`dream:SoftDelete`) automatically hides soft-deleted records from all queries.
+Generators automatically apply `@SoftDelete()` and include a `deleted_at` column. This makes `destroy()` set `deletedAt` instead of removing the row. A default scope (`dream:SoftDelete`) automatically hides soft-deleted records from all queries. Use `--no-soft-delete` when generating if hard deletion is intentionally desired.
 
 ```typescript
 import { SoftDelete } from '@rvoh/dream'

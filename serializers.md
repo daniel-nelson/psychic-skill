@@ -20,7 +20,10 @@ import { DreamSerializer, ObjectSerializer } from '@rvoh/dream'
 import Place from '@models/Place.js'
 import { DreamSerializer } from '@rvoh/dream'
 
-// Summary (minimal) serializer
+// Summary serializer — used for index/list views. Generators create it with
+// minimal attributes (often just id); add attributes here as the index view
+// needs them. Since the default serializer extends the summary, anything
+// added to the summary automatically appears in the default (show) view too.
 export const PlaceSummarySerializer = (place: Place) =>
   DreamSerializer(Place, place)
     .attribute('id')
@@ -33,6 +36,8 @@ export const PlaceSerializer = (place: Place) =>
     .attribute('sleeps')
     .attribute('deletedAt')
 ```
+
+When a property should appear on both index and show views, **move** it from the default serializer to the summary serializer. Because the default extends the summary, the property still appears on show automatically. Generators create the default with all attributes and the summary with only `id` — moving attributes from default to summary is the normal way to build up the index view.
 
 ## Registering on Models
 
