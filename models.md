@@ -557,7 +557,7 @@ await Model.whereNot({ field: null }).all()    // IS NOT NULL
 @SoftDelete()
 export default class Place extends ApplicationModel { ... }
 
-// Sortable - maintains position within scope
+// Sortable - maintains 1-based position within scope
 @deco.Sortable({ scope: 'place' })
 public position: DreamColumn<Room, 'position'>
 // Requires deferrable unique constraint in migration

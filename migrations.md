@@ -270,6 +270,8 @@ export async function up(db: Kysely<any>): Promise<void> {
 
 Delete behaviors: `'restrict'`, `'cascade'`, `'no action'`, `'set null'`
 
+**Self-referential FKs:** The generator names the column after the model (e.g., `Room:belongs_to:optional` on Room creates `room_id`). For a clearer name like `parent_room_id`, rename the column in the generated migration before running it, then update the model's `@deco.BelongsTo` to use `on: 'parentRoomId'`.
+
 **Always create indexes for foreign keys:**
 ```typescript
 await db.schema.createIndex('posts_user_id').on('posts').column('user_id').execute()

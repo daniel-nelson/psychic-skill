@@ -415,7 +415,9 @@ export const RoomBathroomForGuestsSerializer = (bathroom: Bathroom, passthrough:
 
 ## preloadFor Integration
 
-The `preloadFor(serializerKey)` method analyzes the serializer and automatically preloads all needed associations:
+**Prefer `preloadFor` or `loadFor`** over manual `preload(...)` chains. These methods automatically load everything the serializer needs, including nested `rendersOne`, `rendersMany`, and `delegatedAttribute` associations. Manual preload is fragile — it misses nested dependencies, causing `NonLoadedAssociation` errors at serialization time. Don't switch to manual preload to avoid an extra DB query without data showing it's a real problem. `preloadFor` automatically adapts as serializers evolve — if you add a `rendersMany` to a serializer, every controller using `preloadFor` picks it up automatically. Manual preload chains don't, leading to production `NonLoadedAssociation` errors and harder-to-understand code. Let data lead optimization decisions, not intuition about query counts. Manual `preload(...)` and `load(...)` are still useful outside of serialization contexts (e.g., loading associations for business logic in a service).
+
+**STI-aware preloading:** `preloadFor` on an STI base class discovers associations from every STI child's serializer, not just the base. If different children declare different `rendersOne`, `rendersMany`, or `delegatedAttribute` associations, `preloadFor` loads them all. At query time, Dream partitions the loaded records by actual STI child class and preloads each group using that child's own association definitions (including any `and` clauses or overrides). This means a single `preloadFor` call on the base class correctly handles mixed result sets of different STI children.
 
 ```typescript
 // In controller
@@ -431,7 +433,77 @@ const places = await host
 // Load on existing instance
 const place = await Place.findOrFail(id)
 await place.loadFor('default').execute()
+
+// After a transaction — loadFor outside the transaction
+let place = await ApplicationModel.transaction(async txn => {
+  const place = await Place.txn(txn).create({ ... })
+  await HostPlace.txn(txn).create({ host: this.currentHost, place })
+  return place
+})
+if (place.isPersisted) place = await place.loadFor('default').execute()
+this.created(place)
 ```
+
+### Overriding Individual Associations in preloadFor
+
+**This pattern adds complexity and should only be used when data shows it is warranted.** In the example below, collapsing Place and Room `currentLocalizedText` into one query saves only a single DB call — likely not worth the added code. But when 10 different models in the preload tree each have their own `currentLocalizedText`, replacing 10 queries with 1 may justify the complexity. Let data guide the decision.
+
+`preloadFor` accepts a second argument — a modifier callback that runs for each association in the preload tree. The callback can return `undefined` (use default behavior), `{ and?, andAny?, andNot? }` (add conditions), or `'omit'` (skip this association entirely so you can load it yourself).
+
+Use `'omit'` when the default preload would issue repeated queries that could be collapsed into one — commonly for polymorphic associations like `currentLocalizedText` where the lookup depends on request-scoped context (e.g., locale):
+
+```typescript
+import { LoadForModifierFn } from '@rvoh/dream/types'
+
+// 1. preloadFor, but skip currentLocalizedText so we can batch-load it across
+//    multiple polymorphic types (Place + Room) in a single query
+const skipCurrentLocalizedText: LoadForModifierFn = (associationName) =>
+  associationName === 'currentLocalizedText' ? 'omit' : undefined
+
+const places = await Place.query()
+  .preloadFor('forGuests', skipCurrentLocalizedText)
+  .all()
+
+// 2. Batch-load in ONE query across all places AND their rooms
+const rooms = places.flatMap(place => place.rooms)
+await assignCurrentLocalizedText(places, rooms, this.locale)
+```
+
+```typescript
+// Helper — loads LocalizedTexts for multiple polymorphic types in one query
+async function assignCurrentLocalizedText(places: Place[], rooms: Room[], locale: string) {
+  if (places.length === 0 && rooms.length === 0) return
+
+  // Single query across both polymorphic types
+  const texts = await LocalizedText.where({ locale })
+    .whereAny([
+      { localizableType: 'Place', localizableId: places.map(p => p.id) },
+      { localizableType: 'Room', localizableId: rooms.map(r => r.id) },
+    ]).all()
+
+  // Index by (type, id) for O(1) lookup
+  const byKey = new Map(texts.map(t => [`${t.localizableType}:${t.localizableId}`, t]))
+
+  // Direct assignment marks the association as loaded — serializers see it as preloaded
+  for (const place of places) {
+    place.currentLocalizedText = byKey.get(`Place:${place.id}`) ?? null
+  }
+  for (const room of rooms) {
+    room.currentLocalizedText = byKey.get(`Room:${room.id}`) ?? null
+  }
+}
+```
+
+The purpose of this pattern is to collapse queries across **multiple polymorphic types** into one. If only a single type is involved, `preloadFor` already handles it — the `omit` override is for cases where the same polymorphic association (like `currentLocalizedText`) appears on multiple models in the preload tree (Place, Room, Host) and you want one query instead of one per type.
+
+Key points:
+- Assign `null` (not `undefined`) for missing associations — `undefined` causes `NonLoadedAssociation` errors.
+- The modifier callback receives `(associationName, dreamClass)`. Use `dreamClass.typeof(Place)` to scope the omit when needed. `typeof` is Dream's class-level equivalent of `instanceof` — use it when comparing a **class** against another class (since `instanceof` only works on instances):
+  ```typescript
+  const skip: LoadForModifierFn = (assoc, dreamClass) =>
+    dreamClass.typeof(Place) && assoc === 'currentLocalizedText' ? 'omit' : undefined
+  ```
+- If the omitted association itself has nested associations via `rendersOne`/`rendersMany` in its serializer, those are also pruned — load them in your batch helper too.
 
 ## File Organization
 

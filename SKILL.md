@@ -24,6 +24,8 @@ All CLI commands in this document are run via the local project's package manage
 
 ## Critical Rules
 
+**If something is failing unexpectedly, re-read this skill before debugging.** Most common errors (type mismatches, missing associations, validation failures, generator syntax issues, migration problems) are already documented here with solutions. Spending 30 seconds searching this skill is cheaper than spending 30 minutes debugging from first principles.
+
 1. **ALWAYS read the project's `AGENTS.md` or `CLAUDE.md` first** before doing any work - these contain project-specific conventions that override general patterns.
 2. **ALWAYS run `pnpm psy <command> --help`** before using any generator - never guess syntax.
 3. **NEVER use JavaScript `Date`** - always use `DateTime` or `CalendarDate` from `@rvoh/dream`.

@@ -359,6 +359,12 @@ export async function up(db: Kysely<any>): Promise<void> {
 }
 ```
 
+### Shared Columns Across STI Children
+
+When multiple STI children share a column name (e.g., both `Bedroom` and `LivingRoom` have a `capacity` column), include the column in each `g:sti-child` command so that each child's model and serializer are generated correctly. However, after running the generators, **remove the duplicate `addColumn` from all but the first migration** — the second migration will fail with "column already exists" since they all ALTER the same parent table. Also remove the corresponding `dropColumn` from those migrations' `down` methods.
+
+Columns shared by **all** STI children should be on the STI base model instead, added as part of the initial `g:resource` or `g:model` command.
+
 ## Controller Pattern
 
 A single controller handles ALL STI types. The `create` action must switch on type:
