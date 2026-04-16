@@ -363,6 +363,21 @@ export async function up(db: Kysely<any>): Promise<void> {
 
 When multiple STI children share a column name (e.g., both `Bedroom` and `LivingRoom` have a `capacity` column), include the column in each `g:sti-child` command so that each child's model and serializer are generated correctly. However, after running the generators, **remove the duplicate `addColumn` from all but the first migration** — the second migration will fail with "column already exists" since they all ALTER the same parent table. Also remove the corresponding `dropColumn` from those migrations' `down` methods.
 
+**Check constraints for non-optional shared columns.** When the shared column is not `:optional`, and not a simple boolean, the generator adds a check constraint like `type != 'Bedroom' OR capacity IS NOT NULL` to the first migration. The constraint must cover every STI child type that requires the column:
+
+- **If the first child's migration has not yet been deployed** (still on a feature branch), edit that migration to include all the additional types in the check constraint: `sql\`type NOT IN ('Bedroom', 'LivingRoom') OR capacity IS NOT NULL\``.
+- **If the first child's migration has already been deployed**, generate a new migration that drops the existing constraint and adds a replacement covering the new type(s):
+  ```typescript
+  await db.schema.alterTable('rooms').dropConstraint('rooms_not_null_capacity').execute()
+  await db.schema
+    .alterTable('rooms')
+    .addCheckConstraint(
+      'rooms_not_null_capacity',
+      sql`type NOT IN ('Bedroom', 'LivingRoom') OR capacity IS NOT NULL`,
+    )
+    .execute()
+  ```
+
 Columns shared by **all** STI children should be on the STI base model instead, added as part of the initial `g:resource` or `g:model` command.
 
 ## Controller Pattern

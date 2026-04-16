@@ -449,7 +449,14 @@ this.paramsFor(Place, { including: ['specialField'] })
 
 // Extract from nested key in body
 this.paramsFor(Place, { key: 'place' })
+
+// Extract an array of nested objects from a key in the body
+// (e.g., body: { rooms: [{ type: 'Bedroom', ... }, { type: 'Kitchen', ... }] })
+// Each element is validated against Room's paramSafeColumns
+const roomsParams = this.paramsFor(Room, { key: 'rooms', array: true })
 ```
+
+Prefer `paramsFor(Model, { key, array: true })` over `castParam('key', 'json[]')` for nested object arrays that correspond to a Dream model — it validates each item against the model's `paramSafeColumns` instead of accepting arbitrary JSON.
 
 `paramsFor` provides default protection by automatically excluding certain columns that should never be set from user input. **This cannot be overridden** by `paramSafeColumns` or `paramUnsafeColumns`:
 
@@ -555,8 +562,13 @@ this.ok(places)
   pathParams: {                         // URL path parameters
     id: { description: 'The place ID' },
   },
-  requestBody: {                        // Request body config
-    including: ['name', 'style'],       // Fields to include in body schema
+  requestBody: {                        // Request body config — prefer structured options over hand-writing a full schema
+    only: ['name', 'style'],            // Narrow to these specific paramSafeColumns
+    including: ['hostId', 'type'],      // Add columns that ARE on the model but excluded from paramSafeColumns (FKs, STI type discriminator)
+    combining: {                        // Add fields unrelated to the model's columns
+      acknowledgedTerms: { type: 'boolean' },
+    },
+    required: ['name', 'type'],         // Specify required fields
   },
 
   // Headers and security
@@ -647,6 +659,35 @@ public async show() {
   this.ok(PlaceWithNearbySerializer(place, nearby))
 }
 ```
+
+## Debugging Unexpected 400s (and OpenAPI-triggered 500s in Specs)
+
+When an endpoint returns an unexpected 400 (or a spec fails with a 500 thrown by OpenAPI response validation) and you can't tell whether OpenAPI validation or controller logic is the cause, temporarily disable validation to isolate it:
+
+```typescript
+@OpenAPI(Place, {
+  status: 200,
+  validate: { all: false },   // TEMPORARY — remove once debugged
+})
+```
+
+The `validate` option accepts `requestBody`, `responseBody`, `headers`, `query`, and `all` booleans. Setting `all: false` disables every validation segment, which is useful because:
+- For **400s on requests**, it reveals whether the failure was in OpenAPI request validation (problem stops) or in controller logic (problem persists).
+- For **500s in specs caused by response validation**, it lets the full response body reach the test so you can inspect what actually came back — much more useful than the opaque validation error message.
+
+### Workflow
+
+1. **Add `validate: { all: false }`** to the `@OpenAPI` decorator for the failing endpoint.
+2. **Run the request again.**
+   - **If the failure stops:** the problem was in the payload. Log the payload to see what the controller actually received:
+     ```typescript
+     console.dir(this.params, { depth: null })
+     ```
+     Check whether the shape matches what the endpoint expects. If a feature spec was the trigger and the payload looks correct, consider writing a controller spec — faster and more isolated than feature specs — and iterate from there.
+   - **If the failure persists:** the problem is in controller logic (likely a `castParam`/`paramsFor` failure, a DB constraint violation, or unhandled application error). Add logs around those calls to isolate.
+3. **Remove the `validate` line** from the decorator once the problem is identified. Leaving it disabled defeats the protection OpenAPI validation provides.
+
+`NODE_DEBUG=psychic` also surfaces validation info, but `validate: { all: false }` is usually more useful because it lets the real response body through for direct inspection.
 
 ## Automatic Error Handling
 
