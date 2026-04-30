@@ -88,9 +88,21 @@ pnpm psy sync
 **What `g:sti-child` generates:**
 - Dream STI child model decorated with `@STI(ParentClass)`
 - Child serializers that extend parent serializers
-- Migration that **ALTERs the parent table** (not a new table) to add child-specific columns
+- Migration that **ALTERs the parent table** (not a new table) to add child-specific columns. **No migration is emitted when the child declares no additional columns** — STI children share the parent's table, so a no-columns child requires no schema change.
 - Check constraints ensuring child columns are NOT NULL only for that child type
 - Factory and spec skeleton
+
+STI children never receive `@SoftDelete()` — soft delete is enforced at the STI parent level — and `g:sti-child` does not accept `--no-soft-delete`.
+
+**Batch invocation for many children.** When you need to create many STI children at once (e.g., a fixed taxonomy of 9 action-item types), run the generator once per child and chain the invocations with `&&` so a failure on any one stops the batch:
+
+```bash
+pnpm psy g:sti-child Parent/ChildA extends Parent && \
+pnpm psy g:sti-child Parent/ChildB extends Parent && \
+pnpm psy g:sti-child Parent/ChildC extends Parent
+```
+
+Children with no additional columns produce only a model file (no migration), so the batch is fast. **Always use the generator** — never hand-craft STI child model/serializer/factory/spec files, even when "they all look the same." The generator handles enum updates, check-constraint additions, factory wiring, and serializer scaffolding consistently; hand-crafted versions drift.
 
 ### Key Differences
 

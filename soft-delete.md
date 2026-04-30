@@ -11,7 +11,7 @@ Common use cases:
 
 ## Setup
 
-Generators (`g:resource`, `g:model`, `g:sti-child`) automatically include `@SoftDelete()` and a `deleted_at` column. The setup below is only needed when adding soft delete to an existing model that was generated with `--no-soft-delete`.
+The `g:resource` and `g:model` generators automatically include `@SoftDelete()` and a `deleted_at` column. **STI children never receive `@SoftDelete()`** — soft delete is enforced at the STI parent level, and `g:sti-child` does not accept `--no-soft-delete`. The setup below is only needed when adding soft delete to an existing model that was generated with `--no-soft-delete`, or to an STI parent that was originally created without it.
 
 ### 1. Add a `deletedAt` column
 
