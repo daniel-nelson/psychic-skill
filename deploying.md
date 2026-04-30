@@ -44,6 +44,8 @@ The `@rvoh/psychic-websockets` package has a **built-in** health check, but be a
 
 `AppEnv` also decouples the application from the container's environment. Because all env access goes through a single entry point, the application can load secrets from external sources at boot time — e.g., AWS Secrets Manager or AWS Systems Manager Parameter Store — and inject them into `AppEnv` before anything else runs. This is a significant advantage for secret management: the container itself doesn't need every secret baked into its environment, and secrets can be rotated without redeploying.
 
+For variables that are only present in some environments, use `AppEnv.string(name, { optional: true })` — it returns `string | undefined` rather than throwing at boot. This is the supported escape hatch for sometimes-present vars; never reach for `process.env` to avoid the boot-time throw.
+
 ## TLS Behind a Reverse Proxy
 
 If your reverse proxy (load balancer, ingress controller, etc.) terminates TLS but re-encrypts traffic to the container, the Psychic app must speak TLS on its container port. In this case, baking a self-signed certificate into the image is more reliable than generating one dynamically at runtime.
