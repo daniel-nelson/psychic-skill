@@ -466,6 +466,33 @@ export default class V1HostPlacesRoomsController extends V1HostPlacesBaseControl
 - The `default` branch with `const _never: never = roomType` ensures compile-time exhaustiveness
 - `show`, `update`, `destroy` work on the parent `Room` type - Dream returns the correct child instance
 
+### Bulk creation from a request-body array
+
+For endpoints that create many STI children in one request — `{ items: [{ type: 'Bedroom', position: 1, ... }, { type: 'Kitchen', position: 2, ... }] }` — use `paramsFor(STIParent, { key, array: true })` to validate each entry against the parent's `paramSafeColumns`. The framework still strips `type` (the STI discriminator) and FKs (e.g., `placeId`) per the standard exclusions, so pull `type` per-item from the raw request body and let an exhaustive switch enforce validity.
+
+```typescript
+// Body: { items: [{ type: 'Bedroom', position: 1, ... }, { type: 'Kitchen', position: 2, ... }] }
+const itemsParams = this.paramsFor(Room, { key: 'items', array: true })
+const rawItems = (this.params as { items?: { type?: string }[] }).items ?? []
+
+for (const [i, params] of itemsParams.entries()) {
+  const roomType = rawItems[i]?.type as RoomTypesEnum
+  switch (roomType) {
+    case 'Bathroom':   await Bathroom.create({ place: this.currentPlace, ...params }); break
+    case 'Bedroom':    await Bedroom.create({ place: this.currentPlace, ...params }); break
+    case 'Kitchen':    await Kitchen.create({ place: this.currentPlace, ...params }); break
+    case 'Den':        await Den.create({ place: this.currentPlace, ...params }); break
+    case 'LivingRoom': await LivingRoom.create({ place: this.currentPlace, ...params }); break
+    default: {
+      const _never: never = roomType
+      throw new Error(`Unhandled RoomTypesEnum: ${_never as string}`)
+    }
+  }
+}
+```
+
+`paramsFor(STIParent, { key, array: true })` strips `type` per item — extract it from the raw params and let the exhaustive switch (with a `_never` default) enforce validity. No separate enum-membership check is needed; the switch already exhausts valid values and the `_never` default catches anything else at compile time AND runtime. Wrap the loop in `ApplicationModel.transaction(async txn => { ... })` only when the action genuinely needs atomicity — extra transaction overhead isn't free.
+
 ## Testing Patterns
 
 ### STI Factories
