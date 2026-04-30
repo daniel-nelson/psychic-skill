@@ -49,7 +49,12 @@ Foreign key lives on THIS model. You must also declare the FK column.
 public user: User
 public userId: DreamColumn<Post, 'userId'>
 
-// Optional (nullable FK)
+// Optional (nullable FK).
+// The `optional` flag on a BelongsTo is the canonical declaration of nullability
+// for that association. It is auto-inferred by serializer `rendersOne` and
+// `delegatedAttribute`, and by `paramsFor` / OpenAPI request-body shape. Don't
+// restate `optional: true` in serializers — that's a DRY violation, and changing
+// it in the serializer is almost always a mistake.
 @deco.BelongsTo('User', { optional: true })
 public approver: User | null
 public approverId: DreamColumn<Post, 'approverId'>

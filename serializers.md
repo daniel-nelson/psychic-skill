@@ -157,9 +157,27 @@ Single associated object:
 // Flatten into parent (merges properties)
 .rendersOne('profile', { flatten: true })
 
-// Allow null
+// Allow null — only needed when the association is NOT a BelongsTo (e.g., HasOne
+// that may be absent). For BelongsTo, the model's `optional: true` declaration is
+// auto-inferred; restating it in the serializer is a DRY violation, and changing
+// it is almost always a mistake (the model governs runtime nullability).
 .rendersOne('approver', { optional: true })
 ```
+
+**Don't pass `optional: true` to `rendersOne` for a `BelongsTo` association.** The `BelongsTo` declaration on the model — `optional: true` or the default `false` — is the canonical source of truth for whether the association can be null. The renderer auto-infers nullability from that metadata: a `rendersOne('approver')` whose `BelongsTo('User', { optional: true })` declaration says nullable produces exactly the same OpenAPI shape (`anyOf: [{ $ref: ... }, { type: 'null' }]`) as if you had passed `optional: true` explicitly.
+
+```typescript
+// Model
+@deco.BelongsTo('User', { optional: true })
+public approver: User | null
+
+// Serializer — no `optional` needed; auto-inferred from the BelongsTo declaration.
+.rendersOne('approver')
+```
+
+Restating `optional: true` in the serializer duplicates the declaration; **changing** it — passing `optional: true` when the BelongsTo is non-optional, or vice versa — is almost always a mistake, because the model's declaration governs whether the value can actually be `null` at runtime. Explicit `optional: true` on `rendersOne` is only meaningful when the association is **not** a BelongsTo (e.g., a `HasOne` that may be absent), where there is no model-side nullability for the renderer to infer.
+
+Note: `optional` on `rendersOne` is purely an OpenAPI nullability marker — the key is always rendered. `rendersOne` does not support `required: false`. If you need the key absent from the response, reshape the serializer (a custom attribute, or a different serializer variant) rather than reaching for an option that does not exist.
 
 ### .rendersMany(name, options?)
 
