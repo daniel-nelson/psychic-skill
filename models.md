@@ -540,8 +540,8 @@ ops.in([1, 2, 3])
 ops.not.in([1, 2, 3])
 
 // String matching
-ops.like('%pattern%')
-ops.ilike('%PATTERN%')     // Case-insensitive
+ops.like('%pattern%')      // PostgreSQL LIKE — operator itself is case-sensitive
+ops.ilike('%PATTERN%')     // PostgreSQL ILIKE — operator forces case-insensitive
 ops.match('^[A-Z]')        // Regex
 ops.match('^[A-Z]', { caseInsensitive: true })
 
@@ -557,6 +557,10 @@ ops.any(5)  // Array contains value
 await Model.where({ field: null }).all()      // IS NULL
 await Model.whereNot({ field: null }).all()    // IS NOT NULL
 ```
+
+**`ops.like` vs `ops.ilike` — column-type-dependent behavior.** Against a regular `text` / `varchar` column, `ops.like` is case-sensitive and `ops.ilike` is case-insensitive — the operators differ. Against a `citext` column (case-insensitive text — see [migrations.md "citext"](migrations.md)), both operators match case-insensitively because the type itself ignores case; equality (`where({ name: 'sally' })`) on citext is case-insensitive for the same reason.
+
+Because the case-sensitivity of `ops.like` is invisible at the call site (it depends on the column's type, not the operator), prefer `ops.ilike` when case-insensitivity is the intended semantic — the operator name documents the intent. Reach for `ops.like` only when case-sensitivity is intentional, in which case the column should be `text` / `varchar`, not `citext`.
 
 ## Special Decorators
 
