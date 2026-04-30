@@ -4,6 +4,26 @@
 
 Tests use **Vitest** with real database records (not mocks). We practice **BDD, not TDD** - focus expectations on outcomes, not implementation. For code added independently of a generator, always write a failing spec first, then implement. Generated code is the only exception (generators create scaffolding for specs and implementation simultaneously).
 
+### Every bug is a missing spec
+
+This is the operational corollary to [SKILL.md Rule #8](SKILL.md) (BDD approach) for bugs discovered after the fact. When you discover a bug — in QA, in production logs, during an audit, by hand-testing a flow — the bug itself is evidence that an automated test was missing. **Write the regression spec before committing the fix.**
+
+This applies even when:
+
+- The bug is "obvious in hindsight" once you see the offending code.
+- The fix is a one-line change that "couldn't possibly regress."
+- A nearby spec already exercises the same component (it clearly didn't catch this case, or this wouldn't be a bug).
+- You're in the middle of an audit and finding several bugs at once — each one is its own missing spec; don't let them blur together.
+
+The discipline is: spec **before** committing the fix, not "later." Once the fix is committed, the urgency to write the spec evaporates and the gap stays open. Writing the spec also forces you to articulate the contract ("given X, the user sees Y"), which routinely surfaces a second bug while writing the spec.
+
+**Practical patterns:**
+
+- **Front-end bugs that round-trip data through the API:** the regression spec should assert both the UI state *and* the DB state — mirror the feature-spec pattern in the project's `CLAUDE.md`.
+- **DRY the helper, then test the helper.** When a fix consolidates duplicated logic into a shared module (e.g., a `datetime.ts` helper for timezone round-trips), prefer a fast unit spec for the helper over re-testing every call site through feature specs. The helper-level coverage is tighter and faster.
+- **When a render-timing flake blocks the integration spec**, write the unit spec for the helper anyway — it locks in the fix at the layer that produced the bug. Document the flake as a follow-up; don't let the flake block the regression-spec discipline.
+- **Don't paper over a flaky existing spec by skipping it.** If an `it.skip` is the only thing standing between you and committing, the spec is now an unfinished item — record it explicitly as a follow-up rather than letting `it.skip` rot in the file.
+
 ## Test Types
 
 - **Unit specs**: Model logic, controller responses (`spec/unit/`)
