@@ -374,6 +374,30 @@ describe('V1/Host/PlacesController', () => {
 })
 ```
 
+### Query parameters in spec requests
+
+**Query parameters nest under `query: {...}`; path parameters are direct keys.** The third argument to `request.get/post/patch/delete` carries everything the request needs beyond URL and expected status: path params as top-level keys (matching the `{name}` placeholders in the URI), and query-string params under a `query` key. Passing a flat `{ search: 'Alice' }` will be silently treated as a path-param attempt and won't reach the controller as a query.
+
+```typescript
+// Path param only
+await request.get('/v1/host/places/{id}', 200, { id: place.id })
+
+// Query params only
+await request.get('/v1/host/places', 200, { query: { search: 'Cabin', minSleeps: 4 } })
+
+// Both — path params at top level, query params under `query`
+await request.get('/v1/host/places/{placeId}/rooms', 200, {
+  placeId: place.id,
+  query: { type: 'Bedroom' },
+})
+```
+
+The shape is enforced by the OpenAPI-derived types: query-param keys come from the action's `@OpenAPI({ query: { ... } })` declaration, so a typo on either side surfaces as a TS error.
+
+### Transaction-callback type for helper methods
+
+For helper methods called inside a `.transaction(...)` callback, type the txn parameter as `DreamTransaction<Dream>` (imported from `@rvoh/dream`). The same type is used by `@AfterCreate` / `@AfterUpdate` hooks (see [models.md — After Hooks](models.md)) and shown in [SKILL.md — Transactions](SKILL.md). Don't reach for `Parameters<Parameters<typeof ApplicationModel.transaction>[0]>[0]` gymnastics.
+
 ## Authentication Helper
 
 ```typescript

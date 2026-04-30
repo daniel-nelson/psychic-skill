@@ -349,6 +349,22 @@ await ApplicationModel.transaction(async txn => {
   await HostPlace.txn(txn).create({ host, place })
   const found = await Place.txn(txn).findBy({ name: 'x' }) // queries too
 })
+
+// Extracting a transaction callback into a separate method?
+// Type the txn parameter as DreamTransaction<Dream> — the same type already used
+// for AfterCreate/AfterUpdate hooks (see models.md). Don't reach for
+// Parameters<Parameters<typeof ApplicationModel.transaction>[0]>[0] gymnastics.
+import { DreamTransaction, Dream } from '@rvoh/dream'
+
+await ApplicationModel.transaction(async txn => {
+  await this.createItems(txn, place)
+})
+
+// Helper method:
+private async createItems(txn: DreamTransaction<Dream>, place: Place) {
+  await Room.txn(txn).create({ place, type: 'Bedroom' })
+  await Room.txn(txn).create({ place, type: 'Kitchen' })
+}
 ```
 
 ### Querying Beyond Dream
