@@ -67,6 +67,18 @@ npx skills add daniel-nelson/psychic-skill
 
 It will prompt you for which agent to install to. For more details, see [vercel-labs/skills](https://github.com/vercel-labs/skills).
 
+### For agents that don't auto-load skills
+
+Cursor, Aider, Cline, and similar tools don't auto-load skills, but they can still use psychic-skill as **prescribed reading**. Clone the repo somewhere your agent reads files:
+
+```bash
+git clone https://github.com/daniel-nelson/psychic-skill.git .ai/psychic-skill
+```
+
+Then instruct your agent (via its rules file — `.cursorrules`, `.aider.conf.yml`, `AGENTS.md`, etc.) to read `SKILL.md` and the linked topic files (`models.md`, `controllers.md`, `serializers.md`, `sti.md`, `migrations.md`, `querying.md`, `testing.md`, `workers.md`, `websockets.md`) as required reading before making changes. The files are plain markdown — they work as documentation for any agent that can read files.
+
+To stay current, run `cd .ai/psychic-skill && git fetch origin && git reset --hard origin/main && ./setup` periodically. This is what `/psychic-update-skill` does under the hood for Claude Code and Codex.
+
 ### What gets installed
 
 - Skill files (Markdown) in `~/.claude/skills/psychic-skill/` or `~/.codex/skills/psychic-skill/` (and optional project installs at `.claude/skills/psychic-skill/` or `.codex/skills/psychic-skill/`)
