@@ -466,6 +466,8 @@ Prefer `paramsFor(Model, { key, array: true })` over `castParam('key', 'json[]')
 - Foreign keys of BelongsTo associations
 - The polymorphic type field of polymorphic BelongsTo associations
 
+These same columns are excluded from the auto-derived OpenAPI request body. The `requestBody.including` shorthand on `@OpenAPI` exists to re-add them — read it as "re-add what `paramsFor` excluded" rather than as a generic "add fields" knob. The exclusions exist to prevent mass-assignment on FK references and STI/polymorphic type discriminators; they cannot be overridden by `paramSafeColumns` regardless. Re-add via `including` for the spec, and pull the value explicitly via `castParam` (or via the request-body shape for bulk operations) inside the action.
+
 Models can further restrict allowed params via `paramSafeColumns` (allowlist) or `paramUnsafeColumns` (blocklist):
 
 ```typescript
@@ -491,6 +493,8 @@ const favoritePlace = await this.currentUser.createAssociation('favoritePlaces',
 ```
 
 Use `requestBody: { including: ['placeId'] }` in the `@OpenAPI` decorator to add the FK to the OpenAPI request body shape (for typed spec helpers and client SDKs). This only affects the OpenAPI spec — `paramsFor` still excludes the column, so you must handle it explicitly via `castParam`.
+
+The `paramsFor` exclusion of FKs is intentional — the OpenAPI spec advertises them via `including`, but `paramsFor` itself still strips the FK. Always extract the FK explicitly via `castParam` (or look up the parent resource and pass it as an association), even when the OpenAPI shape says it's part of the body.
 
 ## Response Methods
 
@@ -562,13 +566,11 @@ this.ok(places)
   pathParams: {                         // URL path parameters
     id: { description: 'The place ID' },
   },
-  requestBody: {                        // Request body config — prefer structured options over hand-writing a full schema
-    only: ['name', 'style'],            // Narrow to these specific paramSafeColumns
-    including: ['hostId', 'type'],      // Add columns that ARE on the model but excluded from paramSafeColumns (FKs, STI type discriminator)
-    combining: {                        // Add fields unrelated to the model's columns
-      acknowledgedTerms: { type: 'boolean' },
-    },
-    required: ['name', 'type'],         // Specify required fields
+  requestBody: {                        // Request body shape — prefer structured options over hand-writing a full schema
+    only: ['name', 'style'],
+    including: ['hostId', 'type'],
+    combining: { acknowledgedTerms: { type: 'boolean' } },
+    required: ['name', 'type'],
   },
 
   // Headers and security
@@ -583,6 +585,57 @@ this.ok(places)
   },
 })
 ```
+
+### `requestBody` shorthand — what each option is for
+
+The auto-derived request body shape is the model's `paramSafeColumns` — exactly the columns `paramsFor(Model)` would accept. Reach for `requestBody` only when you need to override that default. **If your action only takes `paramSafeColumns`, omit `requestBody` entirely.**
+
+| Use | When |
+|---|---|
+| omit `requestBody` | Action only takes `paramSafeColumns`. |
+| `only: [...]` | Narrow the auto-derived shape to a subset of the model's columns. |
+| `including: [...]` | Re-add columns that ARE on the model but auto-excluded — FKs, STI `type`, polymorphic type. **Most common legitimate use.** Use this even when the FK is nullable; column nullability is inferred from the model. |
+| `combining: { … }` | Add fields that are NOT columns on the model — join-table arrays (`cityIds`), one-shot tokens, upload metadata, workflow flags. |
+| `required: [...]` | Mark fields required. **Typed to the model's column names**, so it cannot reference `combining` keys. |
+
+#### Worked example — UPDATE with a nullable FK
+
+The most-mistaken case: an `update` action whose body needs to express "the FK can be set or cleared." Reach for `including`, not `combining` — column nullability is inferred from the model's `@deco.BelongsTo('ZipCode', { optional: true })` declaration.
+
+```typescript
+// `@deco.BelongsTo('ZipCode', { optional: true })` on Venue makes zipCodeId nullable.
+// `including: ['zipCodeId']` advertises the FK in the OpenAPI shape with the right nullability.
+// Don't reach for `combining: { zipCodeId: ['string', 'null'] }` — `combining` shadows the
+// model-derived shape with a hand-typed copy that drifts.
+@OpenAPI(Venue, {
+  status: 204,
+  tags: ['venues'],
+  requestBody: { including: ['zipCodeId'] },
+})
+public async update() {
+  await (await this.venue()).update(this.paramsFor(Venue))
+  this.noContent()
+}
+```
+
+#### Anti-patterns
+
+- **Don't list model columns inside `combining`.** `combining` adds fields that are *not* on the model. Listing real columns there either silently duplicates the auto-derived shape or shadows it with a hand-typed copy that drifts (e.g., a `{ enum: [...] }` redeclaration that goes stale when the DB enum changes).
+- **Don't write `properties:` inside `requestBody`.** It is not one of the four shorthand options. If your body has required non-model fields, drop the shorthand entirely and use the explicit `type: 'object'` / `properties` / `required` form (next subsection).
+
+#### When the body has no model fields
+
+Some endpoints take only non-model inputs (one-shot tokens, redemption payloads, upload metadata). The shorthand's `required: [...]` is typed to the model's column names, so you cannot mark `combining` keys required through the shorthand. For these endpoints, write the explicit JSON-Schema form:
+
+```typescript
+requestBody: {
+  type: 'object',
+  required: ['token', 'firebaseUid'],
+  properties: { token: 'string', firebaseUid: 'string' },
+},
+```
+
+This is the correct tool when no model field participates in the body — not a fallback to be "simplified" later.
 
 ### Custom Response Envelopes
 
