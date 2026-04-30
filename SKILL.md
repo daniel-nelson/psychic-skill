@@ -176,11 +176,16 @@ If controller specs have type errors about what an endpoint accepts or returns, 
 
 ## Adding Properties to Existing Models
 
-- **Always use the migration generator** (`pnpm psy g:migration`) to create a migration for schema changes
-- The generator scaffolding can be modified to make other database changes using DreamMigrationHelpers or Kysely-native calls
-- Prefer a DreamMigrationHelpers method over compound Kysely calls when one is available
-- After generating and running the migration, manually add the property declaration to the model file
-- Example: To add a `timezone` field to User, run `pnpm psy g:migration add_timezone_to_users`, edit the generated migration, then add `public timezone: DreamColumn<User, 'timezone'>` to the User model
+- **Always use the migration generator** (`pnpm psy g:migration`) to create a migration for schema changes.
+- **`g:migration` accepts the same column shorthand as `g:resource` and `g:model`** — including `BelongsTo:type` for foreign keys. Pass column descriptors as additional positional args; the migration body is generated correctly without hand-editing for the common cases.
+- The migration name is **kebab-case** (matches the migration filename convention `kebab-case-description.ts`), not snake_case.
+- Examples:
+  - Plain column: `pnpm psy g:migration add-timezone-to-users timezone:string`
+  - Multiple columns: `pnpm psy g:migration add-fields-to-bars name:string size:integer`
+  - Foreign key (notNull): `pnpm psy g:migration add-zip-code-id-to-candidates ZipCode:belongs_to`
+  - Foreign key (nullable): `pnpm psy g:migration add-zip-code-id-to-candidates ZipCode:belongs_to:optional`
+- After running the migration (`pnpm psy db:migrate`), add the matching `public ...: DreamColumn<Model, 'columnName'>` declaration to the model file. For a BelongsTo, also add the `@deco.BelongsTo(...)` declaration. Commit the auto-generated `src/types/db.ts` / `src/types/dream.ts` changes alongside.
+- The generator scaffolding can be modified for changes that aren't expressible as column shorthand (check constraints, enum alterations, custom backfill) — use DreamMigrationHelpers methods over compound Kysely calls when available.
 
 ## Models
 

@@ -10,6 +10,10 @@ Conversely, migrations on an unmerged branch may be freely edited. There is no e
 
 `pnpm psy db:migrate` runs migrations then sync. If post-sync fails (e.g., a model references an old table name), the migration itself is not reverted — `db.ts` has already been regenerated from the current database state. Fix the problem and run `pnpm psy sync` to complete the process.
 
+### Generating column-only migrations
+
+For schema changes that just add columns (or a foreign key) to an existing table, `pnpm psy g:migration` accepts the same column shorthand as `g:resource` and `g:model` — including `BelongsTo:type` and `:optional` modifiers. See the canonical examples in [SKILL.md — Adding Properties to Existing Models](SKILL.md#adding-properties-to-existing-models). Hand-edit the generated migration only when the change isn't expressible as column shorthand (check constraints, enum alterations, custom backfill).
+
 ## DreamMigrationHelpers
 
 `DreamMigrationHelpers` (imported from `@rvoh/dream/db`) provides convenience methods for common migration operations. **Prefer a DreamMigrationHelpers method over compound Kysely calls whenever one is available.** Consult the TSDocs on `DreamMigrationHelpers` for the full list of available methods and their signatures - methods include helpers for extensions, enum manipulation, deferrable constraints, GIN indexes, table renaming, and more.
