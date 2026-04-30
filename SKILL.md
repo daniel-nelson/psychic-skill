@@ -220,6 +220,8 @@ export default class Place extends ApplicationModel {
 
   // Virtual — accepted by update()/paramsFor() but not stored directly in DB.
   // Decorator goes on whichever accessor is declared first.
+  // Getter and setter MUST be synchronous — never async. Type argument sets the
+  // OpenAPI shape wherever the attribute appears in a serializer. See models.md.
   // Note the use of `DreamColumn<Place, 'grams'>` to specify the type of the
   // getter return type and setter params because these types are simply
   // mutations of what is in the database and the database is the source

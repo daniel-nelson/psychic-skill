@@ -590,6 +590,25 @@ public set pounds(pounds: DreamColumn<Place, 'grams'>) {
 // 'string', 'decimal', 'json', and array variants: 'boolean[]', 'date-time[]',
 // 'date[]', 'decimal[]', 'integer[]', 'number[]', 'string[]'
 // Use arrays for nullable: ['string', 'null']
+//
+// Virtual getters and setters MUST be synchronous. Dream reads the getter as a
+// plain attribute, not as a Promise. An async getter returns a Promise instead
+// of the declared type, which silently breaks serialization and is invisible to
+// `preloadFor`'s DSL introspection. If you need data that requires an `await`
+// (a DB lookup, a remote URL, a cross-association walk), express it as a real
+// association (@deco.HasOne / @deco.BelongsTo) and surface it via
+// .delegatedAttribute(...) or .rendersOne(...) in the serializer — never via
+// a virtual.
+//
+// The type argument to @deco.Virtual(...) sets the OpenAPI shape wherever the
+// attribute is surfaced in a serializer. Just as a real column's OpenAPI shape
+// is derived from the database schema, a virtual's shape is derived from the
+// decorator's type argument. @deco.Virtual(['number', 'null']) produces a
+// `number | null` schema in any serializer that exposes the attribute via
+// .attribute('pounds') or .delegatedAttribute('foo', 'pounds'). Don't pass an
+// explicit `openapi:` to those serializer methods when surfacing a virtual —
+// it overrides the auto-inferred shape and creates a place for the spec to
+// drift when the virtual's declared type changes.
 
 // STI - Single Table Inheritance child
 @STI(Room)

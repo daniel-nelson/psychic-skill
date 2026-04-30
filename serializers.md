@@ -121,9 +121,24 @@ Access a property on a loaded association:
 // Gets `user.profile.avatarUrl`
 .delegatedAttribute('profile', 'avatarUrl', { openapi: 'string' })
 
-// When the association may be null (e.g., a HasOne that isn't always present)
+// Key always present; null when association is missing (HasOne that isn't always present).
 .delegatedAttribute('profile', 'avatarUrl', { openapi: 'string', optional: true })
+
+// Key omitted from response when association/path is missing.
+.delegatedAttribute('profile', 'avatarUrl', { openapi: 'string', required: false })
 ```
+
+When the delegated-through path may resolve to `undefined`/`null` (a missing `HasOne`, an absent JSON sub-key, etc.), choose between `optional: true` and `required: false` based on what consumers should see. They are not aliases; they govern different layers and can be combined.
+
+| Option | Runtime | OpenAPI |
+|---|---|---|
+| `optional: true` | No effect — key always rendered (`null` when missing). | Schema wrapped in `anyOf: [schema, { type: 'null' }]`. |
+| `required: false` | Key **omitted** from the response when the resolved value is `undefined`. | Field excluded from the containing schema's `required[]`. |
+| `default: <value>` | Substitutes the value when the resolved path is `undefined`. | (No effect.) |
+
+Resolution order at render time: first non-`null`/non-`undefined` value from `target?.[name]`; else `default` if provided; else omit if `required: false`; else render `null`.
+
+Both options are accepted uniformly across regular columns, virtual columns, JSON/JSONB columns, STI `type` discriminators, and non-Dream targets — pick by what you want consumers to see, not by what kind of column the target is. `@deco.BelongsTo('Foo', { optional: true })` paths auto-infer the OpenAPI nullability, so `optional: true` is most often needed for `HasOne` or other non-`BelongsTo` nullable paths. On the STI `type` branch, `default:` is rejected by design — substituting a discriminator string would produce a response indistinguishable from "this is genuinely a record of that type." Use `required: false` to honestly signal absence.
 
 ### .rendersOne(name, options?)
 
