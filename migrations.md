@@ -4,9 +4,24 @@
 
 Dream migrations use Kysely under the hood. **Migrations are always created via generators** (`g:resource`, `g:model`, `g:sti-child`, or `g:migration`) - never create migration files by hand. This reference covers the Kysely API and DreamMigrationHelpers available for editing generated migrations.
 
-**CRITICAL: Never modify an existing migration file that has already been merged into main.** Use `pnpm psy g:migration` to create a new migration for additional changes.
+**Inviolable: never modify a migration file that has been merged into `main`.** Once merged, any change to that migration's behavior must be expressed as a new migration. Production data already reflects the original migration's effect; rewriting history would skip the new behavior entirely on machines that have already recorded the original as applied. (This restates Critical Rule #5 from `SKILL.md` because it's the foundation for everything below.)
 
-Conversely, migrations on an unmerged branch may be freely edited. There is no existing production data to worry about, so create columns with the correct constraints (e.g., `NOT NULL`) directly — don't write backfill `UPDATE` statements for data that doesn't exist yet.
+Migrations that are still on a feature branch — i.e., not yet merged into `main` — may be freely edited in place. There is no production data to worry about, so create columns with the correct constraints (e.g., `NOT NULL`) directly; don't write backfill `UPDATE` statements for data that doesn't exist yet.
+
+When you edit an unmerged migration in place after it has already been applied locally, run `pnpm psy db:reset` to bring the DB back in sync — `pnpm psy db:migrate` won't re-run an already-recorded migration, so your edits won't take effect. `db:reset` drops, recreates, runs all migrations from scratch, and re-syncs types in one command. (Per `console.md`, all `psy` commands default to `NODE_ENV=test`; prefix with `NODE_ENV=development` to reset the dev DB instead — but be aware of the dev-DB caveats in `console.md`.)
+
+This applies to **any** in-place edit that changes the resulting schema — adding a column to a `createTable`, retrofitting `@SoftDelete()`, tightening a constraint, adjusting `asEnum([...])` values for an STI discriminator, anything. The single rule covers the single situation: if you edited a migration that has already been applied locally, `db:reset`. Do NOT chain a follow-up migration to "fix" an unmerged one — edit the original.
+
+Use `git diff --name-only origin/main -- api/src/db/migrations/` to confirm a migration is still on your branch before editing.
+
+### NOT NULL columns and defaults
+
+When a NOT NULL column has a single obvious domain default (`'normal'`, `'pending'`, `false`, `0`), encode it at the migration layer with `col.defaultTo(value).notNull()`. This:
+
+- Lets callers omit the field without runtime failure.
+- Removes the temptation to add silent in-controller defaults that drift from "default if missing" into "default if unrecognized" — the latter is the bug shape that swallows malformed enum values from the client.
+
+If the default is genuinely caller-dependent, leave the column NOT NULL with no default — the resulting 400/500 on a missing value is preferable to silent coercion. The rule is: encode at the DB layer or fail loudly; never default silently in caller code.
 
 `pnpm psy db:migrate` runs migrations then sync. If post-sync fails (e.g., a model references an old table name), the migration itself is not reverted — `db.ts` has already been regenerated from the current database state. Fix the problem and run `pnpm psy sync` to complete the process.
 
