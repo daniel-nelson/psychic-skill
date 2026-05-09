@@ -14,6 +14,9 @@ Psychic Websockets provides real-time communication via **Socket.IO** with Redis
 
 ```typescript
 // conf/initializers/websockets.ts
+import { allowRequestForOrigins, allowedCorsOrigins } from '@rvoh/psychic-websockets'
+import resolveWebsocketUser from '../system/resolveWebsocketUser.js'
+
 export default (wsApp: PsychicAppWebsockets) => {
   if (AppEnv.serviceRole !== 'ws' && !AppEnv.isTest) return
 
@@ -24,9 +27,13 @@ export default (wsApp: PsychicAppWebsockets) => {
     maxRetriesPerRequest: null,
   }))
 
-  // Socket.IO options
+  // Socket.IO options — `allowRequest` enforces an origin allowlist on the handshake
+  // across BOTH long-polling and native WebSocket transports. Socket.IO's own
+  // `cors.origin` only applies to long-polling, so use `allowRequestForOrigins` here
+  // to close the gap.
   wsApp.set('socketio', {
     transports: ['websocket', 'polling'],
+    allowRequest: allowRequestForOrigins(allowedCorsOrigins()),
   })
 
   // Health check endpoint
@@ -36,23 +43,55 @@ export default (wsApp: PsychicAppWebsockets) => {
     body: null,
   })
 
-  // Handle new connections
+  // Handle new connections — auth via the boilerplate-scaffolded resolveWebsocketUser
+  // helper. Newly-generated apps reject all WS connections until this is implemented.
   wsApp.on('ws:start', io => {
     io.of('/').on('connection', async socket => {
-      const token = socket.handshake.auth.token as string
-      const userId = decryptToken(token)
-      const user = await User.find(userId)
-
-      if (user) {
-        await Ws.register(socket, user.id)
-
-        const ws = new Ws(['/ops/connection-success'] as const)
-        await ws.emit(user.id, '/ops/connection-success', { message: 'Connected' })
+      const user = await resolveWebsocketUser(socket)
+      if (!user) {
+        socket.disconnect(true)
+        return
       }
+
+      await Ws.register(socket, user.id)
+
+      const ws = new Ws(['/ops/connection-success'] as const)
+      await ws.emit(user.id, '/ops/connection-success', { message: 'Connected' })
     })
   })
 }
 ```
+
+### Auth: `resolveWebsocketUser`
+
+`create-psychic` scaffolds a boilerplate auth helper at `conf/system/resolveWebsocketUser.ts`. Newly-generated apps reject every WebSocket connection until you replace its body with real auth logic — typically pulling a token from `socket.handshake.auth`, decrypting it, and returning the matching `User` (or `null` to reject).
+
+```typescript
+// conf/system/resolveWebsocketUser.ts
+import type { Socket } from 'socket.io'
+import User from '../../app/models/User.js'
+
+export default async function resolveWebsocketUser(socket: Socket): Promise<User | null> {
+  const token = socket.handshake.auth.token as string | undefined
+  if (!token) return null
+  // ...decrypt the token and look up the user
+  return User.find(/* userId */)
+}
+```
+
+The "fail loudly in dev" ergonomic is intentional — if auth isn't wired up, no socket connects.
+
+### Origin allowlist
+
+`allowRequestForOrigins(origins: string[])` returns a socket.io `allowRequest` handler that rejects handshakes whose `Origin` header isn't in the allowlist. Wire it via `wsApp.set('socketio', { allowRequest: ... })` (shown above).
+
+`allowedCorsOrigins()` reads the `CORS_HOSTS` environment variable, which must be a JSON-encoded array of origins:
+
+```bash
+CORS_HOSTS='["https://app.example.com","https://admin.example.com"]'
+```
+
+If `CORS_HOSTS` is malformed JSON, the helper throws `CORS_HOSTS must be a JSON-encoded array of origins` at boot. Override the env-parsing strategy by passing a different array to `allowRequestForOrigins(...)` directly.
 
 ## Emitting Messages
 
