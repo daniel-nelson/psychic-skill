@@ -340,6 +340,20 @@ query.whereAny([
 ])
 ```
 
+### Escaping user input in LIKE / ILIKE patterns
+
+`%` and `_` are SQL wildcards inside `LIKE` / `ILIKE` patterns. When the pattern is built from user input, wrap the variable in `escapeLikePattern` so those characters match literally instead of acting as wildcards:
+
+```typescript
+import { ops, escapeLikePattern } from '@rvoh/dream'
+
+// User-controlled search term — escape it before interpolating into the pattern
+const term = this.castParam('search', 'string')
+query = query.where({ name: ops.ilike(`%${escapeLikePattern(term)}%`) })
+```
+
+Escape only the user-controlled portion. The wildcard markers (`%` and `_`) you add yourself are not passed through the helper.
+
 ### `whereNot` semantics
 
 `whereNot` takes a single condition object. All keys are AND'd and negated:
