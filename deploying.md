@@ -52,6 +52,36 @@ If your reverse proxy (load balancer, ingress controller, etc.) terminates TLS b
 
 If the proxy terminates TLS and forwards plain HTTP to the container, no additional TLS configuration is needed in the app.
 
+## Postgres TLS
+
+`SingleDbCredential` accepts an `ssl?: boolean | tls.ConnectionOptions` field that flows directly to the underlying `pg.Pool` connection. Precedence: explicit `ssl` wins > legacy `useSsl: true` (which falls back to unverified TLS for backward compatibility with hosted Postgres) > TLS off.
+
+```typescript
+// Verified TLS using the system CA store (preferred when the DB cert chains to a public CA)
+const credential: SingleDbCredential = {
+  // ...host, port, user, password, database
+  ssl: true,
+}
+
+// Verified TLS with a pinned CA (preferred for managed Postgres with a custom root, e.g., RDS)
+const credential: SingleDbCredential = {
+  // ...
+  ssl: {
+    rejectUnauthorized: true,
+    ca: AppEnv.string('PG_CA_CERT'),
+  },
+}
+
+// Unverified TLS — only when the deployment environment forces it (e.g., legacy hosted DBs
+// without a published CA bundle). Document the rationale alongside.
+const credential: SingleDbCredential = {
+  // ...
+  ssl: { rejectUnauthorized: false },
+}
+```
+
+Existing apps that set `useSsl: true` keep working — the boilerplate falls back to `{ rejectUnauthorized: false }` for compatibility with RDS / Heroku / Supabase. New apps should opt into verified TLS via `ssl` instead.
+
 ## Debugging a Deployed Psychic Service
 
 When a deployed Psychic service is not responding correctly:
