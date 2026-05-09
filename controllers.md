@@ -799,6 +799,15 @@ psy.set('encryption', {
 
 The optional `legacy` key enables seamless key rotation: `getCookie()` first tries the `current` key, and if decryption fails, retries with the `legacy` key.
 
+To rotate the cookie encryption key:
+
+1. Generate a new key (`pnpm psy g:encryption-key` or `Encrypt.generateKey('aes-256-gcm')`).
+2. Set `current` to the new key, `legacy` to the previously-current key. Deploy.
+3. Wait for `maxAge` to elapse so all in-the-wild cookies have rolled.
+4. Drop `legacy`. Deploy.
+
+Two keys is sufficient for any sensible cookie TTL.
+
 #### Generating keys
 
 Two ways to produce a key for any of the encryption use cases (encrypted columns, cookie encryption, generalized `Encrypt` library use):
