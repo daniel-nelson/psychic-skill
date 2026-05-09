@@ -770,6 +770,12 @@ this.getCookie<string>('theme')
 this.setCookie('theme', 'dark', { expires: new Date('2025-12-31') })
 ```
 
+Session cookies set by Psychic default to `SameSite=Strict` — the browser won't send them on any cross-origin request (including link-click navigations from another site), which blocks classical CSRF without needing a CSRF token. Override only when a legitimate cross-site link-follow flow needs to preserve auth (rare for JSON APIs):
+
+```typescript
+psy.set('cookie', { sameSite: 'lax' })
+```
+
 ### Cookie Encryption
 
 `this.setCookie()` **always encrypts** the cookie value — there is no option to disable this. This is the correct behavior for cookies the Psychic application both writes and reads (e.g., session data, user preferences), since `this.getCookie()` automatically decrypts.
