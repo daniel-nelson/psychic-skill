@@ -769,6 +769,76 @@ Psychic automatically converts certain errors to HTTP responses:
 
 All validation-layer errors return 400 by design — this prevents attackers from distinguishing which layer rejected a request. To explicitly return 422 with field-level validation errors intended for the end user, call `this.unprocessableContent({ errors: { fieldName: ['message'] } })`.
 
+## Logging
+
+Use `PsychicApp.log` and `PsychicApp.logWithLevel` for all application logging. They route through Dream's configured logger (Winston by default) so output respects the log level, the configured transports, and any structured-log format the app sets.
+
+```typescript
+import { PsychicApp } from '@rvoh/psychic'
+
+PsychicApp.log('order placed', { orderId: order.id, totalCents })
+PsychicApp.logWithLevel('warn', 'inventory low', { sku, remaining })
+PsychicApp.logWithLevel('error', 'payment provider error', { orderId: order.id, err })
+```
+
+Both are variadic — pass a message followed by any structured metadata. `logWithLevel` accepts `'debug' | 'info' | 'warn' | 'error'` (Dream's log levels).
+
+### Request logging
+
+`create-psychic` scaffolds a request logger in `conf/app.ts` mounted via the `server:init:after-middleware` hook. The default emits one structured line per request through `PsychicApp.log` under the hood:
+
+```typescript
+import requestLogger from '@conf/system/requestLogger.js'
+import winston from 'winston'
+
+psy.on('server:init:after-middleware', psychicServer => {
+  if (!AppEnv.isTest || AppEnv.boolean('REQUEST_LOGGING')) {
+    const SENSITIVE_FIELDS = ['password', 'token', 'authentication', 'authorization', 'secret']
+
+    psychicServer.koaApp.use(
+      requestLogger({
+        transports: [new winston.transports.Console()],
+        format: winston.format.combine(winston.format.json()),
+        headerBlocklist: [
+          'authorization', 'content-length', 'connection', 'cookie',
+          'sec-ch-ua', 'sec-ch-ua-mobile', 'sec-ch-ua-platform',
+          'sec-fetch-dest', 'sec-fetch-mode', 'sec-fetch-site', 'user-agent',
+        ],
+        ignoredRoutes: ['/health_check'],
+        bodyBlocklist: SENSITIVE_FIELDS,
+      }),
+    )
+  }
+})
+```
+
+Three knobs to know:
+
+- **`headerBlocklist`** — request headers redacted from the log line. Scaffold ships `authorization`, `cookie`, plus a handful of low-signal browser-fingerprint headers.
+- **`bodyBlocklist`** — request body keys redacted from the log line. Scaffold ships `password`, `token`, `authentication`, `authorization`, `secret`. **Extend this when you add new sensitive fields** (`api_key`, `ssn`, `creditCard`, etc.) — otherwise they land in production logs.
+- **`ignoredRoutes`** — request paths to skip entirely. Scaffold skips `/health_check`.
+
+### Reacting to unhandled errors
+
+Errors that escape the controller stack (anything Psychic doesn't auto-convert to a 4xx) fire the `server:error` hook. This is the right place to ship to Sentry, Datadog, structured alerting, or whatever your error pipeline is:
+
+```typescript
+psy.on('server:error', (err, ctx) => {
+  PsychicApp.logWithLevel('error', 'unhandled server error', {
+    err,
+    method: ctx.method,
+    path: ctx.path,
+    requestId: ctx.state.requestId,
+  })
+  // ...ship to Sentry / Datadog / etc.
+
+  if (!ctx.headerSent) ctx.status = 500
+  else if (AppEnv.isDevelopmentOrTest) throw err
+})
+```
+
+The handler signature is `(err: Error, ctx: Koa.Context) => void | Promise<void>`. The scaffold registers a default that sets `ctx.status = 500` if a response hasn't been sent and re-throws in development/test so the failure surfaces loudly.
+
 ## Session & Cookie Management
 
 ```typescript
