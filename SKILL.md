@@ -225,7 +225,7 @@ export default class Place extends ApplicationModel {
   @deco.Encrypted()
   public phone: DreamColumn<Place, 'encryptedPhone'>
 
-  // Virtual — accepted by update()/paramsFor() but not stored directly in DB.
+  // Virtual — accepted by update() and extractParams() but not stored directly in DB.
   // Decorator goes on whichever accessor is declared first.
   // Getter and setter MUST be synchronous — never async. Type argument sets the
   // OpenAPI shape wherever the attribute appears in a serializer. See models.md.
@@ -403,7 +403,7 @@ export default class V1HostPlacesController extends V1HostBaseController {
   @OpenAPI(Place, { status: 201, tags: ['places'], fastJsonStringify: true })
   public async create() {
     let place = await ApplicationModel.transaction(async txn => {
-      const place = await Place.txn(txn).create(this.paramsFor(Place))
+      const place = await Place.txn(txn).create(this.extractParams(Place, ['name', 'style', 'sleeps']))
       await HostPlace.txn(txn).create({ host: this.currentHost, place })
       return place
     })
@@ -418,7 +418,7 @@ export default class V1HostPlacesController extends V1HostBaseController {
 
   @OpenAPI(Place, { status: 204, tags: ['places'] })
   public async update() {
-    await (await this.place()).update(this.paramsFor(Place))
+    await (await this.place()).update(this.extractParams(Place, ['name', 'style', 'sleeps']))
     this.noContent()
   }
 
@@ -443,7 +443,7 @@ export default class V1HostPlacesController extends V1HostBaseController {
 |--------|---------|
 | `this.params` | Merged URL + body + query params |
 | `this.castParam('name', 'type', opts?)` | Validate and cast a single param. Types: `uuid`, `string`, `integer`, `bigint`, `date`, `datetime`, `number`, `enum`. Array variants: `uuid[]`, `string[]`, etc. Options: `{ allowNull: true, enum: [...] }` |
-| `this.paramsFor(Model, opts?)` | Extract safe params for model. Options: `{ only: [...], including: [...], key: 'bodyKey' }` |
+| `this.extractParams(Model, allowed, opts?)` | Extract and validate request body against a Dream model. `allowed` is an explicit positional allowlist (TS-checked, intersected with the model's `paramSafeColumns`). Options: `{ only, including, key, array }`. |
 | `this.ok(data)` | 200 response |
 | `this.created(data)` | 201 response |
 | `this.noContent()` | 204 response |

@@ -287,7 +287,7 @@ export default class V1HostPlacesController extends V1HostBaseController {
   })
   public async create() {
     let place = await ApplicationModel.transaction(async txn => {
-      const place = await Place.txn(txn).create(this.paramsFor(Place))
+      const place = await Place.txn(txn).create(this.extractParams(Place, ['name', 'style', 'sleeps']))
       await HostPlace.txn(txn).create({ host: this.currentHost, place })
       return place
     })
@@ -299,7 +299,7 @@ export default class V1HostPlacesController extends V1HostBaseController {
   @OpenAPI(Place, { status: 204, tags: ['places'] })
   public async update() {
     const place = await this.place()
-    await place.update(this.paramsFor(Place))
+    await place.update(this.extractParams(Place, ['name', 'style', 'sleeps']))
     this.noContent()
   }
 
@@ -366,7 +366,7 @@ When creating STI child records, you MUST switch on the type:
 @OpenAPI(Room, { status: 201, tags: ['rooms'], fastJsonStringify: true })
 public async create() {
   const roomType = this.castParam('type', 'string', { enum: RoomTypesEnumValues })
-  const roomParams = this.paramsFor(Room)
+  const roomParams = this.extractParams(Room, ['name', 'sleeps'])
   let room: Room
 
   switch (roomType) {
@@ -446,32 +446,45 @@ const BOOKABLE_ROOM_TYPES: Extract<RoomTypesEnum, 'Bedroom' | 'Den' | 'LivingRoo
 this.castParam('roomType', 'string', { enum: BOOKABLE_ROOM_TYPES })
 ```
 
-### paramsFor
+### extractParams
 
-Extracts and validates params based on the model's database table columns, `@Virtual()` columns, and `@Encrypted()` columns, filtered by safe-params rules:
+`extractParams(Model, allowedColumns, opts?)` validates an incoming request body against a Dream model's columns and returns a typed, safe-to-write attributes object. The `allowedColumns` array is an explicit positional allowlist, TS-checked at compile time against the model's safe columns; the runtime intersects it with the model's `paramSafeColumns` (when declared) and the always-excluded set described below.
+
+The allowlist is required and lives at the call site so that every controller's accepted columns are locally visible. Adding a new column to a model doesn't widen any controller's surface — each controller has to opt in to accept it.
 
 ```typescript
-// Basic
-this.paramsFor(Place)
+// Standard usage
+public async update() {
+  await (await this.place()).update(
+    this.extractParams(Place, ['name', 'style', 'sleeps']),
+  )
+  this.noContent()
+}
+```
 
-// Restrict to specific fields
-this.paramsFor(Place, { only: ['name', 'style'] })
+#### Other options
 
-// Include extra fields beyond paramSafeColumns
-this.paramsFor(Place, { including: ['specialField'] })
+```typescript
+// Restrict further to a subset
+this.extractParams(Place, ['name', 'style'], { only: ['name', 'style'] })
 
-// Extract from nested key in body
-this.paramsFor(Place, { key: 'place' })
+// Include extra fields beyond the allowlist
+this.extractParams(Place, ['name'], { including: ['specialField'] })
+
+// Extract from a nested key in the body
+this.extractParams(Place, ['name', 'style'], { key: 'place' })
 
 // Extract an array of nested objects from a key in the body
 // (e.g., body: { rooms: [{ type: 'Bedroom', ... }, { type: 'Kitchen', ... }] })
-// Each element is validated against Room's paramSafeColumns
-const roomsParams = this.paramsFor(Room, { key: 'rooms', array: true })
+// Each element is validated against the allowlist.
+const roomsParams = this.extractParams(Room, ['type', 'name'], { key: 'rooms', array: true })
 ```
 
-Prefer `paramsFor(Model, { key, array: true })` over `castParam('key', 'json[]')` for nested object arrays that correspond to a Dream model — it validates each item against the model's `paramSafeColumns` instead of accepting arbitrary JSON.
+Prefer `extractParams(Model, allowed, { key, array: true })` over `castParam('key', 'json[]')` for nested object arrays that correspond to a Dream model — it validates each item against the allowlist instead of accepting arbitrary JSON.
 
-`paramsFor` provides default protection by automatically excluding certain columns that should never be set from user input. **This cannot be overridden** by `paramSafeColumns` or `paramUnsafeColumns`:
+#### Always-excluded columns
+
+Some columns are always stripped, regardless of `paramSafeColumns` or the positional allowlist:
 
 - The primary key (defaults to `id`)
 - `createdAt` / `updatedAt` / `deletedAt`
@@ -479,17 +492,19 @@ Prefer `paramsFor(Model, { key, array: true })` over `castParam('key', 'json[]')
 - Foreign keys of BelongsTo associations
 - The polymorphic type field of polymorphic BelongsTo associations
 
-These same columns are excluded from the auto-derived OpenAPI request body. The `requestBody.including` shorthand on `@OpenAPI` exists to re-add them — read it as "re-add what `paramsFor` excluded" rather than as a generic "add fields" knob. The exclusions exist to prevent mass-assignment on FK references and STI/polymorphic type discriminators; they cannot be overridden by `paramSafeColumns` regardless. Re-add via `including` for the spec, and pull the value explicitly via `castParam` (or via the request-body shape for bulk operations) inside the action.
+These same columns are excluded from the auto-derived OpenAPI request body. The `requestBody.including` shorthand on `@OpenAPI` exists to re-add them — read it as "re-add what extraction excluded" rather than as a generic "add fields" knob. The exclusions exist to prevent mass-assignment on FK references and STI/polymorphic type discriminators. Re-add via `including` for the spec, and pull the value explicitly via `castParam` (or via the request-body shape for bulk operations) inside the action.
 
-Models can further restrict allowed params via `paramSafeColumns` (allowlist) or `paramUnsafeColumns` (blocklist):
+#### Declaring `paramSafeColumns` on the model
+
+`paramSafeColumns` is the model-level upper bound on what `extractParams` can return. Declare it on any model where you want a single source of truth for "what a normal user can touch" — the runtime intersects the call-site allowlist with `paramSafeColumns`, so a column missing from the model's declaration cannot be extracted even if a controller lists it:
 
 ```typescript
-// Only allow these specific columns via paramsFor
+// Canonical allowlist for the model — caps extractParams.
 public get paramSafeColumns(): DreamColumnNames<CoachingSession>[] {
   return ['rated', 'meetingIntent', 'topic']
 }
 
-// Block specific columns (in addition to the defaults above)
+// Block specific columns (in addition to the always-excluded set above)
 public get paramUnsafeColumns(): DreamColumnNames<Friend>[] {
   return ['bff']
 }
@@ -500,14 +515,18 @@ Since foreign keys are excluded, find the resource explicitly and pass it as an 
 ```typescript
 const place = await Place.findOrFail(this.castParam('placeId', 'uuid'))
 const favoritePlace = await this.currentUser.createAssociation('favoritePlaces', {
-  ...this.paramsFor(FavoritePlace),
+  ...this.extractParams(FavoritePlace, ['rating', 'note']),
   place,
 })
 ```
 
-Use `requestBody: { including: ['placeId'] }` in the `@OpenAPI` decorator to add the FK to the OpenAPI request body shape (for typed spec helpers and client SDKs). This only affects the OpenAPI spec — `paramsFor` still excludes the column, so you must handle it explicitly via `castParam`.
+Use `requestBody: { including: ['placeId'] }` in the `@OpenAPI` decorator to add the FK to the OpenAPI request body shape (for typed spec helpers and client SDKs). This only affects the OpenAPI spec — extraction still excludes the column, so you must handle it explicitly via `castParam`.
 
-The `paramsFor` exclusion of FKs is intentional — the OpenAPI spec advertises them via `including`, but `paramsFor` itself still strips the FK. Always extract the FK explicitly via `castParam` (or look up the parent resource and pass it as an association), even when the OpenAPI shape says it's part of the body.
+The exclusion of FKs is intentional — the OpenAPI spec advertises them via `including`, but extraction itself still strips the FK. Always extract the FK explicitly via `castParam` (or look up the parent resource and pass it as an association), even when the OpenAPI shape says it's part of the body.
+
+#### Generator output
+
+`psy g:resource` (and related generators) emit `extractParams(Model, [<full default-safe list>], { ... })` with the model's safe columns materialized into the array. Edit the list in the generated controller to remove anything that endpoint shouldn't accept — start from the full set, delete what doesn't belong.
 
 ## Response Methods
 
@@ -601,7 +620,7 @@ this.ok(places)
 
 ### `requestBody` shorthand — what each option is for
 
-The auto-derived request body shape is the model's `paramSafeColumns` — exactly the columns `paramsFor(Model)` would accept. Reach for `requestBody` only when you need to override that default. **If your action only takes `paramSafeColumns`, omit `requestBody` entirely.**
+The auto-derived request body shape is the model's `paramSafeColumns`. Reach for `requestBody` only when you need to override that default. **If your action only takes `paramSafeColumns`, omit `requestBody` entirely.**
 
 | Use | When |
 |---|---|
@@ -626,14 +645,14 @@ The most-mistaken case: an `update` action whose body needs to express "the FK c
   requestBody: { including: ['zipCodeId'] },
 })
 public async update() {
-  await (await this.venue()).update(this.paramsFor(Venue))
+  await (await this.venue()).update(this.extractParams(Venue, ['name', 'zipCodeId']))
   this.noContent()
 }
 ```
 
 #### Nested model-driven shapes — multi-resource creation
 
-When a request body bundles multiple Dream models — typically a parent plus a one-shot array of children — use the `for: Model` sentinel inside `combining` (or `combining.<key>.items` for arrays). It produces an inline object schema derived from the model's `paramSafeColumns`, the same shape `extractImplicitParams(Model)` would accept. Use `OpenAPI.forDream(Model, opts)` as the typed wrapper: `only` / `including` / `required` are constrained at compile time to that model's column names, so a misspelled column raises a TS error instead of silently dropping out of the OpenAPI shape.
+When a request body bundles multiple Dream models — typically a parent plus a one-shot array of children — use the `for: Model` sentinel inside `combining` (or `combining.<key>.items` for arrays). It produces an inline object schema derived from the model's `paramSafeColumns`. Use `OpenAPI.forDream(Model, opts)` as the typed wrapper: `only` / `including` / `required` are constrained at compile time to that model's column names, so a misspelled column raises a TS error instead of silently dropping out of the OpenAPI shape.
 
 The nested `for:` sentinel is **request-only** — response shapes still use `$serializable` / `$serializer`.
 
@@ -799,7 +818,7 @@ The `validate` option accepts `requestBody`, `responseBody`, `headers`, `query`,
      console.dir(this.params, { depth: null })
      ```
      Check whether the shape matches what the endpoint expects. If a feature spec was the trigger and the payload looks correct, consider writing a controller spec — faster and more isolated than feature specs — and iterate from there.
-   - **If the failure persists:** the problem is in controller logic (likely a `castParam`/`paramsFor` failure, a DB constraint violation, or unhandled application error). Add logs around those calls to isolate.
+   - **If the failure persists:** the problem is in controller logic (likely a `castParam` / `extractParams` failure, a DB constraint violation, or unhandled application error). Add logs around those calls to isolate.
 3. **Remove the `validate` line** from the decorator once the problem is identified. Leaving it disabled defeats the protection OpenAPI validation provides.
 
 `NODE_DEBUG=psychic` also surfaces validation info, but `validate: { all: false }` is usually more useful because it lets the real response body through for direct inspection.
@@ -811,7 +830,7 @@ Psychic automatically converts certain errors to HTTP responses:
 | Error Source | HTTP Status | When |
 |---|---|---|
 | `castParam` fails | 400 | Invalid parameter type/value |
-| `paramsFor` fails | 400 | Invalid model attributes |
+| `extractParams` fails | 400 | Invalid model attributes |
 | Model validation fails | 400 | `isInvalid` with errors |
 | `findOrFail` no match | 404 | Record not found |
 | `firstOrFail` no match | 404 | Record not found |
@@ -1043,7 +1062,7 @@ This may be necessary during development with tunneling tools (e.g., ngrok) or i
 ```typescript
 // Create through association (automatically sets FK)
 let model = await this.currentCity.createAssociation('rooms', {
-  ...this.paramsFor(Room),
+  ...this.extractParams(Room, ['name', 'sleeps']),
   additionalField: value,
 })
 

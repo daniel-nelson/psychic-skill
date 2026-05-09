@@ -56,7 +56,7 @@ public userId: DreamColumn<Post, 'userId'>
 // Optional (nullable FK).
 // The `optional` flag on a BelongsTo is the canonical declaration of nullability
 // for that association. It is auto-inferred by serializer `rendersOne` and
-// `delegatedAttribute`, and by `paramsFor` / OpenAPI request-body shape. Don't
+// `delegatedAttribute`, and by `extractParams` / OpenAPI request-body shape. Don't
 // restate `optional: true` in serializers — that's a DRY violation, and changing
 // it in the serializer is almost always a mistake.
 @deco.BelongsTo('User', { optional: true })
@@ -580,7 +580,7 @@ public position: DreamColumn<Room, 'position'>
 public phone: DreamColumn<User, 'encryptedPhone'>
 // DB column is 'encrypted_phone', model property is 'phone'
 
-// Virtual — accepted by update() and paramsFor() but not stored directly in DB.
+// Virtual — accepted by update() and extractParams() but not stored directly in DB.
 // Use getter/setter pairs to transform between the virtual and the actual DB column.
 // Decorator goes on whichever accessor is declared first.
 // Note the use of `DreamColumn<Place, 'grams'>` to specify the type of the

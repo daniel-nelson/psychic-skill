@@ -418,7 +418,7 @@ export default class V1HostPlacesRoomsController extends V1HostPlacesBaseControl
   @OpenAPI(Room, { status: 201, tags: ['rooms'], fastJsonStringify: true })
   public async create() {
     const roomType = this.castParam('type', 'string', { enum: RoomTypesEnumValues })
-    const roomParams = this.paramsFor(Room)
+    const roomParams = this.extractParams(Room, ['name', 'position', 'bedTypes'])
     let room: Room
 
     switch (roomType) {
@@ -451,7 +451,7 @@ export default class V1HostPlacesRoomsController extends V1HostPlacesBaseControl
   @OpenAPI(Room, { status: 204, tags: ['rooms'] })
   public async update() {
     const room = await this.room()
-    await room.update(this.paramsFor(Room))
+    await room.update(this.extractParams(Room, ['name', 'position', 'bedTypes']))
     this.noContent()
   }
 
@@ -473,18 +473,18 @@ export default class V1HostPlacesRoomsController extends V1HostPlacesBaseControl
 
 **Key points:**
 - `RoomTypesEnumValues` is auto-generated from the enum in `types/db.ts`
-- `this.paramsFor(Room)` uses the parent class — this works because `paramsFor` reads from the **database table**, not the model class. Since all STI children share the same table, `paramsFor(Room)` accepts all columns in the table (including child-specific ones like `bedTypes`) subject to the standard safe-params filtering. This also means `update` doesn't need a switch statement — `paramsFor(Room)` already includes all child-specific columns.
+- `this.extractParams(Room, [...])` uses the parent class — this works because extraction reads from the **database table**, not the model class. Since all STI children share the same table, the allowlist can name columns from any child (including child-specific ones like `bedTypes`) and a single extraction call covers every concrete subtype. This also means `update` doesn't need a switch statement — one `extractParams(Room, [...])` call handles every child's columns.
 - Each `case` creates via the **child** class (e.g., `Bedroom.create(...)`)
 - The `default` branch with `const _never: never = roomType` ensures compile-time exhaustiveness
 - `show`, `update`, `destroy` work on the parent `Room` type - Dream returns the correct child instance
 
 ### Bulk creation from a request-body array
 
-For endpoints that create many STI children in one request — `{ items: [{ type: 'Bedroom', position: 1, ... }, { type: 'Kitchen', position: 2, ... }] }` — use `paramsFor(STIParent, { key, array: true })` to validate each entry against the parent's `paramSafeColumns`. The framework still strips `type` (the STI discriminator) and FKs (e.g., `placeId`) per the standard exclusions, so pull `type` per-item from the raw request body and let an exhaustive switch enforce validity.
+For endpoints that create many STI children in one request — `{ items: [{ type: 'Bedroom', position: 1, ... }, { type: 'Kitchen', position: 2, ... }] }` — use `extractParams(STIParent, [...], { key, array: true })` to validate each entry against the parent's safe columns. The framework still strips `type` (the STI discriminator) and FKs (e.g., `placeId`) per the standard exclusions, so pull `type` per-item from the raw request body and let an exhaustive switch enforce validity.
 
 ```typescript
 // Body: { items: [{ type: 'Bedroom', position: 1, ... }, { type: 'Kitchen', position: 2, ... }] }
-const itemsParams = this.paramsFor(Room, { key: 'items', array: true })
+const itemsParams = this.extractParams(Room, ['name', 'position', 'bedTypes'], { key: 'items', array: true })
 const rawItems = (this.params as { items?: { type?: string }[] }).items ?? []
 
 for (const [i, params] of itemsParams.entries()) {
@@ -503,7 +503,7 @@ for (const [i, params] of itemsParams.entries()) {
 }
 ```
 
-`paramsFor(STIParent, { key, array: true })` strips `type` per item — extract it from the raw params and let the exhaustive switch (with a `_never` default) enforce validity. No separate enum-membership check is needed; the switch already exhausts valid values and the `_never` default catches anything else at compile time AND runtime. Wrap the loop in `ApplicationModel.transaction(async txn => { ... })` only when the action genuinely needs atomicity — extra transaction overhead isn't free.
+`extractParams(STIParent, [...], { key, array: true })` strips `type` per item — extract it from the raw params and let the exhaustive switch (with a `_never` default) enforce validity. No separate enum-membership check is needed; the switch already exhausts valid values and the `_never` default catches anything else at compile time AND runtime. Wrap the loop in `ApplicationModel.transaction(async txn => { ... })` only when the action genuinely needs atomicity — extra transaction overhead isn't free.
 
 ## Testing Patterns
 
