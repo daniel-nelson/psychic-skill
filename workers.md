@@ -486,6 +486,24 @@ export default (workersApp: PsychicAppWorkers) => {
 }
 ```
 
+### Redis TLS
+
+Pass `tls: {}` (or a full `tls.ConnectionOptions` object) to the `ioredis` constructor in both `defaultQueueConnection` and `defaultWorkerConnection` to opt into TLS:
+
+```typescript
+new Redis({
+  host: AppEnv.string('BG_JOBS_REDIS_HOST'),
+  port: AppEnv.integer('BG_JOBS_REDIS_PORT'),
+  tls: {},
+})
+```
+
+See the ioredis README and Node's `tls.connect` docs for the option shape and the connection-trust defaults.
+
+### Retry and failure handling
+
+The boilerplate `defaultJobOptions` ships `attempts: 20` with exponential `backoff` and `removeOnFail: 20000`. BullMQ's `failed` set is the dead-letter queue; the boilerplate defaults are the canonical retry-and-DLQ pattern. See the BullMQ docs for `QueueEvents` and bespoke DLQ patterns beyond this default.
+
 ## Testing Workers
 
 ### Default: Immediate Invocation
