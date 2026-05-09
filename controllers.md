@@ -769,6 +769,12 @@ Psychic automatically converts certain errors to HTTP responses:
 
 All validation-layer errors return 400 by design — this prevents attackers from distinguishing which layer rejected a request. To explicitly return 422 with field-level validation errors intended for the end user, call `this.unprocessableContent({ errors: { fieldName: ['message'] } })`.
 
+## Rate Limiting
+
+Psychic does not bundle rate-limiting. Neither does Koa nor socket.io. **Handle this at the edge** — WAF, CDN, reverse proxy, or API gateway. Connection-exhaustion attacks (SlowLoris, SYN floods, packet-level abuse) can only be solved at the edge; by the time traffic reaches the Node event loop the damage is done.
+
+Only fall back to a Koa-compatible middleware when you need fine-grained per-route or per-user limits the edge layer cannot express (e.g., "5 login attempts per IP+account per 15 minutes"). When you do, consult current best practices to pick a package — **don't hand-roll** a `Map`-based limiter; in-process counters don't coordinate across pods, and the failure modes are subtle.
+
 ## Logging
 
 Use `PsychicApp.log` and `PsychicApp.logWithLevel` for all application logging. They route through Dream's configured logger (Winston by default) so output respects the log level, the configured transports, and any structured-log format the app sets.
