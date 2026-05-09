@@ -799,6 +799,26 @@ psy.set('encryption', {
 
 The optional `legacy` key enables seamless key rotation: `getCookie()` first tries the `current` key, and if decryption fails, retries with the `legacy` key.
 
+#### Generating keys
+
+Two ways to produce a key for any of the encryption use cases (encrypted columns, cookie encryption, generalized `Encrypt` library use):
+
+```bash
+# CLI generator — primary; defaults to aes-256-gcm.
+# --algorithm accepts aes-256-gcm | aes-192-gcm | aes-128-gcm.
+pnpm psy g:encryption-key
+pnpm psy g:encryption-key --algorithm aes-128-gcm
+```
+
+```typescript
+// Programmatic equivalent — useful in tests, fixtures, or one-off scripts.
+import { Encrypt } from '@rvoh/dream'
+
+const key = Encrypt.generateKey('aes-256-gcm')
+```
+
+Never hand-type encryption keys. Use one of these helpers and feed the result through your secrets manager (AWS Secrets Manager, SSM Parameter Store, Vault, etc.) into `AppEnv`.
+
 ### Decrypting Cookies Outside a Controller
 
 Koa middleware that runs outside Psychic's controller layer (e.g., protecting a bull-board dashboard) cannot use `this.getCookie()`. To decrypt a Psychic-encrypted cookie in plain middleware, use `Encrypt` from Dream directly:

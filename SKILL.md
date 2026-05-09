@@ -119,6 +119,7 @@ pnpm psy g:model ModelName field:type                # When model won't be HTTP-
 pnpm psy g:controller Path/Name action1 action2
 pnpm psy g:migration description                     # For schema changes without a new model
 pnpm psy g:sti-child Model/Child extends Parent field:type
+pnpm psy g:encryption-key [--algorithm aes-256-gcm]   # Generate a key for @Encrypted / cookie encryption
 
 # Testing & Quality
 pnpm uspec                       # Unit specs
