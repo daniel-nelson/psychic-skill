@@ -399,6 +399,19 @@ public async create() {
 
 ## Parameter Handling
 
+### Request body size limits
+
+`koa-bodyparser` defaults to `jsonLimit: '1mb'` and `formLimit: '56kb'`. Requests larger than these reject with a 413 before reaching the action. Override via `psy.set('json', { ... })` in `conf/app.ts`:
+
+```typescript
+psy.set('json', {
+  jsonLimit: '5mb',
+  formLimit: '500kb',
+})
+```
+
+See the [koa-bodyparser README](https://github.com/koajs/bodyparser) for the full option surface. Tune to the largest legitimate payload your endpoints accept; DoS protection against oversized payloads belongs at the edge (see [Rate Limiting](#rate-limiting) above), not at the body-parser layer.
+
 ### castParam Types
 
 ```typescript
