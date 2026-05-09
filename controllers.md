@@ -631,9 +631,58 @@ public async update() {
 }
 ```
 
+#### Nested model-driven shapes — multi-resource creation
+
+When a request body bundles multiple Dream models — typically a parent plus a one-shot array of children — use the `for: Model` sentinel inside `combining` (or `combining.<key>.items` for arrays). It produces an inline object schema derived from the model's `paramSafeColumns`, the same shape `extractImplicitParams(Model)` would accept. Use `OpenAPI.forDream(Model, opts)` as the typed wrapper: `only` / `including` / `required` are constrained at compile time to that model's column names, so a misspelled column raises a TS error instead of silently dropping out of the OpenAPI shape.
+
+The nested `for:` sentinel is **request-only** — response shapes still use `$serializable` / `$serializer`.
+
+**BearBnB worked example.** A single `POST /host/places` that creates a `Place` and an array of `Room`s atomically:
+
+```typescript
+import { Place, Room } from '@app/models'
+import { OpenAPI } from '@rvoh/psychic'
+
+@OpenAPI(Place, {
+  status: 201,
+  tags: ['places'],
+  fastJsonStringify: true,
+  requestBody: {
+    including: ['name', 'style', 'sleeps'],
+    combining: {
+      // Nested array of Room shapes, each derived from Room's paramSafeColumns.
+      // OpenAPI.forDream's generic narrows `required` to Room column names —
+      // a typo here is a compile error.
+      rooms: {
+        type: 'array',
+        items: OpenAPI.forDream(Room, {
+          required: ['type', 'name'],
+        }),
+      },
+    },
+  },
+})
+public async create() {
+  const placeAttrs = this.extractParams(Place, ['name', 'style', 'sleeps'])
+  const roomsAttrs = this.extractParams(Room, ['type', 'name'], { key: 'rooms', array: true })
+
+  const place = await ApplicationModel.transaction(async txn => {
+    const created = await Place.txn(txn).create({ ...placeAttrs, host: this.currentHost })
+    for (const r of roomsAttrs) {
+      await Room.txn(txn).create({ ...r, place: created })
+    }
+    return created
+  })
+
+  this.created(await place.loadFor('default').execute())
+}
+```
+
+The OpenAPI shape and the `extractParams` calls stay aligned: the spec advertises `{ name, style, sleeps, rooms: [{ type, name }, ...] }`, and the action extracts each model's params with its own allowlist. Wrap the writes in `ApplicationModel.transaction` so a failed Room rolls back the Place — partial-creation is rarely the desired failure mode for bundled requests.
+
 #### Anti-patterns
 
-- **Don't list model columns inside `combining`.** `combining` adds fields that are *not* on the model. Listing real columns there either silently duplicates the auto-derived shape or shadows it with a hand-typed copy that drifts (e.g., a `{ enum: [...] }` redeclaration that goes stale when the DB enum changes).
+- **Don't list model columns inside `combining`.** `combining` adds fields that are *not* on the model. Listing real columns there either silently duplicates the auto-derived shape or shadows it with a hand-typed copy that drifts (e.g., a `{ enum: [...] }` redeclaration that goes stale when the DB enum changes). Use `OpenAPI.forDream(Model, ...)` (or the nested `for:` sentinel) when the value is itself a Dream-model shape.
 - **Don't write `properties:` inside `requestBody`.** It is not one of the four shorthand options. If your body has required non-model fields, drop the shorthand entirely and use the explicit `type: 'object'` / `properties` / `required` form (next subsection).
 
 #### When the body has no model fields
