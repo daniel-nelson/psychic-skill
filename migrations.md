@@ -129,6 +129,11 @@ Step 3 must happen before step 4. `db:migrate` runs migrations then sync. The sy
 ```
 
 ### JSON
+
+Reaching for `json` or `jsonb` should be a stop-and-reconsider moment, not a default. These column types carry no schema, so Dream's column-type inference, validation surface, and Psychic's auto-derived OpenAPI request/response shapes all short-circuit at that field — the column becomes an untyped blob from the framework's perspective, and every consumer has to re-derive the shape by hand.
+
+Before adding one, work through whether the data is really shaped like an associated model. Repeated keys with their own lifecycle (created/updated/deleted independently, queried by value, validated per-row) almost always want their own table with a HasMany / BelongsTo. A bounded set of attributes that always travel with the parent row usually wants real columns. Reach for `jsonb` only when the data is genuinely schemaless or polymorphic in a way no relational shape captures (third-party webhook payloads stored verbatim, opaque per-tenant configuration, audit snapshots), and write down in the migration *why* the relational alternative was rejected.
+
 ```typescript
 .addColumn('metadata', 'jsonb')
 .addColumn('settings', 'json')  // Prefer jsonb
