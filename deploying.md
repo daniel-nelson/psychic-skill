@@ -54,33 +54,52 @@ If the proxy terminates TLS and forwards plain HTTP to the container, no additio
 
 ## Postgres TLS
 
-`SingleDbCredential` accepts an `ssl?: boolean | tls.ConnectionOptions` field that flows directly to the underlying `pg.Pool` connection. Precedence: explicit `ssl` wins > legacy `useSsl: true` (which falls back to unverified TLS for backward compatibility with hosted Postgres) > TLS off.
+`SingleDbCredential` accepts an `ssl?: TlsConnectionOptions | false` field that flows directly to the underlying `pg.Pool` connection. The bare `ssl: true` shorthand is rejected — callers must choose explicitly between verified TLS (`{ rejectUnauthorized: true }`) and unverified TLS (`{ rejectUnauthorized: false }`). `ssl: false` is the explicit TLS-off sentinel.
+
+`app.set('db', ...)` throws `MissingDbSslDirective` at setter time — in every environment, not just production — if neither `ssl` nor the legacy `useSsl` is set on a credential. Silently defaulting to TLS-off was the previous behavior; removing that default is intentional, so the call site has to make TLS posture explicit.
+
+The `create-psychic` boilerplate ships verified TLS via the system CA store as the default, with `DB_NO_SSL=true` as the explicit-off escape hatch:
 
 ```typescript
-// Verified TLS using the system CA store (preferred when the DB cert chains to a public CA)
+const dbSsl: { rejectUnauthorized: true } | false = AppEnv.boolean('DB_NO_SSL')
+  ? false
+  : { rejectUnauthorized: true }
+
+app.set('db', {
+  primary: { /* host, port, user, password, database */ ssl: dbSsl },
+  replica: hasReplica ? { /* ... */ ssl: dbSsl } : undefined,
+})
+```
+
+Most managed Postgres providers (Supabase, Neon, Render, Azure Database for PostgreSQL Flexible Server) present a public-CA-signed certificate and work with the boilerplate default. Other providers need an explicit override at the call site:
+
+| Provider | Required `ssl` value |
+|---|---|
+| Supabase, Neon, Render, Azure Database for PostgreSQL Flexible Server | `{ rejectUnauthorized: true }` (boilerplate default) |
+| AWS RDS | `{ rejectUnauthorized: true, ca: readFileSync('rds-ca.pem') }` |
+| GCP Cloud SQL | `{ rejectUnauthorized: true, ca: readFileSync('server-ca.pem') }` |
+| Heroku Hobby, some local Docker images | `{ rejectUnauthorized: false }` |
+| Local dev with no TLS | `ssl: false` or `DB_NO_SSL=true` |
+
+```typescript
+// Verified TLS with a pinned CA — e.g., AWS RDS
 const credential: SingleDbCredential = {
   // ...host, port, user, password, database
-  ssl: true,
-}
-
-// Verified TLS with a pinned CA (preferred for managed Postgres with a custom root, e.g., RDS)
-const credential: SingleDbCredential = {
-  // ...
   ssl: {
     rejectUnauthorized: true,
     ca: AppEnv.string('PG_CA_CERT'),
   },
 }
 
-// Unverified TLS — only when the deployment environment forces it (e.g., legacy hosted DBs
-// without a published CA bundle). Document the rationale alongside.
+// Unverified TLS — the self-signed-cert path. Only when the provider serves a cert that
+// doesn't chain to a known root (Heroku Hobby, some local Docker images). Not the default.
 const credential: SingleDbCredential = {
   // ...
   ssl: { rejectUnauthorized: false },
 }
 ```
 
-Existing apps that set `useSsl: true` keep working — the boilerplate falls back to `{ rejectUnauthorized: false }` for compatibility with RDS / Heroku / Supabase. New apps should opt into verified TLS via `ssl` instead.
+Existing apps generated under the previous boilerplate may still set `useSsl: true`; that keeps working but is deprecated and will be removed in a future major. The migration is to switch the credential to an explicit `ssl` value chosen from the matrix above — new apps already opt into verified TLS by default, so this only affects apps scaffolded before this change.
 
 ## Debugging a Deployed Psychic Service
 

@@ -526,7 +526,27 @@ The exclusion of FKs is intentional — the OpenAPI spec advertises them via `in
 
 #### Generator output
 
-`psy g:resource` (and related generators) emit `extractParams(Model, [<full default-safe list>], { ... })` with the model's safe columns materialized into the array. Edit the list in the generated controller to remove anything that endpoint shouldn't accept — start from the full set, delete what doesn't belong.
+`psy g:resource` (and related generators) emit a shared `paramSafeColumns` const at the top of the controller file and reference it from every `create` / `update` action, so the allowlist stays visible at the call site without duplicating the array per action:
+
+```typescript
+const openApiTags = ['posts']
+
+const paramSafeColumns = ['title', 'body'] as const
+
+export default class PostsController extends AuthedController {
+  public async create() {
+    const post = await Post.create(this.extractParams(Post, paramSafeColumns))
+    this.created(post)
+  }
+
+  public async update() {
+    await (await this.post()).update(this.extractParams(Post, paramSafeColumns))
+    this.noContent()
+  }
+}
+```
+
+Edit the shared `paramSafeColumns` const to remove anything the endpoints shouldn't accept — every action picks up the change automatically. Admin and non-admin scaffolds emit the same shape.
 
 ## Response Methods
 
