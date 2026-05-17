@@ -78,6 +78,19 @@ Factory conventions:
 - Provide sensible defaults for all required fields
 - Accept overrides via spread
 
+**Reused-enum placeholder.** When a model column reuses an existing enum (shorthand `name:enum:enum_type_name`, no inline values), the generator can't see the enum's values and emits a TS-rejecting `'TODO'` placeholder paired with a comment hint:
+
+```typescript
+// TODO: replace with a value from the `messaging_channels` enum
+resolvedChannel: 'TODO',
+
+// Array form
+// TODO: replace with a value from the `post_tags` enum
+tags: ['TODO'],
+```
+
+`'TODO'` is not in the enum's literal union, so `pnpm build:test-app` fails fast at the factory until the placeholder is replaced — preferable to a runtime NOT NULL / enum-mismatch surprise the first time the factory runs. The declare-with-values shorthand (`name:enum:type:val1,val2`) keeps emitting the first listed value as before.
+
 ### Factories with Associations
 
 ```typescript

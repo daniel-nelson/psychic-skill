@@ -135,7 +135,8 @@ Reaching for `json` or `jsonb` should be a stop-and-reconsider moment, not a def
 Before adding one, work through whether the data is really shaped like an associated model. Repeated keys with their own lifecycle (created/updated/deleted independently, queried by value, validated per-row) almost always want their own table with a HasMany / BelongsTo. A bounded set of attributes that always travel with the parent row usually wants real columns. Reach for `jsonb` only when the data is genuinely schemaless or polymorphic in a way no relational shape captures (third-party webhook payloads stored verbatim, opaque per-tenant configuration, audit snapshots), and write down in the migration *why* the relational alternative was rejected.
 
 ```typescript
-.addColumn('metadata', 'jsonb')
+.addColumn('metadata', 'jsonb', col => col.notNull().defaultTo(sql`'{}'::jsonb`))
+.addColumn('config', 'jsonb')  // Optional — null is the initial state
 .addColumn('settings', 'json')  // Prefer jsonb
 ```
 
@@ -294,7 +295,7 @@ export async function up(db: Kysely<any>): Promise<void> {
 
 Delete behaviors: `'restrict'`, `'cascade'`, `'no action'`, `'set null'`
 
-**Self-referential FKs:** The generator names the column after the model (e.g., `Room:belongs_to:optional` on Room creates `room_id`). For a clearer name like `parent_room_id`, rename the column in the generated migration before running it, then update the model's `@deco.BelongsTo` to use `on: 'parentRoomId'`.
+**Self-referential FKs:** The generator names the column after the model (e.g., `Room:belongs_to:optional` on Room creates `room_id`). For a clearer name like `parent_id`, use the `@alias` shorthand (`Room@parent:belongs_to:optional` produces `parent_id` and `parent: Room`) — see the BelongsTo alias section below. Hand-edit the migration only when the alias shorthand can't express what you need.
 
 **Always create indexes for foreign keys:**
 ```typescript
@@ -477,8 +478,45 @@ data:jsonb                     # jsonb
 tags:string[]                  # varchar(255)[]
 scores:integer[]               # integer[]
 status:enum:statuses:active,inactive         # Create enum + column
+status:enum:statuses                          # Reuse existing enum (factory emits 'TODO')
 types:enum[]:room_types:bathroom,bedroom     # Enum array
 User:belongs_to                # user_id FK
 User:belongs_to:optional       # nullable FK
+User@created_by:belongs_to     # created_by_id FK, createdBy assoc (aliased)
+Messaging/Template@template:belongs_to   # template_id FK (namespace stripped)
 encrypted_phone:encrypted      # encrypted text column
 ```
+
+### Aliased BelongsTo shorthand (`Model@alias:belongs_to`)
+
+A `@alias` suffix on segment-1 of the `belongs_to` shorthand drives three identifiers from a single snake_case token:
+
+| Identifier | Derived from | Example |
+|---|---|---|
+| FK column name | `${alias}_id` | `canceled_by_id` |
+| Typed FK property | `${alias}Id` (camelized) | `canceledById: DreamColumn<...>` |
+| BelongsTo association | `${alias}` (camelized) | `canceledBy: InternalUser` |
+
+```bash
+pnpm psy g:model Messaging/MessageRequest \
+  InternalUser@canceled_by:belongs_to:optional \
+  Messaging/Template@template:belongs_to
+```
+
+Generates:
+
+```typescript
+@deco.BelongsTo('InternalUser', { on: 'canceledById', optional: true })
+public canceledBy: InternalUser | null
+public canceledById: DreamColumn<MessageRequest, 'canceledById'>
+
+@deco.BelongsTo('Messaging/Template', { on: 'templateId' })
+public template: MessagingTemplate
+public templateId: DreamColumn<MessageRequest, 'templateId'>
+```
+
+**Canonical use case** — the `_by` pattern: `User@created_by`, `User@approved_by`, `InternalUser@canceled_by`. Lets one model carry multiple FKs to the same target without collision (`Messaging/Message@last_inbound:belongs_to`, `Messaging/Message@last_outbound:belongs_to`, etc.).
+
+**Secondary use case** — namespace strip: `Messaging/Template@template:belongs_to` produces `template: MessagingTemplate` rather than `messagingTemplate: MessagingTemplate`. Useful when the namespace is organizational rather than semantic.
+
+The legacy form (`Model:belongs_to[:optional]`) is unchanged: with no alias, the property/column derive from the model's last namespace segment. Works in every generator that accepts `belongs_to`: `g:model`, `g:sti-child`, `g:migration`, `g:resource`.

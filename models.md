@@ -35,12 +35,20 @@ Use the serializer `precision` option (`.attribute('latitude', { precision: 7 })
 
 ## Decorator Setup
 
-Each model creates its own decorator instance:
+Each model creates its own decorator instance. Generators emit the active form when the model declares any field-level `@deco.*` decorator (`@deco.BelongsTo`, `@deco.Validates`, `@deco.Encrypted`, etc.), and a commented form otherwise — with `Decorators` dropped from the merged `@rvoh/dream` import so ESLint doesn't flag it as unused:
 
 ```typescript
+// Models that use @deco.* decorators (active form):
 import { Decorators } from '@rvoh/dream'
 const deco = new Decorators<typeof MyModel>()
+
+// Freshly generated models with no field-level decorators (commented form):
+// Uncomment when adding decorators (@deco.BelongsTo, @deco.Validates, etc.):
+// import { Decorators } from '@rvoh/dream'
+// const deco = new Decorators<typeof MyModel>()
 ```
+
+STI children and `@SoftDelete`-decorated models follow the same rule for the field-level `Decorators` import — `STI` and `SoftDelete` are class-level decorators imported directly from `@rvoh/dream` and are unaffected by this rule.
 
 ## Associations - Full Reference
 

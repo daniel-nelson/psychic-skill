@@ -101,6 +101,32 @@ const credential: SingleDbCredential = {
 
 Existing apps generated under the previous boilerplate may still set `useSsl: true`; that keeps working but is deprecated and will be removed in a future major. The migration is to switch the credential to an explicit `ssl` value chosen from the matrix above — new apps already opt into verified TLS by default, so this only affects apps scaffolded before this change.
 
+## Migrations in Production Deploys
+
+### The migrate task is the boot smoke test
+
+Running `node ./dist/src/conf/system/cli.js db:migrate` exercises the full Psychic boot chain before applying any migrations:
+
+1. Node boot on the deployed image.
+2. `loadEnv` resolves the environment (including any external-secret injection wired through `AppEnv`).
+3. `AppEnv` materializes — every required env var is validated and the application halts with a clear error if anything is missing.
+4. The Psychic registry initializes — every module that registers on import (models, serializers, controllers, routes, workers, websocket channels) runs its top-level side effects.
+5. A database connection is established using the configured credentials, including TLS negotiation against the resolved `ssl` value.
+
+Only then does Kysely start applying pending migrations. Any failure in steps 1–5 fails the migrate task before the schema changes — which means a no-op "boot smoke" task that only waits for the container to reach a running state is redundant. The migrate task itself is the smoke test, and it covers strictly more than container liveness: missing env vars, registry-time import errors, malformed DB credentials, TLS handshake failures, and network reachability all surface here.
+
+### Combine `db:migrate && db:seed` in one invocation
+
+Migrate and seed share the same image, the same execution role, the same env, and the same DB credentials. On serverless container platforms (anything where each one-off task pays a fixed scheduling and image-pull overhead before the container starts), invoking them as two separate one-off tasks pays the per-task lifecycle twice for no reason — including the case where seed is a no-op `if (AppEnv.isTest) return`.
+
+Combine them in a single container invocation, preserving exit-zero semantics via shell-and:
+
+```bash
+sh -c "node ./dist/src/conf/system/cli.js db:migrate && node ./dist/src/conf/system/cli.js db:seed"
+```
+
+If migrate fails, seed never runs and the task exits non-zero. If migrate succeeds and seed fails, the task exits non-zero with seed's error — the same shape your deploy script would see from a separate seed invocation.
+
 ## Debugging a Deployed Psychic Service
 
 When a deployed Psychic service is not responding correctly:
