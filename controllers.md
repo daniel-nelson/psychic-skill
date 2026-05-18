@@ -1067,10 +1067,10 @@ if (encrypted) {
       PsychicApp.logWithLevel('warn', 'cookie decryption failed', { reason: err.message })
       return // treat this request as unauthenticated
     }
-    // DecryptionParseError (or anything else): decryption *succeeded* but
-    // the plaintext was not the shape we wrote — that is OUR bug, not a
-    // bad cookie. Let it propagate to the error handler (500). Swallowing
-    // it as "auth failure" is exactly the signal-loss the audit flagged.
+    // DecryptionParseError: decryption *succeeded* but the plaintext was
+    // not the shape we wrote — that is OUR bug, not a bad cookie. Let it
+    // propagate to the error handler (500). Swallowing it as "auth
+    // failure" is exactly the signal-loss the audit flagged.
     throw err
   }
   // ...use decrypted (already the parsed object, not a JSON string)
