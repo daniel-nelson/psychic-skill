@@ -1067,10 +1067,14 @@ if (encrypted) {
       PsychicApp.logWithLevel('warn', 'cookie decryption failed', { reason: err.message })
       return // treat this request as unauthenticated
     }
-    // DecryptionParseError: decryption *succeeded* but the plaintext was
-    // not the shape we wrote — that is OUR bug, not a bad cookie. Let it
-    // propagate to the error handler (500). Swallowing it as "auth
-    // failure" is exactly the signal-loss the audit flagged.
+    // DecryptionParseError: the key was correct and the ciphertext intact
+    // (cipher + auth tag validated), but the decrypted plaintext was not
+    // valid JSON. Encrypt.decrypt always JSON.parses, so this is a
+    // format/contract mismatch, not tampering and not a wrong key — e.g.
+    // a non-JSON value passed into Encrypt.encrypt on our side, or (with a
+    // shared key from another service) their payload not matching the
+    // JSON-wrapped shape Encrypt expects. Never an auth outcome; let it
+    // propagate to the error handler (500) so the mismatch is visible.
     throw err
   }
   // ...use decrypted (already the parsed object, not a JSON string)
@@ -1086,11 +1090,11 @@ The `catch` exists to convert an untrusted-input failure into an auth decision *
 - `decrypt` returns the **already-`JSON.parse`d** value, not a string. Don't `JSON.parse` the result again.
 - `null` / `undefined` ciphertext returns `null` (no throw). A missing key throws `MissingEncryptionKey`.
 - **`DecryptionError`** — cipher op / auth-tag / payload-shape was invalid: the ciphertext was tampered with, corrupted, or encrypted with a different key. This is the untrusted-input signal — the legitimate "treat as unauthenticated" case for user-controlled ciphertext like a session cookie.
-- **`DecryptionParseError`** — decryption *succeeded* but the plaintext was not valid JSON. This is **not** tampering and **not** an auth failure: it means a non-JSON value was passed into `Encrypt.encrypt` (an encrypted-format mismatch — your bug). Let it propagate to the error handler as a 500; swallowing it as "auth failure" hides the defect.
-- **Three-argument form** `decrypt(ciphertext, currentOpts, legacyOpts)` tries the current key, and on `DecryptionError` only falls back to the legacy key. If both fail with `DecryptionError`, it throws **`DecryptionRotationError`** carrying `.currentKeyError` and `.legacyKeyError`. A `DecryptionParseError` from the current key is **not** retried against the legacy key and **not** wrapped — the cipher already matched, so a parse failure is an app bug, and it propagates as `DecryptionParseError` directly.
+- **`DecryptionParseError`** — the cipher and auth tag validated (correct key, untampered ciphertext) but `JSON.parse` of the decrypted plaintext threw. `Encrypt.decrypt` always `JSON.parse`s the plaintext — it cannot return a raw string — so this is strictly a **format/contract mismatch**, not tampering and not a wrong key. With ciphertext you produced via `Encrypt.encrypt`, it means a non-JSON value was encrypted (your bug). With a shared key from another service, it usually means that service's payload doesn't match the JSON-wrapped shape `Encrypt` expects (their encoder, or the cross-service contract). Either way it is **never** an auth failure: let it propagate to the error handler as a 500 so the mismatch surfaces; swallowing it as "auth failure" hides the defect.
+- **Three-argument form** `decrypt(ciphertext, currentOpts, legacyOpts)` tries the current key, and on `DecryptionError` only falls back to the legacy key. If both fail with `DecryptionError`, it throws **`DecryptionRotationError`** carrying `.currentKeyError` and `.legacyKeyError`. A `DecryptionParseError` from the current key is **not** retried against the legacy key and **not** wrapped — the cipher already matched (right key, intact ciphertext), so a non-JSON plaintext is a format/contract mismatch rather than a key problem, and it propagates as `DecryptionParseError` directly.
 - The `@Encrypted` model decorator propagates these errors up to the app's error handler — there's no try/catch inside the decorator. Keys *and* ciphertext for an encrypted column are both system-controlled, so any decryption error there is a corrupted column or a broken rotation, not untrusted input: it should fail loudly, never be caught and nulled.
 
-The asymmetry is deliberate. **User-controlled ciphertext** (a session cookie, a token from a header) is the only place where catching is ever correct, and even there only `DecryptionError` (the single-key stale/forged case) is caught-and-converted to unauthenticated with a `warn` log. `DecryptionRotationError` defaults to rethrow — a broken rotation is a configuration defect that must fail loudly at deploy, not a per-request auth outcome; only downgrade it to log-and-unauthenticated as a conscious, reversible decision after the rotation has proven stable in production. **System-controlled ciphertext** (`@Encrypted` columns, internal share tokens) propagates untouched in every case. And `DecryptionParseError` is always an app bug, never an auth outcome. If you do adopt the log-and-continue downgrade for a prolonged rotation, treat a rising rate of `DecryptionRotationError` as a rotation-misconfiguration alarm wired into monitoring — but prefer the throw, which needs no one watching a dashboard.
+The asymmetry is deliberate. **User-controlled ciphertext** (a session cookie, a token from a header) is the only place where catching is ever correct, and even there only `DecryptionError` (the single-key stale/forged case) is caught-and-converted to unauthenticated with a `warn` log. `DecryptionRotationError` defaults to rethrow — a broken rotation is a configuration defect that must fail loudly at deploy, not a per-request auth outcome; only downgrade it to log-and-unauthenticated as a conscious, reversible decision after the rotation has proven stable in production. **System-controlled ciphertext** (`@Encrypted` columns, internal share tokens) propagates untouched in every case. And `DecryptionParseError` is always a format/contract mismatch (your encoder or a cross-service one), never an auth outcome. If you do adopt the log-and-continue downgrade for a prolonged rotation, treat a rising rate of `DecryptionRotationError` as a rotation-misconfiguration alarm wired into monitoring — but prefer the throw, which needs no one watching a dashboard.
 
 ### Setting Cookies for External Services (Bypassing Encryption)
 
