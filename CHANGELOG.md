@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.35.0 — 2026-05-18
+
+### Added
+
+- **`models.md`** — new "Anchor polymorphism to a stable model" design note in the polymorphic-association section. When a record participates polymorphically in more than one direction, introduce a stable join model that owns the participant polymorphism and acts as the fixed boundary, rather than stacking polymorphic ownership onto an already-generic model. Includes a BearBnB-domain shape (`ConversationParticipant` → polymorphic `Guest | Host`; `ConversationThread.context` → polymorphic `Booking | Place | ...`) showing why each model should have exactly one polymorphic association to reason about.
+
 ## 0.34.2 — 2026-05-18
 
 ### Changed

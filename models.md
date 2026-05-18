@@ -103,6 +103,21 @@ public placeId: DreamColumn<Booking, 'placeId'>
 | `primaryKeyOverride` | column name \| null | Override the primary key column used for the join (defaults to `id`) |
 | `withoutDefaultScopes` | scope name[] | Default scopes to skip when loading this association |
 
+#### Anchor polymorphism to a stable model
+
+When a record participates polymorphically in more than one direction, don't stack the polymorphic ownership directly onto a model that also has to stay generic elsewhere — the association shape becomes ambiguous and call sites get hard to read. Introduce a stable join model that owns the participant polymorphism and acts as the fixed boundary; the other polymorphic axis hangs off that boundary instead of off the same generic model.
+
+```text
+ConversationParticipant         # stable table — the polymorphic boundary
+  ├── participant: polymorphic Guest | Host
+  └── conversationThreads
+ConversationThread
+  ├── conversationParticipantId  # plain BelongsTo to the stable model
+  └── context: polymorphic Booking | Place | ...
+```
+
+`ConversationParticipant` is the constant table: its `participant` association resolves to the domain record (`Guest` or `Host`), and the second polymorphic axis (`context`) lives on `ConversationThread` rather than being layered onto the participant. The call site stays readable — `conversationParticipant.participant` and `conversationThread.context` — and each model has exactly one polymorphic association to reason about.
+
 ### HasMany
 
 Foreign key lives on the ASSOCIATED model.
