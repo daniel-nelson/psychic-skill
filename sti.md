@@ -291,6 +291,38 @@ export const RoomBedroomForGuestsSerializer = (
     .rendersMany('bedTypes', { serializer: BedTypeSerializer })
 ```
 
+### Hand-adding a new base-serializer variant (e.g. `forGuests`)
+
+The generator emits a summary + default base-serializer pair for the **default** variant, and *also* emits `Admin`/`AdminSummary` and/or `Internal`/`InternalSummary` variant pairs when those are requested — `g:model` via the `--admin-serializers` / `--internal-serializers` flags, `g:resource` *automatically* when the resource is generated under the `Admin/` or `Internal/` namespace (it infers `forAdmin` / `forInternal` from the controller path). Every generator-emitted variant — including admin and internal — already carries the correct STI base shape and `type` discriminator, and STI children import the matching variant so the chain stays within-variant (admin → admin, internal → internal). **You do not hand-write admin/internal variants.**
+
+The hand-written case is a *bespoke* variant with no corresponding flag or namespace inference — a `forGuests` flavor is the canonical example (there is no guest-serializer flag). A hand-added variant **must replicate the STI base shape itself**. This is the step that's easy to get wrong: an agent adds `RoomForGuestsSerializer` by copying a plain serializer and silently breaks STI discrimination.
+
+Contrast the two shapes. A **non-STI** serializer (e.g. `Place`) takes just the model:
+
+```typescript
+export const PlaceForGuestsSerializer = (place: Place, passthrough: { locale: LocalesEnum }) =>
+  DreamSerializer(Place, place).attribute('id') // ...
+```
+
+An **STI base** serializer — including every hand-added variant — must take `StiChildClass` first, bind `DreamSerializer` to `StiChildClass ?? Parent`, and re-declare the `type` discriminator attribute:
+
+```typescript
+export const RoomForGuestsSerializer = <T extends Room>(
+  StiChildClass: typeof Room,
+  room: T,
+  passthrough: { locale: LocalesEnum },
+) =>
+  DreamSerializer(StiChildClass ?? Room, room)
+    .attribute('id')
+    .attribute('type', { openapi: { type: 'string', enum: [(StiChildClass ?? Room).sanitizedName] } })
+    .customAttribute('displayType', () => i18n(passthrough.locale, `rooms.type.${room.type}`), { openapi: 'string' })
+    // ...child-agnostic guest fields
+```
+
+The three STI-load-bearing parts — the `StiChildClass` parameter, `DreamSerializer(StiChildClass ?? Room, room)`, and the `type` attribute whose OpenAPI `enum` is `[(StiChildClass ?? Room).sanitizedName]` — are exactly what a plain serializer lacks. Each child serializer then calls the variant with its concrete class (`RoomForGuestsSerializer(Kitchen, kitchen, passthrough)`), which is what narrows that child's rendered `type` to a single-value enum (`['Kitchen']`) and binds the serializer to the child's columns.
+
+**Why it matters / what breaks:** the per-child single-value `type` enum is the discriminator that makes the generated OpenAPI a discriminated union, so clients and `fastJsonStringify` know which child shape they received. Drop the `type` attribute (or write the variant in the plain non-STI shape) and every child collapses to one indistinguishable schema. The failure is silent in a unit spec — direct serializer rendering still looks correct — and only shows up over HTTP: under `fastJsonStringify` the response omits child-specific fields. When you see that exact symptom (direct render correct, HTTP response missing STI child fields), suspect a hand-written serializer that lost the `type`/`StiChildClass` shape or the resulting OpenAPI schema — not Dream model instantiation or `preloadFor`.
+
 ## Migration Patterns
 
 The STI `type` column **must** use a database enum type, not `varchar`. The enum values must exactly match the STI child class names.

@@ -457,6 +457,12 @@ export async function session(user: Dream) {
 }
 ```
 
+### Negative specs: the principal still needs its auth role row
+
+A negative controller spec that expects a `403`/`404` from an **ownership** check (e.g. "host A cannot update host B's place") must still give the current principal whatever role row the auth layer requires — a `Host` record, a membership row, etc. If the principal lacks that role, the auth `BeforeAction` returns `403` *before* the controller's ownership lookup ever runs. The spec goes green, but for the wrong reason: it's asserting "no host role → 403", not the "wrong owner → 403" it claims to exercise. The ownership branch is never executed and silently loses coverage.
+
+Set up the negative spec so the principal is fully authenticated and authorized *as far as the auth layer is concerned*, and only the ownership relationship is wrong. A quick check: the same request with the *correct* owner should return success in a sibling positive spec using identical role setup — if it doesn't, your negative spec is tripping the auth gate, not the ownership gate.
+
 ## Key Test Matchers
 
 ```typescript

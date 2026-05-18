@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.36.0 — 2026-05-18
+
+### Added
+
+- **`sti.md`** — new "Hand-adding a new base-serializer variant (e.g. `forGuests`)" subsection in Serializer Patterns. Clarifies that the generator emits the default variant pair and *also* `Admin`/`Internal` variant pairs when requested (`g:model` via `--admin-serializers`/`--internal-serializers`; `g:resource` auto-inferred from the `Admin/`/`Internal/` namespace) — all generator-emitted variants already carry the correct STI shape, so admin/internal are not hand-written. Only a bespoke variant with no flag/namespace inference (e.g. `forGuests`) is hand-written, and it must replicate the STI base shape (`StiChildClass` parameter, `DreamSerializer(StiChildClass ?? Parent, model)`, and the `type` attribute whose OpenAPI `enum` is `[(StiChildClass ?? Parent).sanitizedName]`). Contrasts a plain non-STI serializer so the three STI-load-bearing parts are legible, explains that the per-child single-value `type` enum is the discriminator making the OpenAPI a discriminated union, and documents the silent failure mode: a hand-written variant that loses the shape renders correctly in a unit spec but drops child-specific fields over HTTP under `fastJsonStringify` — suspect the serializer/OpenAPI schema, not model instantiation or `preloadFor`.
+- **`testing.md`** — new "Negative specs: the principal still needs its auth role row" subsection after the Authentication Helper. A negative controller spec expecting a `403`/`404` from an ownership check must still give the current principal whatever role row the auth layer requires, or the auth `BeforeAction` returns `403` before the ownership lookup runs — the spec passes for the wrong reason and silently loses coverage of the branch it claims to exercise. Includes the sibling-positive-spec sanity check.
+
 ## 0.35.0 — 2026-05-18
 
 ### Added
