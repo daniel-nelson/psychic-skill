@@ -120,11 +120,12 @@ export default class AuthedController extends ApplicationController {
   @BeforeAction()
   protected async authenticate() {
     const token = (this.header('authorization') ?? '').split(' ').at(-1)!
-    const decrypted = Encrypt.decrypt(token, {
+    // Encrypt.decrypt returns the already-parsed value — do not JSON.parse again.
+    const decrypted = Encrypt.decrypt<{ userId: string }>(token, {
       algorithm: 'aes-256-gcm',
       key: AppEnv.string('APP_ENCRYPTION_KEY'),
     })
-    const userId = JSON.parse(decrypted)?.userId
+    const userId = decrypted?.userId
     if (!userId) return this.unauthorized()
 
     const user = await User.find(userId)
@@ -1030,35 +1031,60 @@ Never hand-type encryption keys. Use one of these helpers and feed the result th
 Koa middleware that runs outside Psychic's controller layer (e.g., protecting a bull-board dashboard) cannot use `this.getCookie()`. To decrypt a Psychic-encrypted cookie in plain middleware, use `Encrypt` from Dream directly:
 
 ```typescript
-import {
-  Encrypt,
-  DecryptionError,
-  DecryptionParseError,
-  DecryptionWithRotationError,
-} from '@rvoh/dream'
+import { PsychicApp } from '@rvoh/psychic'
+import { Encrypt } from '@rvoh/dream'
+import { DecryptionError, DecryptionRotationError } from '@rvoh/dream/errors'
 
 const encrypted = ctx.cookies.get('cookie_name')
 if (encrypted) {
+  let decrypted: { userId: string } | null
   try {
-    const decrypted = Encrypt.decrypt(encrypted, {
+    decrypted = Encrypt.decrypt<{ userId: string }>(encrypted, {
       algorithm: 'aes-256-gcm',
       key: AppEnv.string('APP_ENCRYPTION_KEY'),
     })
-    // ...use decrypted
   } catch (err) {
-    // Tampered ciphertext, wrong/rotated key, or non-JSON plaintext.
-    // Treat as auth failure.
+    if (err instanceof DecryptionRotationError) {
+      // Both the current AND legacy keys failed. For one request this is a
+      // forged/expired cookie — but a *spike* of these means key rotation
+      // is misconfigured (legacy dropped too early, wrong legacy key) and
+      // every user is silently being logged out. Log loudly so the spike
+      // is visible; this is the signal the silent-null behavior used to bury.
+      PsychicApp.logWithLevel('error', 'cookie decryption failed under key rotation', {
+        currentKeyError: err.currentKeyError.message,
+        legacyKeyError: err.legacyKeyError.message,
+      })
+      return // treat this request as unauthenticated
+    }
+    if (err instanceof DecryptionError) {
+      // Wrong/tampered/stale-key ciphertext. Expected at low volume
+      // (old cookies, forgery attempts); still worth a warn for incident
+      // correlation. A sustained spike is an attack or a key problem.
+      PsychicApp.logWithLevel('warn', 'cookie decryption failed', { reason: err.message })
+      return // treat this request as unauthenticated
+    }
+    // DecryptionParseError (or anything else): decryption *succeeded* but
+    // the plaintext was not the shape we wrote — that is OUR bug, not a
+    // bad cookie. Let it propagate to the error handler (500). Swallowing
+    // it as "auth failure" is exactly the signal-loss the audit flagged.
+    throw err
   }
+  // ...use decrypted (already the parsed object, not a JSON string)
 }
 ```
 
-`Encrypt.decrypt` throws on failure rather than silently returning null:
+The `catch` exists to convert an untrusted-input failure into an auth decision **and emit the security signal** — not to swallow it. The original finding (R-019) was that silent-null *"conflates an attacker attempting forgery with this value never being set, and obscures bugs in app code — loses operationally important signal for incident logs."* A bare `catch { return unauthenticated }` reintroduces exactly that defect: it hides both forgery attempts and a broken key rotation. Distinguish the rotation case specifically, because a spike of `DecryptionRotationError` is the only externally-visible sign that rotation is silently failing. Never blanket-catch (see Critical Rule 13).
 
-- **Two-argument form** `decrypt(ciphertext, key)` throws `DecryptionError` (cipher / auth-tag / shape failure) or `DecryptionParseError` (plaintext is not JSON). `null` / `undefined` input still returns `null`.
-- **Three-argument form** `decrypt(ciphertext, currentKey, legacyKey)` tries `currentKey`, falls back to `legacyKey` on `DecryptionError`. If both keys fail, throws `DecryptionWithRotationError` carrying both per-key errors. **No silent-null on total rotation failure.**
-- The `@Encrypted` model decorator propagates these errors up to the app's error handler — there's no try/catch inside the decorator.
+`Encrypt.decrypt` throws on failure rather than silently returning null, and the three errors export from `@rvoh/dream/errors` (not the `@rvoh/dream` root):
 
-Session cookies contain user-controlled ciphertext, so a thrown error is intentional signal (tampered or wrong-key). Catch it where the policy decision belongs (typically the controller / middleware that's reading the cookie).
+- `decrypt` returns the **already-`JSON.parse`d** value, not a string. Don't `JSON.parse` the result again.
+- `null` / `undefined` ciphertext returns `null` (no throw). A missing key throws `MissingEncryptionKey`.
+- **`DecryptionError`** — cipher op / auth-tag / payload-shape was invalid: the ciphertext was tampered with, corrupted, or encrypted with a different key. This is the untrusted-input signal — the legitimate "treat as unauthenticated" case for user-controlled ciphertext like a session cookie.
+- **`DecryptionParseError`** — decryption *succeeded* but the plaintext was not valid JSON. This is **not** tampering and **not** an auth failure: it means a non-JSON value was passed into `Encrypt.encrypt` (an encrypted-format mismatch — your bug). Let it propagate to the error handler as a 500; swallowing it as "auth failure" hides the defect.
+- **Three-argument form** `decrypt(ciphertext, currentOpts, legacyOpts)` tries the current key, and on `DecryptionError` only falls back to the legacy key. If both fail with `DecryptionError`, it throws **`DecryptionRotationError`** carrying `.currentKeyError` and `.legacyKeyError`. A `DecryptionParseError` from the current key is **not** retried against the legacy key and **not** wrapped — the cipher already matched, so a parse failure is an app bug, and it propagates as `DecryptionParseError` directly.
+- The `@Encrypted` model decorator propagates these errors up to the app's error handler — there's no try/catch inside the decorator. Keys *and* ciphertext for an encrypted column are both system-controlled, so any decryption error there is a corrupted column or a broken rotation, not untrusted input: it should fail loudly, never be caught and nulled.
+
+The asymmetry is deliberate. **User-controlled ciphertext** (a session cookie, a token from a header) is the only case where catching is correct — and only the `DecryptionError` / `DecryptionRotationError` types, where the policy decision (respond unauthenticated) belongs at the controller / middleware reading the value, *with a log line so the attempt is recorded*. **System-controlled ciphertext** (`@Encrypted` columns, internal share tokens) should propagate untouched. Either way, `DecryptionParseError` is an app bug and never an auth outcome. Treat a rising rate of `DecryptionRotationError` in logs as a rotation-misconfiguration alarm — wire it into whatever monitoring would otherwise never notice that every encrypted read is now failing.
 
 ### Setting Cookies for External Services (Bypassing Encryption)
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.34.2 — 2026-05-18
+
+### Changed
+
+- **`controllers.md`** — corrected and deepened the decryption-error guidance. The three errors import from `@rvoh/dream/errors` (not the `@rvoh/dream` root), and the rotation error's real name is `DecryptionRotationError` (was incorrectly `DecryptionWithRotationError`). The "Decrypting Cookies Outside a Controller" example no longer blanket-catches: it discriminates `DecryptionRotationError` (logged at `error` via `PsychicApp.logWithLevel` — a spike means key rotation is silently failing and every user is being logged out) from `DecryptionError` (logged at `warn` — stale/forged cookie) and converts both to an unauthenticated response, while letting `DecryptionParseError` and anything else propagate (decryption succeeded but the plaintext shape was wrong → app bug, 500). Frames the `catch` as "convert to an auth decision *and emit the security signal*," grounded in audit finding R-019 (silent-null lost incident-log signal and hid broken rotation). Documents that `@Encrypted` columns and other system-controlled ciphertext should propagate untouched (never caught/nulled), that `Encrypt.decrypt` returns the already-`JSON.parse`d value, that `null`/`undefined` ciphertext returns `null`, that a missing key throws `MissingEncryptionKey`, and the three-arg rotation semantics (legacy fallback only on `DecryptionError`; a current-key `DecryptionParseError` is neither retried nor wrapped). Fixed the `AuthedController` example's double-parse (`JSON.parse(decrypted)` on an already-parsed object).
+
 ## 0.34.0 — 2026-05-12
 
 ### Changed
