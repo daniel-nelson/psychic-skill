@@ -66,6 +66,8 @@ controllers/
 
 4. **Use generators** to create controllers. `pnpm psy g:resource` and `pnpm psy g:controller` set up the correct inheritance chain automatically.
 
+5. **Custom-token surfaces are still generated, then re-parented.** For a surface authenticated by a custom token rather than the app's normal user/session (a signed public link, a webhook, a partner API), still scaffold the resource/controllers with the generators into their own dedicated namespace — don't hand-roll the shape. Then make one manual change: repoint that namespace's base controller to extend the branch's `UnauthedController` instead of its `AuthedController`, and implement token verification as a `@BeforeAction` on that namespace base controller. This keeps generator conventions and the one-base-controller-per-directory rule while preventing accidental inheritance of the normal session-auth `@BeforeAction`s. Example: a guest opening a booking from an emailed signed link — `V1/Public/Bookings/BaseController` extends `V1/Public/UnauthedController` and verifies a `Booking/AccessToken` in a `@BeforeAction`, loading `currentBooking` from the token rather than from a session user.
+
 ### Verifying the Hierarchy
 
 ```bash

@@ -9,6 +9,8 @@ Common use cases:
 - **Trash can** — hide deleted records from normal queries for a retention period (e.g. 30 days), allow users to browse and restore them, then permanently delete expired records via a scheduled job using `reallyDestroy()`
 - **Data preservation** — retain records for auditing, analytics, or compliance while removing them from the application's active data
 
+**Don't hand-roll a deactivate/delete mechanism.** When you need "removed but recoverable / auditable" semantics, that is exactly what `@SoftDelete()` provides — and generators apply it by default, so a custom `removed`/`isDeleted`/`deactivatedAt` column is almost always redundant and fights the lifecycle (your column won't be honored by `destroy()`/`undestroy()`, the `dream:SoftDelete` default scope, or `dependent: 'destroy'` cascades). A domain status flag is only warranted when it means something *other than* deletion — e.g. an `active` flag that means "currently bookable" while the row is still a live, queryable record. If the flag's real meaning is "this record is gone," delete the flag and use `@SoftDelete`.
+
 ## Setup
 
 The `g:resource` and `g:model` generators automatically include `@SoftDelete()` and a `deleted_at` column. **STI children never receive `@SoftDelete()`** — soft delete is enforced at the STI parent level, and `g:sti-child` does not accept `--no-soft-delete`. The setup below is only needed when adding soft delete to an existing model that was generated with `--no-soft-delete`, or to an STI parent that was originally created without it.
