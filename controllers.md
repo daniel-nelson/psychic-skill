@@ -1039,26 +1039,30 @@ const encrypted = ctx.cookies.get('cookie_name')
 if (encrypted) {
   let decrypted: { userId: string } | null
   try {
-    decrypted = Encrypt.decrypt<{ userId: string }>(encrypted, {
-      algorithm: 'aes-256-gcm',
-      key: AppEnv.string('APP_ENCRYPTION_KEY'),
-    })
+    // Three-arg (rotation) form: current key, with legacy fallback.
+    decrypted = Encrypt.decrypt<{ userId: string }>(
+      encrypted,
+      { algorithm: 'aes-256-gcm', key: AppEnv.string('APP_ENCRYPTION_KEY') },
+      { algorithm: 'aes-256-gcm', key: AppEnv.string('APP_LEGACY_ENCRYPTION_KEY') },
+    )
   } catch (err) {
     if (err instanceof DecryptionRotationError) {
-      // Both the current AND legacy keys failed. For one request this is a
-      // forged/expired cookie — but a *spike* of these means key rotation
-      // is misconfigured (legacy dropped too early, wrong legacy key) and
-      // every user is silently being logged out. Log loudly so the spike
-      // is visible; this is the signal the silent-null behavior used to bury.
-      PsychicApp.logWithLevel('error', 'cookie decryption failed under key rotation', {
-        currentKeyError: err.currentKeyError.message,
-        legacyKeyError: err.legacyKeyError.message,
-      })
-      return // treat this request as unauthenticated
+      // Both the current AND legacy keys failed. Do NOT swallow this as an
+      // auth failure: the default posture is to rethrow so a misconfigured
+      // rotation (wrong legacy key, legacy dropped too early) fails the
+      // FIRST request — caught by smoke tests / health checks at deploy
+      // time, not discovered later in a log nobody is tailing while every
+      // user is being logged out. Only once a rotation has been proven
+      // stable in production for a prolonged window might you deliberately
+      // downgrade this to log-at-error + unauthenticated (so legitimately
+      // expired ciphertext during a long rotation isn't a hard failure).
+      // That downgrade is a conscious, reversible decision — never the
+      // starting point.
+      throw err
     }
     if (err instanceof DecryptionError) {
       // Wrong/tampered/stale-key ciphertext. Expected at low volume
-      // (old cookies, forgery attempts); still worth a warn for incident
+      // (old cookies, forgery attempts); worth a warn for incident
       // correlation. A sustained spike is an attack or a key problem.
       PsychicApp.logWithLevel('warn', 'cookie decryption failed', { reason: err.message })
       return // treat this request as unauthenticated
@@ -1073,7 +1077,9 @@ if (encrypted) {
 }
 ```
 
-The `catch` exists to convert an untrusted-input failure into an auth decision **and emit the security signal** — not to swallow it. The original finding (R-019) was that silent-null *"conflates an attacker attempting forgery with this value never being set, and obscures bugs in app code — loses operationally important signal for incident logs."* A bare `catch { return unauthenticated }` reintroduces exactly that defect: it hides both forgery attempts and a broken key rotation. Distinguish the rotation case specifically, because a spike of `DecryptionRotationError` is the only externally-visible sign that rotation is silently failing. Never blanket-catch (see Critical Rule 13).
+The `catch` exists to convert an untrusted-input failure into an auth decision **and emit the security signal** — not to swallow it. The original finding (R-019) was that silent-null *"conflates an attacker attempting forgery with this value never being set, and obscures bugs in app code — loses operationally important signal for incident logs."* A bare `catch { return unauthenticated }` reintroduces exactly that defect: it hides both forgery attempts and a broken key rotation.
+
+`DecryptionRotationError` is reachable only from the three-argument (current + legacy) form, and its safe default is to **rethrow**, not log-and-continue. A logged-and-swallowed rotation error still ships a broken rotation to production; a thrown one fails the first request at deploy time, which is exactly when a wrong legacy key or a prematurely-dropped legacy key must be caught. Downgrading it to log-at-error + unauthenticated is a deliberate, reversible posture you adopt *only after* a rotation has run cleanly in production for a prolonged window (so that genuinely expired ciphertext mid-rotation isn't a hard failure) — it is never the starting configuration. `DecryptionError` (single-key / no-rotation path) is the normal stale-or-forged-cookie case: log at `warn` and treat as unauthenticated. Never blanket-catch (see Critical Rule 13).
 
 `Encrypt.decrypt` throws on failure rather than silently returning null, and the three errors export from `@rvoh/dream/errors` (not the `@rvoh/dream` root):
 
@@ -1084,7 +1090,7 @@ The `catch` exists to convert an untrusted-input failure into an auth decision *
 - **Three-argument form** `decrypt(ciphertext, currentOpts, legacyOpts)` tries the current key, and on `DecryptionError` only falls back to the legacy key. If both fail with `DecryptionError`, it throws **`DecryptionRotationError`** carrying `.currentKeyError` and `.legacyKeyError`. A `DecryptionParseError` from the current key is **not** retried against the legacy key and **not** wrapped — the cipher already matched, so a parse failure is an app bug, and it propagates as `DecryptionParseError` directly.
 - The `@Encrypted` model decorator propagates these errors up to the app's error handler — there's no try/catch inside the decorator. Keys *and* ciphertext for an encrypted column are both system-controlled, so any decryption error there is a corrupted column or a broken rotation, not untrusted input: it should fail loudly, never be caught and nulled.
 
-The asymmetry is deliberate. **User-controlled ciphertext** (a session cookie, a token from a header) is the only case where catching is correct — and only the `DecryptionError` / `DecryptionRotationError` types, where the policy decision (respond unauthenticated) belongs at the controller / middleware reading the value, *with a log line so the attempt is recorded*. **System-controlled ciphertext** (`@Encrypted` columns, internal share tokens) should propagate untouched. Either way, `DecryptionParseError` is an app bug and never an auth outcome. Treat a rising rate of `DecryptionRotationError` in logs as a rotation-misconfiguration alarm — wire it into whatever monitoring would otherwise never notice that every encrypted read is now failing.
+The asymmetry is deliberate. **User-controlled ciphertext** (a session cookie, a token from a header) is the only place where catching is ever correct, and even there only `DecryptionError` (the single-key stale/forged case) is caught-and-converted to unauthenticated with a `warn` log. `DecryptionRotationError` defaults to rethrow — a broken rotation is a configuration defect that must fail loudly at deploy, not a per-request auth outcome; only downgrade it to log-and-unauthenticated as a conscious, reversible decision after the rotation has proven stable in production. **System-controlled ciphertext** (`@Encrypted` columns, internal share tokens) propagates untouched in every case. And `DecryptionParseError` is always an app bug, never an auth outcome. If you do adopt the log-and-continue downgrade for a prolonged rotation, treat a rising rate of `DecryptionRotationError` as a rotation-misconfiguration alarm wired into monitoring — but prefer the throw, which needs no one watching a dashboard.
 
 ### Setting Cookies for External Services (Bypassing Encryption)
 
