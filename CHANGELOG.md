@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.37.0 — 2026-05-18
+
+### Added
+
+- **`models.md` + `SKILL.md`** — documented `ClockTime` and `ClockTimeTz` alongside the existing `DateTime`/`CalendarDate` Date/Time guidance. Adds construction examples for time-of-day values, an explicit Postgres-column → Dream-class mapping table (`timestamp`→`DateTime`, `date`→`CalendarDate`, `time`→`ClockTime`, `timetz`→`ClockTimeTz`) noting that `psy sync` makes `DreamColumn<…>` resolve automatically and that `ClockTimeTz` from SQL is interpreted as UTC, and a note that all four classes carry microsecond precision (preserved via API input / DB hydration; `.now()` is millisecond-only at creation since it is JS-`Date`-backed). Critical Rule 3 now names all four classes; its justification is mechanical (these are what `castParam`/`extractParams` return and what the DB hydrates), not capability-based.
+
 ## 0.36.0 — 2026-05-18
 
 ### Added

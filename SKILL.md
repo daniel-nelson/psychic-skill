@@ -28,7 +28,7 @@ All CLI commands in this document are run via the local project's package manage
 
 1. **ALWAYS read the project's `AGENTS.md` or `CLAUDE.md` first** before doing any work - these contain project-specific conventions that override general patterns.
 2. **ALWAYS run `pnpm psy <command> --help`** before using any generator - never guess syntax.
-3. **NEVER use JavaScript `Date`** - always use `DateTime` or `CalendarDate` from `@rvoh/dream`.
+3. **NEVER use JavaScript `Date`** - always use `DateTime`, `CalendarDate`, `ClockTime`, or `ClockTimeTz` from `@rvoh/dream` (timestamp / date / time-without-tz / time-with-tz respectively). These are what `castParam`/`extractParams` return and what the DB hydrates, so a JS `Date` is never what flows through the system. See [models.md — Date/Time](models.md#datetime).
 4. **NEVER stub or mock Dream internals** in tests - use factories to create real model instances.
 5. **NEVER modify an existing migration file that has already been merged into main.**
 6. **A generator must always be used** when creating new models, controllers, or migrations.

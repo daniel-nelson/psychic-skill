@@ -913,7 +913,7 @@ If the I/O phase fails partway, nothing is in the database and the caller can sa
 **NEVER use JavaScript `Date`. Always use Dream's DateTime and CalendarDate (powered by Luxon).**
 
 ```typescript
-import { CalendarDate, DateTime } from '@rvoh/dream'
+import { CalendarDate, ClockTime, ClockTimeTz, DateTime } from '@rvoh/dream'
 
 // DateTime for timestamp columns
 const now = DateTime.now()
@@ -924,5 +924,24 @@ const future = now.plus({ days: 7, hours: 3 })
 const today = CalendarDate.today({ zone: 'America/New_York' })
 const birthday = CalendarDate.fromISO('1990-05-15')
 const nextWeek = today.plus({ days: 7 })
+
+// ClockTime for time-of-day columns WITHOUT a time zone (e.g. business hours)
+const opensAt = ClockTime.fromISO('09:30:00')
+
+// ClockTimeTz for time-of-day columns WITH a time zone
+const callWindowStart = ClockTimeTz.fromISO('14:00:00-05:00')
 ```
+
+Each Dream date/time class maps to exactly one Postgres column type, and `pnpm psy sync` rewrites `src/types/db.ts` so the matching `DreamColumn<Model, '...'>` resolves to the right class automatically (the same mechanism that makes a `timestamp` column resolve to `DateTime`):
+
+| Postgres column type | Dream class |
+|---|---|
+| `timestamp` | `DateTime` |
+| `date` | `CalendarDate` |
+| `time` (TIME WITHOUT TIME ZONE) | `ClockTime` |
+| `timetz` (TIME WITH TIME ZONE) | `ClockTimeTz` |
+
+A `ClockTimeTz` parsed from SQL is interpreted as UTC. These four classes are what `castParam` / `extractParams` return for date/time params and columns, and what Dream hydrates from the database — so any code touching those values already holds them; there is never a JS `Date` to reach for in the first place.
+
+These classes carry **microsecond precision** — unusual for a TypeScript framework, and worth knowing: the fractional second is six digits (first three milliseconds, next three microseconds). Microseconds are preserved when a value is supplied via the API (`fromISO`, etc.) or hydrated from the database. `.now()` is backed by JavaScript `Date` and is therefore millisecond-only *at the moment of creation*; if you need sub-millisecond values, set them explicitly via `plus` / `set` after construction.
 
