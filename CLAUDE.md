@@ -23,6 +23,10 @@ Consequently, while a branch/PR is still open, it carries **exactly one** versio
 
 A PR that changes skill content without a `VERSION` bump + `CHANGELOG` entry is incomplete. Treat the bump and changelog as part of the change, not a follow-up.
 
+## Keep the ecosystem version baseline current
+
+`SKILL.md` carries an "Ecosystem versions & staleness policy" block listing the `@rvoh/*` package versions the skill is written against. **Before finalizing any skill change, verify that block against the actual current published versions** — check the `version` in each package's `package.json` in the monorepo at `~/work/dream_and_psychic` (`@rvoh/dream`, `@rvoh/psychic`, `@rvoh/psychic-workers`, `@rvoh/psychic-websockets`, `@rvoh/psychic-spec-helpers`), or `npm view <pkg> version`. If any have moved, update the baseline block in the same PR. The list is exactly the packages the skill documents — do not add packages the skill doesn't cover (`@rvoh/dream-plugin-json-snapshot`, for instance, is intentionally excluded because the skill does not document it). Never annotate per-feature "available since" versions; the single baseline plus the "stay current / upgrade if reality disagrees" policy is the whole mechanism, by design.
+
 ## When asked to "open a PR" / "ship" / "publish"
 
 Before opening the PR, verify the working branch already contains the `VERSION` bump and the `CHANGELOG` entry for this change. If either is missing, add it first, then open the PR. Do not rely on a post-merge fixup.

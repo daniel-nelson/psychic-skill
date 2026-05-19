@@ -22,6 +22,8 @@ All CLI commands in this document are run via the local project's package manage
 
 **Note on examples:** Code examples throughout this skill use BearBnB, a demo app that creates an AirBnB clone for bears (https://github.com/daniel-nelson/bearbnb). In this domain, **Guest** and **Host** are application roles (a Guest books a place to stay, a Host lists a place) — not to be confused with "visitor" (unauthenticated user) or "server" (the machine).
 
+**Ecosystem versions & staleness policy.** This skill is written against `@rvoh/dream` 2.11.x, `@rvoh/psychic` 3.4.x, `@rvoh/psychic-workers` 2.3.x, `@rvoh/psychic-websockets` 3.1.x, and `@rvoh/psychic-spec-helpers` 3.0.x. Features and generator behavior described here assume versions at or above these. **Stay current.** If something documented in this skill fails — a generator flag is unrecognized, shorthand produces malformed output (e.g. an `@alias` passing through literally into identifiers), an API is missing — the first corrective action is to update the out-of-date `@rvoh/*` packages, not to work around the skill. Minor and patch bumps within these majors are low-risk and cheap to apply; treat keeping these packages up to date as the default. This skill deliberately does **not** annotate which version each individual feature landed in — assume current, and upgrade if reality disagrees with the skill.
+
 ## Critical Rules
 
 **If something is failing unexpectedly, re-read this skill before debugging.** Most common errors (type mismatches, missing associations, validation failures, generator syntax issues, migration problems) are already documented here with solutions. Spending 30 seconds searching this skill is cheaper than spending 30 minutes debugging from first principles.

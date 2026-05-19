@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.38.0 — 2026-05-19
+
+### Added
+
+- **`SKILL.md`** — "Ecosystem versions & staleness policy" block near the top: states the `@rvoh/*` versions the skill is written against (`@rvoh/dream` 2.11.x, `@rvoh/psychic` 3.4.x, `@rvoh/psychic-workers` 2.3.x, `@rvoh/psychic-websockets` 3.1.x, `@rvoh/psychic-spec-helpers` 3.0.x) and the policy that when documented behavior fails (unrecognized generator flag, shorthand producing malformed output, missing API) the first corrective action is to update out-of-date `@rvoh/*` packages, not to work around the skill. Minor/patch bumps are the default. The skill deliberately does not annotate per-feature "available since" versions.
+- **`CLAUDE.md`** — skill-maintainer instruction to verify the version baseline block against actual current published versions before finalizing any skill change (and update it in the same PR), with the rule that the list mirrors exactly the packages the skill documents (`@rvoh/dream-plugin-json-snapshot` intentionally excluded) and no per-feature version annotations.
+
 ## 0.37.0 — 2026-05-18
 
 ### Added
