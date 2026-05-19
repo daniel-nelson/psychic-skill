@@ -91,6 +91,20 @@ tags: ['TODO'],
 
 `'TODO'` is not in the enum's literal union, so `pnpm build:test-app` fails fast at the factory until the placeholder is replaced — preferable to a runtime NOT NULL / enum-mismatch surprise the first time the factory runs. The declare-with-values shorthand (`name:enum:type:val1,val2`) keeps emitting the first listed value as before.
 
+**Nested-resource generated specs reference an undefined parent.** When you generate a nested resource — e.g. `/internal/clients/{clientId}/addresses` — the generated controller spec scaffolds requests against the parent path param (`client.id`, `clientId`) without creating the parent. The placeholder variable is undefined until you wire it up. Add a real parent factory in `beforeEach` and create the child records through that parent, for every action the spec covers (index/show/update/destroy), not just `create`:
+
+```typescript
+let client: Client
+let clientAddress: ClientAddress
+
+beforeEach(async () => {
+  client = await createClient()
+  clientAddress = await createClientAddress({ client })
+})
+```
+
+Like the reused-enum placeholder, this is a deliberate generator stub, not a bug — the generator can't know how the parent is constructed in your app. Leaving it unwired makes the negative-path assertions pass for the wrong reason (the request 404s on the missing parent, not on the behavior under test).
+
 ### Factories with Associations
 
 ```typescript
