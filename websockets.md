@@ -178,7 +178,9 @@ startWs()
 > ```
 > must call `cachePsychicAppWebsockets` before loading cached psychic application websockets
 > ```
-> BullMQ marks the job failed and retries — the error looks like a framework cache problem rather than an application configuration problem. The fix is to include `'worker'` in the initializer guard (see Configuration above) so `PsychicAppWebsockets.init()` runs in the worker process. The dedicated websocket server is a separate process and still owns `Cable.start()` and socket connection handling; the worker only needs the Redis connection that `Ws.emit()` uses.
+> BullMQ marks the job failed and retries — the error looks like a framework cache problem rather than an application configuration problem. The generated initializer runs in all processes by default (see Configuration above); if a role guard was added that excludes `'worker'`, that is the cause.
+>
+> **If the job completes but the browser shows stale data until refresh:** the initializer is not the problem. See [Client Transport](#client-transport) — Socket.IO's long-polling default is the likely cause.
 
 Common pattern: Background job sends websocket notification:
 
