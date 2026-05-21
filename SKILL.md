@@ -1,5 +1,5 @@
 ---
-name: dream-psychic
+name: psychic-skill
 description: >
   Comprehensive guide for developing applications with Dream ORM and Psychic web framework.
   TRIGGER when: code imports from '@rvoh/dream', '@rvoh/psychic', '@rvoh/psychic-workers', or '@rvoh/psychic-websockets',

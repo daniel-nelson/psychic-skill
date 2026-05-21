@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.39.2 — 2026-05-21
+
+### Changed
+
+- **`SKILL.md`** — renamed skill `name:` from `dream-psychic` to `psychic-skill`. Repo name, install directory, skill registry name, and CLAUDE.md/AGENTS.md references are now a single consistent string.
+- **`README.md`**, **`CLAUDE.md`** — updated all `dream-psychic` references to `psychic-skill`.
+
 ## 0.39.1 — 2026-05-21
 
 ### Changed

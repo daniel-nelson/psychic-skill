@@ -82,14 +82,14 @@ To stay current, run `cd .ai/psychic-skill && git fetch origin && git reset --ha
 ### What gets installed
 
 - Skill files (Markdown) in `~/.claude/skills/psychic-skill/` or `~/.codex/skills/psychic-skill/` (and optional project installs at `.claude/skills/psychic-skill/` or `.codex/skills/psychic-skill/`)
-- `dream-psychic` skill auto-loads when working with Dream/Psychic projects
+- `psychic-skill` skill auto-loads when working with Dream/Psychic projects
 - `/psychic-update-skill` slash command (symlinked) for easy upgrades
 
 Everything lives inside your assistant's skills directory (`.claude` or `.codex`). Nothing touches your PATH or runs in the background.
 
 ## How it works
 
-The `dream-psychic` skill has `user-invocable: false` and auto-load triggers. Claude Code and Codex should automatically load it when they detect Dream/Psychic work (imports from `@rvoh/dream`, `@rvoh/psychic`, `pnpm psy` commands, etc.). You don't need to invoke it manually.
+The `psychic-skill` skill has `user-invocable: false` and auto-load triggers. Claude Code and Codex should automatically load it when they detect Dream/Psychic work (imports from `@rvoh/dream`, `@rvoh/psychic`, `pnpm psy` commands, etc.). You don't need to invoke it manually.
 
 Skill metadata note: keep `SKILL.md` front matter in the same minimal format used by the working installed skills. Do not add one-off fields such as `argument-hint`, and do not switch `allowed-tools` to a multiline YAML list unless the loader is known to accept it. The safer pattern here is simple scalar fields only.
 

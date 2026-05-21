@@ -1,6 +1,6 @@
 # CLAUDE.md — psychic-skill
 
-This repo IS the `psychic-skill` itself. Never invoke `/psychic-skill` (the `dream-psychic` skill) against this repo — there is no Dream/Psychic application here to reason about.
+This repo IS the `psychic-skill` itself. Never invoke `psychic-skill` against this repo — there is no Dream/Psychic application here to reason about.
 
 ## Release process (required on every PR)
 
