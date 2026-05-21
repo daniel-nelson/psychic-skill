@@ -209,16 +209,9 @@ public async notifyBooking(this: Booking) {
 }
 ```
 
-## Dedicated WebSocket Host: transport configuration
+## Client Transport
 
-When the websocket server runs as a separate process/host (the typical production topology), Socket.IO clients default to starting with long-polling before upgrading to native WebSocket. In this topology, polling requests to the dedicated websocket host can conflict with the websocket server's HTTP handler, producing header-sent failures or stale browser state: the background job completes and the event is published, but the browser never receives a live update until manual refresh.
-
-**Diagnostic signals:**
-
-- Browser: network tab shows `transport=polling` requests to the websocket host.
-- Server: websocket process logs HTTP/header errors even though jobs complete successfully.
-
-**Fix:** force native WebSocket transport on the Socket.IO client:
+Always set `transports: ['websocket']` on the Socket.IO client. Socket.IO defaults to long-polling first for historical reasons (WebSocket support was patchy in 2012); that fallback is unnecessary today — WebSocket is universally supported by modern browsers and mobile apps. Skipping the polling phase means faster connection establishment and eliminates a class of subtle failures where polling requests interfere with the websocket server's HTTP handler.
 
 ```typescript
 import { io } from 'socket.io-client'
@@ -228,8 +221,6 @@ const socket = io(websocketHost, {
   auth: { token },
 })
 ```
-
-Do not add `'polling'` unless you have explicitly verified that long-polling works through the same proxy and websocket route stack. The failure is easy to misdiagnose as queue, worker, or channel subscription trouble — check the client transport first.
 
 ## Plugin Registration
 
