@@ -224,7 +224,6 @@ When the websocket server runs as a separate process/host (the typical productio
 import { io } from 'socket.io-client'
 
 const socket = io(websocketHost, {
-  path: '/ws',
   transports: ['websocket'],
   auth: { token },
 })
