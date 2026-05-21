@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.39.0 — 2026-05-20
+
+### Added
+
+- **`websockets.md`** — Configuration section: updated the initializer guard example from `serviceRole !== 'ws'` to `['websockets', 'worker'].includes(AppEnv.serviceRole)` and restructured the example to the `psy.plugin(async () => { await PsychicAppWebsockets.init(...) })` shape. Added inline comments explaining that the ws process owns `Cable.start()` and socket handling while worker processes only need the Redis connection for `Ws.emit()`, and that each Node process has its own module cache.
+- **`websockets.md`** — "Using with Background Workers" section: added a callout block documenting the per-process initialization requirement, the exact error thrown when a worker skips the initializer (`must call cachePsychicAppWebsockets before loading cached psychic application websockets`), why BullMQ retries make it look like a framework cache problem, and the fix.
+- **`websockets.md`** — new "Dedicated WebSocket Host: transport configuration" section: documents the Socket.IO long-polling collision failure, the two diagnostic signals (browser network tab showing `transport=polling`, websocket server logging header errors), the `transports: ['websocket']` client fix, and a warning not to add `'polling'` without end-to-end verification.
+
 ## 0.38.0 — 2026-05-19
 
 ### Added

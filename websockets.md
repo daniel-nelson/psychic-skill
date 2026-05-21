@@ -17,9 +17,20 @@ Psychic Websockets provides real-time communication via **Socket.IO** with Redis
 import { allowRequestForOrigins, allowedCorsOrigins } from '@rvoh/psychic-websockets'
 import resolveWebsocketUser from '../system/resolveWebsocketUser.js'
 
-export default (wsApp: PsychicAppWebsockets) => {
-  if (AppEnv.serviceRole !== 'ws' && !AppEnv.isTest) return
+export default (psy: PsychicApp) => {
+  // PsychicAppWebsockets initializes in all processes by default. Any process —
+  // websocket server, web server, or worker — may call Ws.emit(), and skipping
+  // init in any of them causes a runtime cachePsychicAppWebsockets error that is
+  // hard to diagnose. To restrict which roles can push messages, uncomment:
+  //
+  // if (!['websockets', 'web', 'worker'].includes(AppEnv.serviceRole) && !AppEnv.isTest) return
 
+  psy.plugin(async () => {
+    await PsychicAppWebsockets.init(psy, initializeWebsockets)
+  })
+}
+
+function initializeWebsockets(wsApp: PsychicAppWebsockets) {
   // Redis connection
   wsApp.set('connection', new Redis({
     host: process.env.REDIS_HOST,
@@ -163,6 +174,12 @@ startWs()
 
 ## Using with Background Workers
 
+> **Process initialization required.** `Ws.emit()` boots a `PsychicAppWebsockets` instance on its first call via `PsychicAppWebsockets.getOrFail()`. If the worker process skipped the websocket initializer, that call throws:
+> ```
+> must call `cachePsychicAppWebsockets` before loading cached psychic application websockets
+> ```
+> BullMQ marks the job failed and retries — the error looks like a framework cache problem rather than an application configuration problem. The fix is to include `'worker'` in the initializer guard (see Configuration above) so `PsychicAppWebsockets.init()` runs in the worker process. The dedicated websocket server is a separate process and still owns `Cable.start()` and socket connection handling; the worker only needs the Redis connection that `Ws.emit()` uses.
+
 Common pattern: Background job sends websocket notification:
 
 ```typescript
@@ -191,6 +208,29 @@ public async notifyBooking(this: Booking) {
   await NotificationService.placeBooked(this.placeId, this.guestId)
 }
 ```
+
+## Dedicated WebSocket Host: transport configuration
+
+When the websocket server runs as a separate process/host (the typical production topology), Socket.IO clients default to starting with long-polling before upgrading to native WebSocket. In this topology, polling requests to the dedicated websocket host can conflict with the websocket server's HTTP handler, producing header-sent failures or stale browser state: the background job completes and the event is published, but the browser never receives a live update until manual refresh.
+
+**Diagnostic signals:**
+
+- Browser: network tab shows `transport=polling` requests to the websocket host.
+- Server: websocket process logs HTTP/header errors even though jobs complete successfully.
+
+**Fix:** force native WebSocket transport on the Socket.IO client:
+
+```typescript
+import { io } from 'socket.io-client'
+
+const socket = io(websocketHost, {
+  path: '/ws',
+  transports: ['websocket'],
+  auth: { token },
+})
+```
+
+Do not add `'polling'` unless you have explicitly verified that long-polling works through the same proxy and websocket route stack. The failure is easy to misdiagnose as queue, worker, or channel subscription trouble — check the client transport first.
 
 ## Plugin Registration
 
