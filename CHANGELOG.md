@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.39.1 — 2026-05-21
+
+### Changed
+
+- **`psychic-update-skill/SKILL.md`** — standalone flow: the update-check script's exit code is now captured and checked. If the script fails (e.g. sandbox filesystem restrictions prevent removing the cache file), the flow falls back to directly fetching the remote `VERSION` via `curl` and comparing it to the installed version. A bold rule is added: never conclude "up to date" solely because the update-check script produced no output — always confirm by comparing installed vs. remote.
+
 ## 0.39.0 — 2026-05-20
 
 ### Added
