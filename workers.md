@@ -330,6 +330,100 @@ export default class ScheduledJobs extends ApplicationScheduledService {
 }
 ```
 
+### Scheduled services are thin orchestrators, not workers
+
+A scheduled method should do almost nothing itself: select what needs to happen now and **fan out to backgrounded services** that do the real work. Heavy lifting inside a scheduled method is a design smell. The goal is to keep the number of permanently-registered schedulers in the BullMQ "Delayed" queue to a small fixed set — typically just `hourly`, `daily`, and `weekly` — each of which kicks off whatever backgrounded jobs that cadence requires. Three clean schedulers fanning out to dedicated services is the target shape; a sprawling list of per-task schedulers is not.
+
+### A class is either scheduled OR backgrounded — never both
+
+`ApplicationScheduledService` exposes `schedule()` but **not** `background()`. `ApplicationBackgroundedService` exposes `background()` but **not** `schedule()`. They are sibling base classes; a service extends one or the other. This is a hard architectural constraint, not a style choice:
+
+- **A scheduled method cannot enqueue background jobs from within itself.** To fan out, the scheduled (orchestrator) service calls the public entry method of a *separate* backgrounded (worker) service.
+- **Import direction is one-way:** the orchestrator imports the worker, never the reverse. A mutual import is a cycle and risks class-init / `globalName`-registration ordering problems.
+
+```typescript
+// Orchestrator — extends ApplicationScheduledService (has schedule(), no background())
+export default class ScheduledJobs extends ApplicationScheduledService {
+  public static async scheduleAllJobs() {
+    await this.schedule('0 * * * *', 'hourly')
+  }
+
+  public static async hourly() {
+    await ReconcileService.reconcileAll()   // delegate to a backgrounded service
+  }
+}
+
+// Worker — extends ApplicationBackgroundedService (has background(), no schedule())
+export default class ReconcileService extends ApplicationBackgroundedService {
+  public static async reconcileAll() {
+    for (const config of FORM_CONFIGS) {
+      await this.background('_reconcileForm', config.key)  // one job per item
+    }
+  }
+  public static async _reconcileForm(key: string) {
+    // ...the actual work
+  }
+}
+```
+
+### Pitfall: `schedule()` keys by class+method only — looping silently drops jobs
+
+`schedule()` registers the BullMQ job scheduler under the id `` `${globalName}:${method}` `` — **the args are not part of the id.** Internally it calls `upsertJobScheduler`, which is create-or-replace. So scheduling the same method more than once with different args does **not** create multiple schedulers; each call overwrites the last, and only the final args survive:
+
+```typescript
+// WRONG — registers exactly ONE scheduler (for FORM_CONFIGS[last]); the rest silently never run
+for (const config of FORM_CONFIGS) {
+  await ReconcileService.schedule('0 13 * * *', 'reconcileForm', config.key)
+}
+```
+
+This fails silently: no error, no warning, the worker boots clean, and you only discover it when N−1 of N jobs never happened in production. To schedule N variants you need either **N distinct `(class, method)` pairs**, or — the idiomatic fix — **one scheduled method registered once that fans out at runtime**:
+
+```typescript
+// RIGHT — schedule the fan-out method ONCE; it loops at run time, not at schedule time
+await ReconcileService.schedule('0 13 * * *', 'reconcileAll')
+```
+
+### Per-user cadence across time zones: schedule hourly, select by zone, fan out
+
+"Daily" and "weekly" work for users spread across time zones is not a daily/weekly cron. Register the orchestrator on an **hourly** cron and have each run select the users whose *local* end-of-day (or end-of-week) falls in the current hour, then fan out one backgrounded job per selected user. Bake the time zone — and any end-of-week preference — into the query so the database efficiently returns just the relevant user IDs, rather than loading all users and filtering in code.
+
+```typescript
+// Orchestrator — runs every hour; figures out whose local end-of-day this hour is
+export default class ScheduledJobs extends ApplicationScheduledService {
+  public static async scheduleAllJobs() {
+    await this.schedule('0 * * * *', 'endOfDayFanOut')   // hourly, despite being "daily" work
+  }
+
+  public static async endOfDayFanOut() {
+    await EndOfDayService.fanOut(DateTime.now())
+  }
+}
+
+// Worker — selects matching users by time zone, enqueues one job each
+export default class EndOfDayService extends ApplicationBackgroundedService {
+  public static async fanOut(now: DateTime) {
+    // The query filters by timezone so only users whose local hour is end-of-day
+    // are returned — selecting IDs only, never hydrating full records.
+    await User.where({ endOfDayHourUtc: now.hour }).pluckEach('id', async (id: string) => {
+      await this.background('_runEndOfDay', id)
+    })
+  }
+
+  public static async _runEndOfDay(id: string) {
+    const user = await User.find(id)
+    if (!user) return
+    // ...the per-user end-of-day work
+  }
+}
+```
+
+End-of-week works the same way, with the user's chosen end-of-week day folded into the query alongside the time zone, so the single hourly orchestrator covers every user's preference without a separate scheduler per variant.
+
+### Scheduled and backgrounded methods run inline in tests
+
+In `NODE_ENV=test`, both `schedule(...)` and `background(...)` invoke the underlying method immediately and synchronously (see the [Testing Workers](#testing-workers) section). A spec that calls either executes the work with no queue flush needed. The flip side: any environment guard inside the method (e.g. `if (serverEnvironment !== 'production') return`) also fires in tests, so a guarded method needs a `force`-style override to be exercised in a spec.
+
 ## Named Workstreams
 
 A workstream is a BullMQ queue with its own set of workers. Most apps only need the default workstream, but named workstreams are useful for isolating specific work (e.g., external API calls that need rate limiting).

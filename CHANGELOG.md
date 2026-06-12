@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.40.0 — 2026-06-12
+
+### Added
+
+- **`workers.md`** — Scheduled/Cron Jobs section expanded with the orchestrator/worker model:
+  - Scheduled services are thin orchestrators that fan out to backgrounded services; keep the permanently-registered scheduler set small (typically `hourly`/`daily`/`weekly`) and do heavy work in dedicated backgrounded services.
+  - A class extends `ApplicationScheduledService` (has `schedule()`, no `background()`) **or** `ApplicationBackgroundedService` (has `background()`, no `schedule()`) — never both. A scheduled method cannot enqueue background jobs itself; it delegates to a separate backgrounded service, with imports flowing orchestrator → worker only.
+  - Pitfall: `schedule()` keys the BullMQ scheduler by `` `${globalName}:${method}` `` (args excluded) via `upsertJobScheduler`, so looping `schedule()` over a config list silently registers only the last entry. Fix: distinct `(class, method)` pairs, or one fan-out method scheduled once that loops at run time.
+  - Per-user cadence across time zones: register the orchestrator on an hourly cron and select users whose local end-of-day/end-of-week falls in the current hour, baking time zone and end-of-week preference into the query to pluck just the matching user IDs, then fan out one backgrounded job each.
+  - Note that `schedule()`/`background()` run inline in `NODE_ENV=test`, so environment-guarded methods need a `force`-style override to be exercised in a spec.
+
+### Changed
+
+- **`SKILL.md`** — bumped the ecosystem version baseline to `@rvoh/dream` 2.12.x, `@rvoh/psychic` 3.5.x, and `@rvoh/psychic-spec-helpers` 3.1.x to match current published versions (`@rvoh/psychic-workers` 2.3.x and `@rvoh/psychic-websockets` 3.1.x unchanged).
+
 ## 0.39.2 — 2026-05-21
 
 ### Changed
