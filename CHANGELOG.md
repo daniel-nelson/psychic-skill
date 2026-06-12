@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.42.0 — 2026-06-12
+
+### Added
+
+- **`migrations.md`** — new "Adding a NOT NULL column to a table that already has rows" subsection under NOT NULL columns and defaults: add the column with a temporary default to backfill existing rows, then drop the default in a separate statement in the same migration so application code must set the value going forward (caller-dependent case). Keep a permanent default only when it genuinely fits the domain. Clarifies that column-shorthand generators omit the default by design — expected generate-then-edit, not a generator bug.
+- **`testing.md`** — new "The API server runs in-process — stub the backend boundary directly" subsection under Feature Spec Pattern: feature specs start `PsychicServer` in the same Vitest worker, so `vi.spyOn`/`vi.mock` on backend modules intercept server-side code while the browser drives the front end. Corrects the assumption that feature specs require a live key or HTTP recording; reserve Polly for exercising the real client path.
+- **`testing.md`** — new "A job that throws fails the enqueuing request in tests, but not in prod" subsection under Background Worker Testing: under `automatic` invocation a backgrounded method runs inline and awaited with no surrounding try/catch, so a throw propagates to the caller and 500s the request in tests, whereas in prod the same throw only moves the BullMQ job to `failed`. Specs driving a backgrounded job must stub its external I/O, and should assert on the job's side effects rather than a status code that only differs because the job ran inline.
+
 ## 0.41.0 — 2026-06-12
 
 ### Added
