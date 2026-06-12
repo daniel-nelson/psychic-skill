@@ -23,6 +23,26 @@ When a NOT NULL column has a single obvious domain default (`'normal'`, `'pendin
 
 If the default is genuinely caller-dependent, leave the column NOT NULL with no default — the resulting 400/500 on a missing value is preferable to silent coercion. The rule is: encode at the DB layer or fail loudly; never default silently in caller code.
 
+#### Adding a NOT NULL column to a table that already has rows
+
+A NOT NULL column with no default fails the migration the moment it runs against a populated table — Postgres has nothing to put in the existing rows. When the default is caller-dependent (so you don't want a permanent DB default per the rule above), add the column *with* a default and then drop that default in a separate statement in the same migration:
+
+```typescript
+await db.schema
+  .alterTable('conversation_threads')
+  .addColumn('channel', sql`conversation_thread_channels_enum`, col => col.notNull().defaultTo('web'))
+  .execute()
+
+// existing rows are now backfilled with 'web'; drop the default so new rows
+// must set the value intentionally in application code
+await db.schema
+  .alterTable('conversation_threads')
+  .alterColumn('channel', col => col.dropDefault())
+  .execute()
+```
+
+The temporary default backfills existing rows; dropping it afterward keeps the "no silent default in caller code" guarantee for everything written from here on. (If a permanent default genuinely fits the domain, keep it and skip the drop — that's the `col.defaultTo(value).notNull()` case above.) Column-shorthand generators omit the default by design, since they can't know whether the table is populated — this is expected generate-then-edit territory, not a generator bug.
+
 `pnpm psy db:migrate` runs migrations then sync. If post-sync fails (e.g., a model references an old table name), the migration itself is not reverted — `db.ts` has already been regenerated from the current database state. Fix the problem and run `pnpm psy sync` to complete the process.
 
 ### Generating column-only migrations

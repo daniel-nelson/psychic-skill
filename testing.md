@@ -614,6 +614,17 @@ await WorkerTestUtils.work()                            // Process queue
 WorkerTestUtils.clean()                                 // Clear queues
 ```
 
+### A job that throws fails the enqueuing request in tests, but not in prod
+
+Under the default `automatic` invocation, a backgrounded method runs inline and **awaited** inside the call that enqueued it — the framework short-circuits the queue and calls the method directly, with no surrounding try/catch. So if the job throws, the error propagates back through `.background(...)` to the caller. A controller action that backgrounds a job and awaits it therefore returns **500 in tests** when the job throws.
+
+In production the same job runs on a separate BullMQ worker. A throw there moves the job to `failed` (and retries per its config) without touching the HTTP response that was already returned. The "fire-and-forget" mental model — `await this.background(...)` returns once queued, the job's success or failure is independent of the request — holds in prod but **not** in tests.
+
+Two practical consequences:
+
+- A spec that drives a backgrounded job must stub or record any external I/O that job performs (HTTP, third-party clients). Because the job runs synchronously inside the request, an unstubbed call hits the network for real and, if it fails, 500s the spec. This is a frequent source of "works in isolation, flaky in the suite" feature/controller specs.
+- The inline error propagation is useful — it surfaces job bugs the prod fire-and-forget path would bury — but it means a spec asserting on the request's status code is exercising a different path than production. Assert on the job's side effects, not on a status code that only differs because the job ran inline.
+
 ## Feature Spec Pattern
 
 ```typescript
@@ -642,6 +653,12 @@ describe('Host creates a Place', () => {
   })
 })
 ```
+
+### The API server runs in-process — stub the backend boundary directly
+
+Feature specs start the `PsychicServer` inside the same Vitest worker as the test (the generated `spec/features/setup/hooks.ts` calls `server.start(...)` in `beforeAll`, then launches the browser). The browser talks to that server over `localhost:<port>`, but the server runs the *same module instances* the spec can see. So `vi.spyOn(SomeService, 'method')` and `vi.mock(...)` on backend modules intercept server-side code that runs while the browser drives the front end — exactly as in a unit or controller spec. There's no separate process and no IPC barrier.
+
+This matters because a common (wrong) assumption is "a feature spec runs a real server I can't reach into, so I must use a live API key or record HTTP." Not so. To make a feature spec deterministic and offline, stub the backend boundary — an external API gateway, the clock, a third-party client — with `vi.spyOn` in the feature spec, the same way you would anywhere else. Reserve HTTP recording (Polly) for cases where you genuinely want to exercise the real client code path.
 
 ## Organize Feature Specs by Actor and Scenario
 
