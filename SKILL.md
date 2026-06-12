@@ -68,6 +68,29 @@ All CLI commands in this document are run via the local project's package manage
 16. **Commit all auto-generated files** after `pnpm psy db:migrate` or `pnpm psy sync`. This includes files in `src/types/`, `src/openapi/`, and any configured sync output directories (e.g., `client/api/`, `admin/api/`). Don't cherry-pick which generated files to stage.
 17. **NEVER use `console.log` in application code.** Use `PsychicApp.log(message, ...meta)` for general output and `PsychicApp.logWithLevel(level, message, ...meta)` when you need to set a specific level (`'debug' | 'info' | 'warn' | 'error'`). These route through the configured logger (Winston by default) so output respects log level, transports, and structured format. `console.log` bypasses all of that and pollutes production logs with unstructured strings. See [controllers.md "Logging"](controllers.md#logging). REPL / `psy console` sessions are exempt — interactive output to `stdout` is the point.
 18. **For Psychic surfaces that are thin wrappers over Koa, defer to upstream Koa docs.** When Psychic exposes a Koa-layer knob (e.g., `psy.set('json', { ... })` for `koa-bodyparser`, `psy.use(...)` for Koa middleware), the skill teaches the Psychic-specific shape — where the knob plugs in, what generators emit, what's Psychic-specific — and links to the upstream README for option shapes, defaults, and behavior. Don't restate upstream behavior in the skill; it competes with the authoritative source and goes stale. The same posture applies to thin wrappers over `ioredis`, `BullMQ`, `socket.io`, and `pg`.
+19. **Default optional parameters in the signature, not in the body.** Destructure an options bag with defaults right in the parameter list, so the defaults are visible at the call boundary and each option is declared exactly once. Don't accept a whole `options` object and then re-derive each value with `??` inside the body — that splits one parameter into two declarations, hides the defaults below the signature, and drifts out of sync as options are added.
+
+    ```typescript
+    // CORRECT — defaults live in the signature, applied once
+    public static async _reconcilePlace(
+      placeId: string,
+      { dryRun = true, notifyHost = false }: { dryRun?: boolean; notifyHost?: boolean } = {},
+    ) {
+      const place = await Place.find(placeId)
+      if (!place) return
+      // ...use dryRun / notifyHost directly
+    }
+
+    // WRONG — option bag passed through, then defaulted after the fact
+    public static async _reconcilePlace(
+      placeId: string,
+      options: { dryRun?: boolean; notifyHost?: boolean } = {},
+    ) {
+      const dryRun = options.dryRun ?? true
+      const notifyHost = options.notifyHost ?? false
+      // ...
+    }
+    ```
 
 ## Creating a New Psychic Application
 

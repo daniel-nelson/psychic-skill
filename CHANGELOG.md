@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.41.0 — 2026-06-12
+
+### Added
+
+- **`SKILL.md`** — new Critical Rule #19: default optional parameters in the signature via a destructured options bag (`{ dryRun = true }: { dryRun?: boolean } = {}`), not by accepting a whole `options` object and re-deriving each value with `??` in the body. Defaults stay visible at the call boundary and each option is declared once. Includes correct/wrong BearBnB examples.
+
 ## 0.40.0 — 2026-06-12
 
 ### Added
