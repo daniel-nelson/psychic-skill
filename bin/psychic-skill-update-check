@@ -21,9 +21,11 @@ VERSION_FILE="$PSYCHIC_SKILL_DIR/VERSION"
 REMOTE_URL="${PSYCHIC_SKILL_REMOTE_URL:-https://raw.githubusercontent.com/daniel-nelson/psychic-skill/main/VERSION}"
 
 # ─── Force flag (busts cache + snooze for standalone /psychic-update-skill) ──
+FORCE_CHECK=false
 if [ "${1:-}" = "--force" ]; then
-  rm -f "$CACHE_FILE"
-  rm -f "$SNOOZE_FILE"
+  FORCE_CHECK=true
+  rm -f "$CACHE_FILE" 2>/dev/null || true
+  rm -f "$SNOOZE_FILE" 2>/dev/null || true
 fi
 
 # ─── Step 0: Check if updates are disabled ────────────────────
@@ -40,6 +42,10 @@ fi
 #   Level durations: 1=24h, 2=48h, 3+=7d
 #   New version (version mismatch) resets snooze.
 check_snooze() {
+  if [ "$FORCE_CHECK" = "true" ]; then
+    return 1
+  fi
+
   local remote_ver="$1"
   if [ ! -f "$SNOOZE_FILE" ]; then
     return 1  # no snooze file → not snoozed
@@ -93,10 +99,10 @@ fi
 # ─── Step 2: Check "just upgraded" marker ─────────────────────
 if [ -f "$MARKER_FILE" ]; then
   OLD="$(cat "$MARKER_FILE" 2>/dev/null | tr -d '[:space:]')"
-  rm -f "$MARKER_FILE"
-  rm -f "$SNOOZE_FILE"
-  mkdir -p "$STATE_DIR"
-  echo "UP_TO_DATE $LOCAL" > "$CACHE_FILE"
+  rm -f "$MARKER_FILE" 2>/dev/null || true
+  rm -f "$SNOOZE_FILE" 2>/dev/null || true
+  mkdir -p "$STATE_DIR" 2>/dev/null || true
+  echo "UP_TO_DATE $LOCAL" > "$CACHE_FILE" 2>/dev/null || true
   if [ -n "$OLD" ]; then
     echo "JUST_UPGRADED $OLD $LOCAL"
   fi
@@ -106,7 +112,7 @@ fi
 # ─── Step 3: Check cache freshness ──────────────────────────
 # UP_TO_DATE: 60 min TTL (detect new releases quickly)
 # UPGRADE_AVAILABLE: 720 min TTL (keep nagging)
-if [ -f "$CACHE_FILE" ]; then
+if [ "$FORCE_CHECK" != "true" ] && [ -f "$CACHE_FILE" ]; then
   CACHED="$(cat "$CACHE_FILE" 2>/dev/null || true)"
   case "$CACHED" in
     UP_TO_DATE*)        CACHE_TTL=60 ;;
@@ -139,7 +145,7 @@ if [ -f "$CACHE_FILE" ]; then
 fi
 
 # ─── Step 4: Slow path — fetch remote version ────────────────
-mkdir -p "$STATE_DIR"
+mkdir -p "$STATE_DIR" 2>/dev/null || true
 
 REMOTE=""
 REMOTE="$(curl -sf --max-time 5 "$REMOTE_URL" 2>/dev/null || true)"
@@ -148,17 +154,17 @@ REMOTE="$(echo "$REMOTE" | tr -d '[:space:]')"
 # Validate: must look like a version number (reject HTML error pages)
 if ! echo "$REMOTE" | grep -qE '^[0-9]+\.[0-9.]+$'; then
   # Invalid or empty response — assume up to date
-  echo "UP_TO_DATE $LOCAL" > "$CACHE_FILE"
+  echo "UP_TO_DATE $LOCAL" > "$CACHE_FILE" 2>/dev/null || true
   exit 0
 fi
 
 if [ "$LOCAL" = "$REMOTE" ]; then
-  echo "UP_TO_DATE $LOCAL" > "$CACHE_FILE"
+  echo "UP_TO_DATE $LOCAL" > "$CACHE_FILE" 2>/dev/null || true
   exit 0
 fi
 
 # Versions differ — upgrade available
-echo "UPGRADE_AVAILABLE $LOCAL $REMOTE" > "$CACHE_FILE"
+echo "UPGRADE_AVAILABLE $LOCAL $REMOTE" > "$CACHE_FILE" 2>/dev/null || true
 if check_snooze "$REMOTE"; then
   exit 0  # snoozed — stay quiet
 fi

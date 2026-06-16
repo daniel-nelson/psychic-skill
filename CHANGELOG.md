@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.42.1 — 2026-06-16
+
+### Fixed
+
+- **`bin/psychic-skill-update-check`** — `--force` now bypasses cache and snooze state in memory even when sandbox permissions prevent deleting `~/.psychic-skill` cache files. State-file writes are best-effort, so an unwritable state directory no longer makes the update checker fail before it can report `UPGRADE_AVAILABLE`.
+
 ## 0.42.0 — 2026-06-12
 
 ### Added
