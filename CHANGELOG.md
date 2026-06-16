@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.43.0 — 2026-06-16
+
+### Added
+
+- **`SKILL.md`** — new Critical Rule #20: never hand-code OpenAPI schema for shapes Psychic can derive. Model request bodies use `only` / `including`, model responses use serializers, and computed / view-model responses use `ObjectSerializer`; if the ObjectSerializer does not exist yet, create it rather than duplicating response JSON Schema.
+
+### Changed
+
+- **`controllers.md`** — OpenAPI request-body guidance now explicitly says to derive model field types, nullability, and enum constraints even when the action uses custom `castParam` logic instead of `extractParams`, such as STI discriminator dispatch. Custom response envelopes now make `ObjectSerializer` the default for stable computed response shapes and reserve hand-written `responses` schemas for genuinely ad hoc outputs.
+- **`serializers.md`** — ObjectSerializer guidance now calls out stable computed / view-model controller responses as serializer-backed OpenAPI contracts, avoiding drift between returned plain objects and duplicated response schemas.
+
 ## 0.42.1 — 2026-06-16
 
 ### Fixed

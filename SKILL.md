@@ -92,6 +92,12 @@ All CLI commands in this document are run via the local project's package manage
     }
     ```
 
+20. **NEVER hand-code OpenAPI schema for a shape Psychic can derive.** Before writing `requestBody.properties`, `responses[status].properties`, or `enum: SomeEnumValues`, stop and choose the derived path:
+    - Model request bodies use `requestBody: { only: [...] }` / `{ including: [...] }`, even when the action must use `castParam` instead of `extractParams` for STI dispatch or custom validation.
+    - Model responses use `@OpenAPI(Model, { serializerKey })` and serializers.
+    - Computed / view-model responses use an `ObjectSerializer` passed to `@OpenAPI(SerializerFn, { status })`; nested computed objects become nested `ObjectSerializer`s. If the ObjectSerializer does not exist yet, create it.
+    - Hand-written JSON Schema is only for genuinely ad hoc inputs or outputs that cannot sensibly be represented by a Dream model, serializer, or newly-created ObjectSerializer. Do not use "there is no serializer yet" as a reason to hand-write `responses`. Keeping OpenAPI attached to serializers gives TypeScript a single implementation surface for the returned data and documented schema instead of letting a plain object and a duplicated schema drift independently.
+
 ## Creating a New Psychic Application
 
 If you are not already inside a Psychic project, use `create-psychic` to scaffold one:

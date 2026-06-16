@@ -665,6 +665,8 @@ this.ok(places)
 
 The auto-derived request body shape is the model's `paramSafeColumns`. Reach for `requestBody` only when you need to override that default. **If your action only takes `paramSafeColumns`, omit `requestBody` entirely.**
 
+**Derive before hand-writing.** If any body field is a Dream model column, use `only` / `including` / `combining` / `OpenAPI.forDream(...)` so types, nullability, and enum constraints come from the model. This still applies when the action cannot use `extractParams` directly, such as an STI create action that reads a `type` discriminator with `castParam` and then dispatches through an exhaustive `switch`. The runtime extraction can be custom; the OpenAPI request body should still be model-derived.
+
 | Use | When |
 |---|---|
 | omit `requestBody` | Action only takes `paramSafeColumns`. |
@@ -745,7 +747,7 @@ The OpenAPI shape and the `extractParams` calls stay aligned: the spec advertise
 #### Anti-patterns
 
 - **Don't list model columns inside `combining`.** `combining` adds fields that are *not* on the model. Listing real columns there either silently duplicates the auto-derived shape or shadows it with a hand-typed copy that drifts (e.g., a `{ enum: [...] }` redeclaration that goes stale when the DB enum changes). Use `OpenAPI.forDream(Model, ...)` (or the nested `for:` sentinel) when the value is itself a Dream-model shape.
-- **Don't write `properties:` inside `requestBody`.** It is not one of the four shorthand options. If your body has required non-model fields, drop the shorthand entirely and use the explicit `type: 'object'` / `properties` / `required` form (next subsection).
+- **Don't write `properties:` inside `requestBody` for model fields.** It is not one of the shorthand options, and it duplicates model-owned type information. Only use explicit `type: 'object'` / `properties` / `required` when the body has no model fields at all (next subsection).
 
 #### When the body has no model fields
 
@@ -763,7 +765,11 @@ This is the correct tool when no model field participates in the body — not a 
 
 ### Custom Response Envelopes
 
-When an endpoint returns a custom object shape instead of a serialized model or pagination result, use `responses` to define the response contract. Psychic uses a **shorthand format** — schema properties go directly on the status code object, not nested inside `content: { 'application/json': { schema: ... } }`:
+When an endpoint returns a stable custom object shape instead of a serialized model or pagination result, create an `ObjectSerializer`, pass that serializer function to `@OpenAPI(SerializerFn, { status })`, and return the serializer from the action. This keeps the response schema derived from serializer attributes instead of duplicating it in a hand-written `responses` block.
+
+Use a hand-written `responses` schema only for a genuinely one-off response shape that cannot sensibly be represented as an `ObjectSerializer`. Do not treat "the ObjectSerializer does not exist yet" as permission to hand-write JSON Schema; create the serializer. The serializer is the type-enforced boundary between the data being returned and the OpenAPI schema, while a plain object plus duplicated `responses` schema can drift silently.
+
+When hand-written `responses` is actually justified, Psychic uses a **shorthand format** — schema properties go directly on the status code object, not nested inside `content: { 'application/json': { schema: ... } }`:
 
 ```typescript
 @OpenAPI({
@@ -812,7 +818,7 @@ public async show() {
 }
 ```
 
-Alternatively, formalize the response with an `ObjectSerializer`. This generates the OpenAPI schema automatically via `rendersOne` and `rendersMany`, avoiding the hand-written `responses` block:
+Prefer formalizing the response with an `ObjectSerializer`. This generates the OpenAPI schema automatically via `attribute`, `customAttribute`, `rendersOne`, and `rendersMany`, avoiding the hand-written `responses` block:
 
 ```typescript
 // PlaceWithNearbySerializer.ts
@@ -836,6 +842,8 @@ public async show() {
   this.ok(PlaceWithNearbySerializer(place, nearby))
 }
 ```
+
+For nested computed objects, create nested `ObjectSerializer`s rather than expanding nested `properties` by hand. Every leaf attribute on a non-Dream object must carry an explicit `openapi` type, which makes the schema local to the serializer that owns the value.
 
 ## Debugging Unexpected 400s (and OpenAPI-triggered 500s in Specs)
 

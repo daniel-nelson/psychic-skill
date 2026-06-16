@@ -374,7 +374,7 @@ await Place.passthrough({ locale: 'en-US' }).preloadFor('forGuests').all()
 
 ## ObjectSerializer (for non-Dream objects)
 
-For plain objects, use ObjectSerializer. **All attributes require explicit `openapi` type.**
+For plain objects, use ObjectSerializer. **All attributes require explicit `openapi` type.** When a controller returns a stable computed / view-model object, create an ObjectSerializer and pass that serializer function to `@OpenAPI(SerializerFn, { status })` instead of hand-writing `responses[status].properties`.
 
 ```typescript
 import { ObjectSerializer } from '@rvoh/dream'
