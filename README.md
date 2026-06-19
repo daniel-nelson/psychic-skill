@@ -95,7 +95,7 @@ Skill metadata note: keep `SKILL.md` front matter in the same minimal format use
 
 The skill enforces critical conventions:
 - Always run `pnpm psy <command> --help` before using generators
-- Never use JavaScript `Date` — use `DateTime` / `CalendarDate` from Dream
+- Never use JavaScript `Date` — use `DateTime`, `CalendarDate`, `ClockTime`, or `ClockTimeTz` from Dream
 - Never mock Dream internals in tests — use factories
 - BDD approach: write failing spec first, then implement
 - Always run `pnpm psy sync` after changing associations

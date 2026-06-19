@@ -675,6 +675,8 @@ The auto-derived request body shape is the model's `paramSafeColumns`. Reach for
 | `combining: { … }` | Add fields that are NOT columns on the model — join-table arrays (`cityIds`), one-shot tokens, upload metadata, workflow flags. |
 | `required: [...]` | Mark fields required. **Typed to the model's column names**, so it cannot reference `combining` keys. |
 
+One important STI edge case: when `@OpenAPI(BaseModel, ...)` documents an STI-dispatched create action, `including` and `required` are typed to the base model's columns. If the request must include a child-only field that the base model cannot see, use `combining` for that field. This is different from shadowing a derivable base-model column in `combining`; the child-only field genuinely is outside the base model's derived request-body surface.
+
 #### Worked example — UPDATE with a nullable FK
 
 The most-mistaken case: an `update` action whose body needs to express "the FK can be set or cleared." Reach for `including`, not `combining` — column nullability is inferred from the model's `@deco.BelongsTo('ZipCode', { optional: true })` declaration.

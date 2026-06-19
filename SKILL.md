@@ -432,6 +432,8 @@ For detailed query guidance, including when to use `toKysely(...)` and when to s
 
 The rule is simple: always prefer Dream's built in, public query and association APIs; only drop down to Kysely when Dream's supported APIs do not cover the SQL you need.
 
+Use `range` from `@rvoh/dream/utils` directly in `where` clauses when a single column has a natural lower and/or upper bound, including `CalendarDate`, `DateTime`, `ClockTime`, and `ClockTimeTz` columns. For multi-column interval logic, named `ops` comparisons can be clearer because the boundary semantics are visible at the call site. See [querying.md — Range Predicates](querying.md#range-predicates).
+
 ## Controllers
 
 For detailed controller patterns, see [controllers.md](controllers.md).
@@ -543,6 +545,8 @@ For detailed serializer patterns, see [serializers.md](serializers.md).
 
 Serializers are **function-based** (not class-based or decorator-based):
 
+Serializer files use named exports only; do not `export default` serializer functions. Named exports keep runtime global names and OpenAPI component names explicit.
+
 ```typescript
 import { DreamSerializer, ObjectSerializer } from '@rvoh/dream'
 
@@ -577,6 +581,8 @@ export const BedTypeSerializer = (bedType: BedTypesEnum, passthrough: { locale: 
       openapi: 'string',
     })
 ```
+
+For OpenAPI-visible nested computed/view-model response shapes, export every nested `ObjectSerializer` used by `rendersOne` or `rendersMany` so OpenAPI registers a named schema instead of anonymous `Unnamed` schemas. Runtime serializer global names include the serializer path, but OpenAPI component names for named exports are based on the export name; use distinct names such as a `ViewSerializer` suffix for computed serializers that share a domain noun with a Dream model serializer.
 
 ### Serializer Methods
 
@@ -1028,7 +1034,7 @@ Every controller action should have an `@OpenAPI` decorator:
 Automatic error handling:
 - `castParam` invalid -> 400
 - `findOrFail` not found -> 404
-- Validation failure -> 422
+- Validation-layer failure -> 400
 
 ## Deploying
 

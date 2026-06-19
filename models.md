@@ -910,7 +910,7 @@ If the I/O phase fails partway, nothing is in the database and the caller can sa
 
 ## Date/Time
 
-**NEVER use JavaScript `Date`. Always use Dream's DateTime and CalendarDate (powered by Luxon).**
+**NEVER use JavaScript `Date`. Always use Dream's `DateTime`, `CalendarDate`, `ClockTime`, and `ClockTimeTz` classes.**
 
 ```typescript
 import { CalendarDate, ClockTime, ClockTimeTz, DateTime } from '@rvoh/dream'
@@ -944,4 +944,3 @@ Each Dream date/time class maps to exactly one Postgres column type, and `pnpm p
 A `ClockTimeTz` parsed from SQL is interpreted as UTC. These four classes are what `castParam` / `extractParams` return for date/time params and columns, and what Dream hydrates from the database — so any code touching those values already holds them; there is never a JS `Date` to reach for in the first place.
 
 These classes carry **microsecond precision** — unusual for a TypeScript framework, and worth knowing: the fractional second is six digits (first three milliseconds, next three microseconds). Microseconds are preserved when a value is supplied via the API (`fromISO`, etc.) or hydrated from the database. `.now()` is backed by JavaScript `Date` and is therefore millisecond-only *at the moment of creation*; if you need sub-millisecond values, set them explicitly via `plus` / `set` after construction.
-

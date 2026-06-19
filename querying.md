@@ -158,6 +158,45 @@ await LocalizedText.where({ localizableId: host.id, locale: 'en-US' }).update({ 
 await Tag.where({ postId: post.id }).delete()
 ```
 
+### Range Predicates
+
+Dream's `range` helper from `@rvoh/dream/utils` is accepted in `where` clauses for bounded comparisons on supported scalar columns, including `CalendarDate`, `DateTime`, `ClockTime`, and `ClockTimeTz` columns. Use it when a single column has a natural lower and/or upper bound. If named comparison operators make the query easier to read, use `ops` instead.
+
+```typescript
+import { ClockTime, ClockTimeTz, ops } from '@rvoh/dream'
+import { range } from '@rvoh/dream/utils'
+
+// Inclusive lower and upper bound: startsOn >= start AND startsOn <= end
+await Booking.where({ startsOn: range(start, end) }).all()
+
+// Exclusive upper bound: startsAt >= start AND startsAt < end
+await Booking.where({ startsAt: range(start, end, true) }).all()
+
+// Open-ended bounds
+await Booking.where({ startsOn: range(start) }).all()       // startsOn >= start
+await Booking.where({ endsOn: range(null, end) }).all()     // endsOn <= end
+
+// Time-of-day columns work the same way
+await BusinessHour
+  .where({ opensAt: range(ClockTime.fromISO('09:00:00'), ClockTime.fromISO('17:00:00')) })
+  .all()
+await Reminder.where({ sendAt: range(null, ClockTimeTz.fromISO('12:00:00Z')) }).all()
+```
+
+For two-column interval overlap checks, choose the boundary semantics explicitly. `range` constrains one column at a time, so named comparison operators are often clearer because each boundary is visible at the call site:
+
+```typescript
+const overlaps = await Booking.where({
+  placeId,
+  startsOn: ops.lessThanOrEqualTo(requestedEndsOn),
+  endsOn: ops.greaterThan(requestedStartsOn),
+}).exists()
+```
+
+Use `ops.lessThan` / `ops.lessThanOrEqualTo` and `ops.greaterThan` / `ops.greaterThanOrEqualTo` based on whether touching interval boundaries count as overlap in the domain.
+
+Query-side overlap validation is not race-safe by itself. Prevent double booking with a database constraint, such as a PostgreSQL exclusion constraint, when concurrent writes can violate the invariant.
+
 ### Ordering
 
 ```typescript

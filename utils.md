@@ -20,7 +20,7 @@ import { camelize, compact, groupBy, sort, uniq /* etc. */ } from '@rvoh/dream/u
 - **normalizeUnicode** - Normalize unicode strings
 - **pascalize** - Convert to PascalCase
 - **percent** - Calculate percentage
-- **range** / **Range** - Numeric range generation
+- **range** / **Range** - Numeric range generation; also supported as a bounded `where` predicate helper. See [querying.md — Range Predicates](querying.md#range-predicates).
 - **round** - Round numbers
 - **sanitizeString** - Sanitize string input
 - **snakeify** - Convert to snake_case

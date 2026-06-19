@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.44.0 — 2026-06-19
+
+### Added
+
+- **`querying.md`**, **`utils.md`**, **`SKILL.md`** — documented Dream's `range` helper as a `where` predicate helper for bounded single-column comparisons on `CalendarDate`, `DateTime`, `ClockTime`, and `ClockTimeTz` columns. The guidance distinguishes readable single-column bounds from multi-column interval overlap logic, where explicit `ops.lessThan*` / `ops.greaterThan*` comparisons make boundary semantics clearer.
+- **`serializers.md`**, **`SKILL.md`** — added serializer export guidance: serializer functions must use named exports, OpenAPI-visible nested `ObjectSerializer`s should be exported so generated schemas get stable names, and computed/view-model serializers should use distinct export names when their domain noun overlaps model serializers.
+- **`migrations.md`** — added Kysely DDL gotchas for hand-edited migrations: run a fresh `pnpm psy db:reset` after editing raw check constraints/partial indexes, keep fixed DDL literals in emitted SQL instead of bound parameters, and type raw partial-index predicates as `sql<SqlBool>` when Kysely requires a boolean expression.
+
+### Changed
+
+- **`README.md`**, **`models.md`**, **`workers.md`** — expanded the no-JavaScript-`Date` guidance from `DateTime`/`CalendarDate` to all four Dream date/time classes, including `ClockTime` and `ClockTimeTz`.
+- **`controllers.md`** — clarified the STI request-body edge case where a child-only field cannot be listed in base-model `including` / `required` and must be added via `combining`.
+- **`testing.md`**, **`SKILL.md`** — corrected validation-layer examples and quick reference from 422 to 400, with a note that 422 is reserved for controller actions that explicitly return `unprocessableContent` / `unprocessableEntity`.
+
 ## 0.43.0 — 2026-06-16
 
 ### Added

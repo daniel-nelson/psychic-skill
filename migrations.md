@@ -12,6 +12,8 @@ When you edit an unmerged migration in place after it has already been applied l
 
 This applies to **any** in-place edit that changes the resulting schema — adding a column to a `createTable`, retrofitting `@SoftDelete()`, tightening a constraint, adjusting `asEnum([...])` values for an STI discriminator, anything. The single rule covers the single situation: if you edited a migration that has already been applied locally, `db:reset`. Do NOT chain a follow-up migration to "fix" an unmerged one — edit the original.
 
+This reset is especially important after hand-editing Kysely DDL fragments such as check constraints, partial indexes, or raw `sql` expressions. TypeScript can pass while Postgres rejects the generated DDL, so a fresh `pnpm psy db:reset` is the verification step for an edited unmerged migration.
+
 Use `git diff --name-only origin/main -- api/src/db/migrations/` to confirm a migration is still on your branch before editing.
 
 ### NOT NULL columns and defaults
@@ -383,6 +385,21 @@ await db.schema
     'rooms_not_null_bath_or_shower_style',
     sql`type != 'Bathroom' OR bath_or_shower_style IS NOT NULL`,
   )
+  .execute()
+```
+
+Fixed migration-time DDL literals belong in the emitted SQL, not in bound parameters. When a check constraint contains static constants, inline controlled literals in the DDL expression or use an appropriate raw SQL helper; parameterized DDL can pass TypeScript but fail when Postgres prepares the statement.
+
+For partial index predicates, Kysely may require the raw predicate to be typed as SQL boolean:
+
+```typescript
+import { sql, type SqlBool } from 'kysely'
+
+await db.schema
+  .createIndex('places_active_idx')
+  .on('places')
+  .column('host_id')
+  .where(sql<SqlBool>`deleted_at IS NULL`)
   .execute()
 ```
 

@@ -16,6 +16,8 @@ import { DreamSerializer, ObjectSerializer } from '@rvoh/dream'
 
 ## Basic Pattern
 
+Serializer files must use **named exports only**. Do not use `export default` for a serializer function. Dream derives runtime serializer global names from the serializer file path plus the export name; default exports use the file path alone, which is easier to collide with generated/path-normalized names and makes OpenAPI names less explicit. Named exports keep the model's `serializers` getter, OpenAPI component names, and imports aligned.
+
 ```typescript
 import Place from '@models/Place.js'
 import { DreamSerializer } from '@rvoh/dream'
@@ -56,7 +58,7 @@ export default class Place extends ApplicationModel {
 }
 ```
 
-Serializer names are **strings** matching the exported function names. They're loaded globally via `app.load('serializers', ...)` in `conf/dream.ts`.
+Serializer names are **strings** matching named exported function names. They're loaded globally via `app.load('serializers', ...)` in `conf/dream.ts`.
 
 ## Serializer Methods
 
@@ -390,6 +392,10 @@ export const BedTypeSerializer = (bedType: BedTypesEnum, passthrough: { locale: 
       { openapi: 'string' }
     )
 ```
+
+For OpenAPI-visible nested computed/view-model response shapes, export every ObjectSerializer that is passed to another serializer's `rendersOne` or `rendersMany`. Exported serializers are registered as named OpenAPI schemas. Local non-exported nested `const` serializers can generate anonymous `Unnamed` schemas; multiple nested shapes may collapse into the same anonymous type and cause generated clients to lose fields.
+
+Runtime serializer global names include the serializer path, so the same exported function name in different directories does not by itself cause `SerializerNameConflict`. OpenAPI component names for named exports are based on the export name, though, so two OpenAPI-visible serializers with the same exported function name can still collide in the generated schema. Give computed/view-model serializers distinct export names, such as a `ViewSerializer` suffix, when the domain noun overlaps a Dream model serializer.
 
 ## STI Serializers
 

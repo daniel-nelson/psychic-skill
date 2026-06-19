@@ -372,8 +372,8 @@ describe('V1/Host/PlacesController', () => {
     })
 
     context('with invalid params', () => {
-      it('returns 422', async () => {
-        await request.post('/v1/host/places', 422, {
+      it('returns 400', async () => {
+        await request.post('/v1/host/places', 400, {
           data: { style: 'cabin', sleeps: 4 },  // Missing required 'name'
         })
       })
@@ -579,11 +579,13 @@ describe('V1/Host/PlacesController', () => {
 
     context('when sleeps is negative', () => {
       beforeEach(() => { options.sleeps = -1 })
-      it('returns 422', async () => { ... })
+      it('returns 400', async () => { ... })
     })
   })
 })
 ```
+
+OpenAPI request validation may reject invalid model params before model validations run. In controller specs that use OpenAPI spec helpers, out-of-range or missing fields derived from model validators can correctly expect 400. Reserve 422 expectations for controller actions that intentionally call `unprocessableContent` / `unprocessableEntity`.
 
 ## Testing Principles
 
