@@ -453,9 +453,9 @@ this.castParam('roomType', 'string', { enum: BOOKABLE_ROOM_TYPES })
 
 ### extractParams
 
-`extractParams(Model, allowedColumns, opts?)` validates an incoming request body against a Dream model's columns and returns a typed, safe-to-write attributes object. The `allowedColumns` array is an explicit positional allowlist, TS-checked at compile time against the model's safe columns; the runtime intersects it with the model's `paramSafeColumns` (when declared) and the always-excluded set described below.
+`extractParams(Model, allowedParams, opts?)` validates an incoming request body against a Dream model's writable params and returns a typed, safe-to-write attributes object. The `allowedParams` array is an explicit positional allowlist, TS-checked at compile time against the model's safe params: real columns, Encrypted columns, and Virtual columns. Encrypted params are accepted as `string` or `string | null` based on the backing encrypted column's nullability; Virtual params use the type declared in `@deco.Virtual(...)`. The runtime intersects the allowlist with the model's `paramSafeColumns` (when declared) and the always-excluded set described below.
 
-The allowlist is required and lives at the call site so that every controller's accepted columns are locally visible. Adding a new column to a model doesn't widen any controller's surface — each controller has to opt in to accept it.
+The allowlist is required and lives at the call site so that every controller's accepted params are locally visible. Adding a new model param doesn't widen any controller's surface — each controller has to opt in to accept it.
 
 ```typescript
 // Standard usage
@@ -672,7 +672,7 @@ The auto-derived request body shape is the model's `paramSafeColumns`. Reach for
 | Use | When |
 |---|---|
 | omit `requestBody` | Action only takes `paramSafeColumns`. |
-| `params: [...]` | Narrow the auto-derived shape to a subset of the model's params. Use this instead of the older `only` alias in new code and docs. |
+| `params: [...]` | Narrow the auto-derived shape to a subset of the model's real columns, Encrypted columns, and Virtual columns. |
 | `including: [...]` | Re-add columns that ARE on the model but auto-excluded — FKs, STI `type`, polymorphic type. **Most common legitimate use.** Use this even when the FK is nullable; column nullability is inferred from the model. |
 | `combining: { … }` | Add fields that are NOT columns on the model — join-table arrays (`cityIds`), one-shot tokens, upload metadata, workflow flags. |
 | `required: [...]` | Mark fields required. **Typed to the model's column names**, so it cannot reference `combining` keys. |

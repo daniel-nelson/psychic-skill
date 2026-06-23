@@ -283,11 +283,13 @@ export default class Place extends ApplicationModel {
   // Encrypted columns
   @deco.Encrypted()
   public phone: DreamColumn<Place, 'encryptedPhone'>
+  // Request bodies and OpenAPI use `phone`, not `encryptedPhone`; the accepted
+  // type is string or string | null based on the encrypted column's nullability.
 
-  // Virtual — accepted by update() and extractParams() but not stored directly in DB.
+  // Virtual — accepted by create(), update(), and extractParams() but not stored directly in DB.
   // Decorator goes on whichever accessor is declared first.
   // Getter and setter MUST be synchronous — never async. Type argument sets the
-  // OpenAPI shape wherever the attribute appears in a serializer. See models.md.
+  // OpenAPI shape in serializers and model-derived request bodies. See models.md.
   // Note the use of `DreamColumn<Place, 'grams'>` to specify the type of the
   // getter return type and setter params because these types are simply
   // mutations of what is in the database and the database is the source
@@ -504,7 +506,7 @@ export default class V1HostPlacesController extends V1HostBaseController {
 |--------|---------|
 | `this.params` | Merged URL + body + query params |
 | `this.castParam('name', 'type', opts?)` | Validate and cast a single param. Types: `uuid`, `string`, `integer`, `bigint`, `date`, `datetime`, `number`, `enum`. Array variants: `uuid[]`, `string[]`, etc. Options: `{ allowNull: true, enum: [...] }` |
-| `this.extractParams(Model, allowed, opts?)` | Extract and validate request body against a Dream model. `allowed` is an explicit positional allowlist (TS-checked, intersected with the model's `paramSafeColumns`). Options: `{ only, including, key, array }`. Generated CRUD scaffolds hoist a shared `paramSafeColumns` const and pass it to both `extractParams` and the `@OpenAPI` `requestBody`, keeping the documented request body and the runtime allowlist in lockstep from one edit point. |
+| `this.extractParams(Model, allowed, opts?)` | Extract and validate request body params against a Dream model. `allowed` is an explicit positional allowlist, TS-checked and intersected with the model's `paramSafeColumns`. Options: `{ only, including, key, array }`. |
 | `this.ok(data)` | 200 response |
 | `this.created(data)` | 201 response |
 | `this.noContent()` | 204 response |
@@ -514,6 +516,10 @@ export default class V1HostPlacesController extends V1HostBaseController {
 | `this.serializerPassthrough(obj)` | Pass context (e.g., locale) to serializers |
 | `this.header('name')` | Read request header |
 | `this.startSession(user)` / `this.endSession()` | Session management |
+
+`extractParams` safe params include real columns, Encrypted columns, and Virtual columns. Encrypted params are typed and validated as `string` or `string | null` from the backing encrypted column's nullability; Virtual params use the `@deco.Virtual(...)` type.
+
+Generated CRUD scaffolds hoist a shared `paramSafeColumns` const and pass it to both `extractParams` and the `@OpenAPI` `requestBody`, keeping the documented request body and runtime allowlist in lockstep from one edit point.
 
 ### @BeforeAction Pattern
 

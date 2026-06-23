@@ -602,8 +602,12 @@ public position: DreamColumn<Room, 'position'>
 @deco.Encrypted()
 public phone: DreamColumn<User, 'encryptedPhone'>
 // DB column is 'encrypted_phone', model property is 'phone'
+// extractParams and model-derived OpenAPI request bodies use the public property
+// name (`phone`), not the encrypted DB column name. The accepted type is string
+// or string | null depending on whether the backing encrypted column is nullable;
+// extractParams enforces that type at runtime and in TypeScript.
 
-// Virtual — accepted by update() and extractParams() but not stored directly in DB.
+// Virtual — accepted by create(), update(), and extractParams() but not stored directly in DB.
 // Use getter/setter pairs to transform between the virtual and the actual DB column.
 // Decorator goes on whichever accessor is declared first.
 // Note the use of `DreamColumn<Place, 'grams'>` to specify the type of the
@@ -637,14 +641,17 @@ public set pounds(pounds: DreamColumn<Place, 'grams'>) {
 // a virtual.
 //
 // The type argument to @deco.Virtual(...) sets the OpenAPI shape wherever the
-// attribute is surfaced in a serializer. Just as a real column's OpenAPI shape
-// is derived from the database schema, a virtual's shape is derived from the
-// decorator's type argument. @deco.Virtual(['number', 'null']) produces a
-// `number | null` schema in any serializer that exposes the attribute via
-// .attribute('pounds') or .delegatedAttribute('foo', 'pounds'). Don't pass an
-// explicit `openapi:` to those serializer methods when surfacing a virtual —
-// it overrides the auto-inferred shape and creates a place for the spec to
-// drift when the virtual's declared type changes.
+// attribute is surfaced in a serializer or model-derived OpenAPI request body,
+// and it is the type extractParams enforces at runtime and in TypeScript. Just
+// as a real column's OpenAPI shape is derived from the database schema, a
+// virtual's shape is derived from the decorator's type argument.
+// @deco.Virtual(['number', 'null']) produces and accepts a `number | null` shape
+// in any serializer that exposes the attribute via .attribute('pounds') or
+// .delegatedAttribute('foo', 'pounds'), and in requestBody.params when `pounds`
+// is part of the accepted params. Don't pass an explicit `openapi:` to those
+// serializer methods when surfacing a virtual — it overrides the auto-inferred
+// shape and creates a place for the spec to drift when the virtual's declared
+// type changes.
 
 // STI - Single Table Inheritance child
 @STI(Room)
