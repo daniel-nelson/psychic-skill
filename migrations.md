@@ -206,7 +206,7 @@ encrypts each non-null value. `decryptColumn` performs the inverse; pass
 column encryption to be configured.
 
 These helpers intentionally rewrite one row at a time, reading rows in bounded
-keyset batches. That keeps memory bounded but is still not an online migration for
+batches. That keeps memory bounded but is still not an online migration for
 very large tables. Drop indexes on the converted column first; indexing ciphertext is
 usually not useful, and every rewritten row pays the index-maintenance cost.
 
