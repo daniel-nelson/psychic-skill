@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.45.0 — 2026-06-22
+
+### Added
+
+- **`migrations.md`** — documented `DreamMigrationHelpers.encryptColumn` / `decryptColumn` for converting existing persisted columns to and from `@Encrypted`, including why rename-and-decorate leaves plaintext behind.
+- **`controllers.md`**, **`SKILL.md`** — documented that `g:controller` scaffolds namespace `BaseController.ts` files and the leaf controller's inheritance chain, while leaving routes for the developer to wire manually.
+- **`querying.md`**, **`models.md`** — made query-level `.update()` semantics explicit: it loads each matched record and runs instance hooks/validations by default; `{ skipHooks: true }` is the raw bulk SQL path.
+
+### Changed
+
+- **`controllers.md`**, **`SKILL.md`** — updated OpenAPI request-body narrowing guidance from `requestBody.only` to the accepted `requestBody.params` wording, while noting `only` as the older compatibility alias.
+- **`SKILL.md`** — bumped the documented ecosystem baseline to `@rvoh/dream` 2.14.x and `@rvoh/psychic` 3.8.x.
+
 ## 0.44.0 — 2026-06-19
 
 ### Added

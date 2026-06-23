@@ -22,7 +22,7 @@ All CLI commands in this document are run via the local project's package manage
 
 **Note on examples:** Code examples throughout this skill use BearBnB, a demo app that creates an AirBnB clone for bears (https://github.com/daniel-nelson/bearbnb). In this domain, **Guest** and **Host** are application roles (a Guest books a place to stay, a Host lists a place) — not to be confused with "visitor" (unauthenticated user) or "server" (the machine).
 
-**Ecosystem versions & staleness policy.** This skill is written against `@rvoh/dream` 2.12.x, `@rvoh/psychic` 3.5.x, `@rvoh/psychic-workers` 2.3.x, `@rvoh/psychic-websockets` 3.1.x, and `@rvoh/psychic-spec-helpers` 3.1.x. Features and generator behavior described here assume versions at or above these. **Stay current.** If something documented in this skill fails — a generator flag is unrecognized, shorthand produces malformed output (e.g. an `@alias` passing through literally into identifiers), an API is missing — the first corrective action is to update the out-of-date `@rvoh/*` packages, not to work around the skill. Minor and patch bumps within these majors are low-risk and cheap to apply; treat keeping these packages up to date as the default. This skill deliberately does **not** annotate which version each individual feature landed in — assume current, and upgrade if reality disagrees with the skill.
+**Ecosystem versions & staleness policy.** This skill is written against `@rvoh/dream` 2.14.x, `@rvoh/psychic` 3.8.x, `@rvoh/psychic-workers` 2.3.x, `@rvoh/psychic-websockets` 3.1.x, and `@rvoh/psychic-spec-helpers` 3.1.x. Features and generator behavior described here assume versions at or above these. **Stay current.** If something documented in this skill fails — a generator flag is unrecognized, shorthand produces malformed output (e.g. an `@alias` passing through literally into identifiers), an API is missing — the first corrective action is to update the out-of-date `@rvoh/*` packages, not to work around the skill. Minor and patch bumps within these majors are low-risk and cheap to apply; treat keeping these packages up to date as the default. This skill deliberately does **not** annotate which version each individual feature landed in — assume current, and upgrade if reality disagrees with the skill.
 
 **Always update peer dependencies alongside `@rvoh/*`.** A scoped command like `pnpm up -L "@rvoh/*"` upgrades only the `@rvoh` scope and leaves peer dependencies behind, which can leave a peer pinned at a version the upgraded `@rvoh/*` no longer accepts. After any `@rvoh/*` upgrade, also bump the peers needed to satisfy the new peer ranges — in practice `kysely` and `kysely-codegen` (both `@rvoh/dream` peers) are the ones that bite, but the rule is general: resolve every unmet peer requirement the upgrade introduces, don't stop at the `@rvoh` scope.
 
@@ -93,7 +93,7 @@ All CLI commands in this document are run via the local project's package manage
     ```
 
 20. **NEVER hand-code OpenAPI schema for a shape Psychic can derive.** Before writing `requestBody.properties`, `responses[status].properties`, or `enum: SomeEnumValues`, stop and choose the derived path:
-    - Model request bodies use `requestBody: { only: [...] }` / `{ including: [...] }`, even when the action must use `castParam` instead of `extractParams` for STI dispatch or custom validation.
+    - Model request bodies use `requestBody: { params: [...] }` / `{ including: [...] }`, even when the action must use `castParam` instead of `extractParams` for STI dispatch or custom validation. `params` is the OpenAPI request-body narrowing key; older code may still show `only`, but new docs and scaffolds should use `params`.
     - Model responses use `@OpenAPI(Model, { serializerKey })` and serializers.
     - Computed / view-model responses use an `ObjectSerializer` passed to `@OpenAPI(SerializerFn, { status })`; nested computed objects become nested `ObjectSerializer`s. If the ObjectSerializer does not exist yet, create it.
     - Hand-written JSON Schema is only for genuinely ad hoc inputs or outputs that cannot sensibly be represented by a Dream model, serializer, or newly-created ObjectSerializer. Do not use "there is no serializer yet" as a reason to hand-write `responses`. Keeping OpenAPI attached to serializers gives TypeScript a single implementation surface for the returned data and documented schema instead of letting a plain object and a duplicated schema drift independently.
@@ -188,6 +188,8 @@ pnpm build                       # Production build or check for type errors onl
 pnpm format                      # Apply standard formatting
 pnpm lint                        # Check linting
 ```
+
+`g:controller` scaffolds the namespace base-controller chain as well as the leaf controller and unit spec. For `Path/Name`, it creates a `Path/BaseController.ts` and makes `Path/NameController` extend that base. It does not add routes. Use it even for custom/webhook controllers, then re-parent the generated namespace base to `UnauthedController` when the surface is intentionally unauthenticated.
 
 ## Generator Usage Rules
 

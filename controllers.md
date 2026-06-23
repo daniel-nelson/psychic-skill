@@ -68,6 +68,8 @@ controllers/
 
 5. **Custom-token surfaces are still generated, then re-parented.** For a surface authenticated by a custom token rather than the app's normal user/session (a signed public link, a webhook, a partner API), still scaffold the resource/controllers with the generators into their own dedicated namespace — don't hand-roll the shape. Then make one manual change: repoint that namespace's base controller to extend the branch's `UnauthedController` instead of its `AuthedController`, and implement token verification as a `@BeforeAction` on that namespace base controller. This keeps generator conventions and the one-base-controller-per-directory rule while preventing accidental inheritance of the normal session-auth `@BeforeAction`s. Example: a guest opening a booking from an emailed signed link — `V1/Public/Bookings/BaseController` extends `V1/Public/UnauthedController` and verifies a `Booking/AccessToken` in a `@BeforeAction`, loading `currentBooking` from the token rather than from a session user.
 
+6. **`g:controller` is structural, not just a file stub.** It creates a `BaseController.ts` for each namespace segment, wires the leaf controller through that namespace base, and creates the unit spec. It does not add routes. Hand-writing a controller skips the namespace base chain, which is exactly where shared webhook/public/custom-token concerns should live.
+
 ### Verifying the Hierarchy
 
 ```bash
@@ -546,7 +548,7 @@ export default class PostsController extends AuthedController {
     tags: openApiTags,
     description: 'Create a Post',
     fastJsonStringify: true,
-    requestBody: { only: paramSafeColumns },
+    requestBody: { params: paramSafeColumns },
   })
   public async create() {
     const post = await Post.create(this.extractParams(Post, paramSafeColumns))
@@ -558,7 +560,7 @@ export default class PostsController extends AuthedController {
     tags: openApiTags,
     description: 'Update a Post',
     fastJsonStringify: true,
-    requestBody: { only: paramSafeColumns },
+    requestBody: { params: paramSafeColumns },
   })
   public async update() {
     await (await this.post()).update(this.extractParams(Post, paramSafeColumns))
@@ -569,7 +571,7 @@ export default class PostsController extends AuthedController {
 
 The const is typed `DreamParamSafeColumnNames<Model>[]`, which gives autocomplete of valid columns and a compile error on anything not param-safe right at the assignment. It is emitted only when the controller has a `create` and/or `update` action and the model is known (index/show/destroy-only controllers don't get it), and when no columns survive the param-safe filter it is still emitted, typed and empty: `const paramSafeColumns: DreamParamSafeColumnNames<Post>[] = []`. The real scaffold emits the action bodies commented-out as hints; they're shown uncommented here for readability. Admin and non-admin scaffolds emit the same shape.
 
-**Single edit point:** narrowing `paramSafeColumns` updates both the runtime `extractParams` allowlist *and* the documented `@OpenAPI` request body in one place — the documented request shape and the runtime extraction can't silently diverge. Note this is `requestBody`, not the response: `create`'s 201 still returns the full serializer and `update` is 204 (no body) — the allowlist constrains *input*. The `requestBody: { only }` here is the generator pre-wiring the auto-derived request body for scaffolded CRUD; the [`requestBody.including`](#always-excluded-columns) escape hatch ("re-add what extraction excluded") still applies on top of it unchanged.
+**Single edit point:** narrowing `paramSafeColumns` updates both the runtime `extractParams` allowlist *and* the documented `@OpenAPI` request body in one place — the documented request shape and the runtime extraction can't silently diverge. Note this is `requestBody`, not the response: `create`'s 201 still returns the full serializer and `update` is 204 (no body) — the allowlist constrains *input*. The `requestBody: { params }` here is the generator pre-wiring the auto-derived request body for scaffolded CRUD; the [`requestBody.including`](#always-excluded-columns) escape hatch ("re-add what extraction excluded") still applies on top of it unchanged.
 
 ## Response Methods
 
@@ -642,7 +644,7 @@ this.ok(places)
     id: { description: 'The place ID' },
   },
   requestBody: {                        // Request body shape — prefer structured options over hand-writing a full schema
-    only: ['name', 'style'],
+    params: ['name', 'style'],
     including: ['hostId', 'type'],
     combining: { acknowledgedTerms: { type: 'boolean' } },
     required: ['name', 'type'],
@@ -665,12 +667,12 @@ this.ok(places)
 
 The auto-derived request body shape is the model's `paramSafeColumns`. Reach for `requestBody` only when you need to override that default. **If your action only takes `paramSafeColumns`, omit `requestBody` entirely.**
 
-**Derive before hand-writing.** If any body field is a Dream model column, use `only` / `including` / `combining` / `OpenAPI.forDream(...)` so types, nullability, and enum constraints come from the model. This still applies when the action cannot use `extractParams` directly, such as an STI create action that reads a `type` discriminator with `castParam` and then dispatches through an exhaustive `switch`. The runtime extraction can be custom; the OpenAPI request body should still be model-derived.
+**Derive before hand-writing.** If any body field is a Dream model column, use `params` / `including` / `combining` / `OpenAPI.forDream(...)` so types, nullability, and enum constraints come from the model. This still applies when the action cannot use `extractParams` directly, such as an STI create action that reads a `type` discriminator with `castParam` and then dispatches through an exhaustive `switch`. The runtime extraction can be custom; the OpenAPI request body should still be model-derived.
 
 | Use | When |
 |---|---|
 | omit `requestBody` | Action only takes `paramSafeColumns`. |
-| `only: [...]` | Narrow the auto-derived shape to a subset of the model's columns. |
+| `params: [...]` | Narrow the auto-derived shape to a subset of the model's params. Use this instead of the older `only` alias in new code and docs. |
 | `including: [...]` | Re-add columns that ARE on the model but auto-excluded — FKs, STI `type`, polymorphic type. **Most common legitimate use.** Use this even when the FK is nullable; column nullability is inferred from the model. |
 | `combining: { … }` | Add fields that are NOT columns on the model — join-table arrays (`cityIds`), one-shot tokens, upload metadata, workflow flags. |
 | `required: [...]` | Mark fields required. **Typed to the model's column names**, so it cannot reference `combining` keys. |
@@ -699,7 +701,7 @@ public async update() {
 
 #### Nested model-driven shapes — multi-resource creation
 
-When a request body bundles multiple Dream models — typically a parent plus a one-shot array of children — use the `for: Model` sentinel inside `combining` (or `combining.<key>.items` for arrays). It produces an inline object schema derived from the model's `paramSafeColumns`. Use `OpenAPI.forDream(Model, opts)` as the typed wrapper: `only` / `including` / `required` are constrained at compile time to that model's column names, so a misspelled column raises a TS error instead of silently dropping out of the OpenAPI shape.
+When a request body bundles multiple Dream models — typically a parent plus a one-shot array of children — use the `for: Model` sentinel inside `combining` (or `combining.<key>.items` for arrays). It produces an inline object schema derived from the model's `paramSafeColumns`. Use `OpenAPI.forDream(Model, opts)` as the typed wrapper: `params` / `including` / `required` are constrained at compile time to that model's column names, so a misspelled column raises a TS error instead of silently dropping out of the OpenAPI shape.
 
 The nested `for:` sentinel is **request-only** — response shapes still use `$serializable` / `$serializer`.
 

@@ -686,6 +686,11 @@ await user.update({ name: 'Updated' }, { skipHooks: true })
 - `update()` accepts attributes, applies them, and persists — it also persists any attributes previously assigned via `=`
 - On an unpersisted instance (`User.new()`), both `save()` and `update({})` will create the record
 
+Query-level updates also run instance hooks by default: `User.where(...).update(attrs)`
+loads each matched record and calls instance `.update()` on it. It is not a single
+bulk SQL update unless you pass `{ skipHooks: true }`, which bypasses hooks and
+validations.
+
 ## Dirty Tracking
 
 ```typescript

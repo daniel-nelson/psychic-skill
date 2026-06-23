@@ -148,7 +148,7 @@ Query-level write methods also exist and are easy to miss:
 - `query.undestroy(...)`
 
 ```typescript
-// Update matching records — leverages `findEach` to efficiently bring individual records into scope and updates each one, running lifecycle hooks
+// Update matching records — loads each record and calls instance update(), running lifecycle hooks and validations
 await LocalizedText.where({ localizableId: host.id, locale: 'en-US' }).update({ title: 'New Title' })
 
 // Update in a single SQL call (skips lifecycle hooks)
@@ -157,6 +157,13 @@ await LocalizedText.where({ localizableId: host.id, locale: 'en-US' }).update({ 
 // Delete matching records
 await Tag.where({ postId: post.id }).delete()
 ```
+
+Query-level `.update()` is not Rails `update_all`: by default it iterates the matched
+records with `findEach`, calls instance `.update()` on each one, and runs per-record
+hooks and validations. Pass `{ skipHooks: true }` only when you intentionally want one
+raw bulk SQL update with no hooks or validations. This distinction matters in both
+directions: hook-enforced invariants are still enforced by default query updates, and
+large "bulk" updates can be N+1 unless you explicitly choose `skipHooks`.
 
 ### Range Predicates
 

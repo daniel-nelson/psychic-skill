@@ -173,6 +173,43 @@ Before adding one, work through whether the data is really shaped like an associ
 // Model uses @deco.Encrypted() and property 'phone'
 ```
 
+#### Converting an existing column to or from `@Encrypted`
+
+Do not convert an existing plaintext column to `@Encrypted` by only renaming
+`phone` to `encrypted_phone` and adding `@deco.Encrypted()` to the model. A rename
+moves the existing plaintext bytes unchanged; the encrypted-column getter then tries
+to decrypt plaintext and raises a `DecryptionError`.
+
+Use `DreamMigrationHelpers.encryptColumn` / `decryptColumn` so the migration renames
+the column and rewrites every non-null value through Dream's encryption path:
+
+```typescript
+import { DreamMigrationHelpers } from '@rvoh/dream/db'
+
+export async function up(db: Kysely<any>): Promise<void> {
+  await DreamMigrationHelpers.encryptColumn(db, { table: 'users', column: 'phone' })
+}
+
+export async function down(db: Kysely<any>): Promise<void> {
+  await DreamMigrationHelpers.decryptColumn(db, {
+    table: 'users',
+    column: 'phone',
+    columnType: 'text',
+  })
+}
+```
+
+`encryptColumn` renames `column` to `encrypted_<column>`, widens it to `text`, and
+encrypts each non-null value. `decryptColumn` performs the inverse; pass
+`columnType` when the decrypted column should be restored to something other than
+`text`. Both helpers run inside the migration transaction, preserve nulls, and require
+column encryption to be configured.
+
+These helpers intentionally rewrite one row at a time, reading rows in bounded
+keyset batches. That keeps memory bounded but is still not an online migration for
+very large tables. Drop indexes on the converted column first; indexing ciphertext is
+usually not useful, and every rewritten row pays the index-maintenance cost.
+
 ## Enum Types
 
 ### Create Enum
