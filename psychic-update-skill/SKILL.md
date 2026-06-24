@@ -17,7 +17,7 @@ This section is referenced by the main skill preamble when it detects `UPGRADE_A
 First, check if auto-upgrade is enabled:
 ```bash
 _SKILL_DIR=""
-for d in "${CLAUDE_SKILL_DIR:-}" "${CODEX_SKILL_DIR:-}" "$HOME/.claude/skills/psychic-skill" "$HOME/.codex/skills/psychic-skill" ".claude/skills/psychic-skill" ".codex/skills/psychic-skill"; do
+for d in "${CLAUDE_SKILL_DIR:-}" "${CODEX_SKILL_DIR:-}" "$HOME/.agents/skills/psychic-skill" "$HOME/.claude/skills/psychic-skill" "$HOME/.codex/skills/psychic-skill" ".agents/skills/psychic-skill" ".claude/skills/psychic-skill" ".codex/skills/psychic-skill"; do
   [ -n "$d" ] && [ -x "$d/bin/psychic-skill-config" ] && _SKILL_DIR="$d" && break
 done
 _AUTO=""
@@ -70,18 +70,30 @@ Continue with the current skill.
 ### Step 2: Detect install type
 
 ```bash
-if [ -d "$HOME/.claude/skills/psychic-skill/.git" ]; then
+if [ -d "$HOME/.agents/skills/psychic-skill/.git" ]; then
+  INSTALL_TYPE="global-git"
+  INSTALL_DIR="$HOME/.agents/skills/psychic-skill"
+elif [ -d "$HOME/.claude/skills/psychic-skill/.git" ]; then
   INSTALL_TYPE="global-git"
   INSTALL_DIR="$HOME/.claude/skills/psychic-skill"
 elif [ -d "$HOME/.codex/skills/psychic-skill/.git" ]; then
   INSTALL_TYPE="global-git"
   INSTALL_DIR="$HOME/.codex/skills/psychic-skill"
+elif [ -d ".agents/skills/psychic-skill/.git" ]; then
+  INSTALL_TYPE="local-git"
+  INSTALL_DIR=".agents/skills/psychic-skill"
 elif [ -d ".claude/skills/psychic-skill/.git" ]; then
   INSTALL_TYPE="local-git"
   INSTALL_DIR=".claude/skills/psychic-skill"
 elif [ -d ".codex/skills/psychic-skill/.git" ]; then
   INSTALL_TYPE="local-git"
   INSTALL_DIR=".codex/skills/psychic-skill"
+elif [ -d "$HOME/.agents/skills/psychic-skill" ]; then
+  INSTALL_TYPE="vendored-global"
+  INSTALL_DIR="$HOME/.agents/skills/psychic-skill"
+elif [ -d ".agents/skills/psychic-skill" ]; then
+  INSTALL_TYPE="vendored"
+  INSTALL_DIR=".agents/skills/psychic-skill"
 elif [ -d ".claude/skills/psychic-skill" ]; then
   INSTALL_TYPE="vendored"
   INSTALL_DIR=".claude/skills/psychic-skill"
@@ -143,7 +155,7 @@ Use the install directory from Step 2. Check if there's also a local vendored co
 ```bash
 _ROOT=$(git rev-parse --show-toplevel 2>/dev/null || true)
 LOCAL_COPY=""
-for _SUBDIR in .claude/skills/psychic-skill .codex/skills/psychic-skill; do
+for _SUBDIR in .agents/skills/psychic-skill .claude/skills/psychic-skill .codex/skills/psychic-skill; do
   if [ -n "$_ROOT" ] && [ -d "$_ROOT/$_SUBDIR" ]; then
     _RESOLVED_LOCAL=$(cd "$_ROOT/$_SUBDIR" && pwd -P)
     _RESOLVED_PRIMARY=$(cd "$INSTALL_DIR" && pwd -P)
@@ -210,7 +222,7 @@ When invoked directly as `/psychic-update-skill` (not from a preamble):
 ```bash
 UPDATE_CHECK_OUTPUT=""
 UPDATE_CHECK_OK=false
-for d in "${CLAUDE_SKILL_DIR:-}" "${CODEX_SKILL_DIR:-}" "$HOME/.claude/skills/psychic-skill" "$HOME/.codex/skills/psychic-skill" ".claude/skills/psychic-skill" ".codex/skills/psychic-skill"; do
+for d in "${CLAUDE_SKILL_DIR:-}" "${CODEX_SKILL_DIR:-}" "$HOME/.agents/skills/psychic-skill" "$HOME/.claude/skills/psychic-skill" "$HOME/.codex/skills/psychic-skill" ".agents/skills/psychic-skill" ".claude/skills/psychic-skill" ".codex/skills/psychic-skill"; do
   if [ -n "$d" ] && [ -x "$d/bin/psychic-skill-update-check" ]; then
     UPDATE_CHECK_OUTPUT=$("$d/bin/psychic-skill-update-check" --force 2>/dev/null)
     [ $? -eq 0 ] && UPDATE_CHECK_OK=true

@@ -48,16 +48,16 @@ Real files get committed to your repo (not a submodule), so `git clone` just wor
 **1. Install on your machine** — open Codex and paste:
 
 ```
-Install psychic-skill: run `git clone https://github.com/daniel-nelson/psychic-skill.git ~/.codex/skills/psychic-skill && cd ~/.codex/skills/psychic-skill && ./setup`
+Install psychic-skill: run `git clone https://github.com/daniel-nelson/psychic-skill.git ~/.agents/skills/psychic-skill && cd ~/.agents/skills/psychic-skill && ./setup`
 ```
 
 **2. Add to your project (optional):**
 
 ```
-Add psychic-skill to this project: run `cp -Rf ~/.codex/skills/psychic-skill .codex/skills/psychic-skill && rm -rf .codex/skills/psychic-skill/.git && cd .codex/skills/psychic-skill && ./setup`
+Add psychic-skill to this project: run `cp -Rf ~/.agents/skills/psychic-skill .agents/skills/psychic-skill && rm -rf .agents/skills/psychic-skill/.git && cd .agents/skills/psychic-skill && ./setup`
 ```
 
-Real files get committed to your repo (not a submodule), so teammates just need to run `cd .codex/skills/psychic-skill && ./setup` once.
+Real files get committed to your repo (not a submodule), so teammates just need to run `cd .agents/skills/psychic-skill && ./setup` once.
 
 ### Install via `npx skills`
 
@@ -81,11 +81,11 @@ To stay current, run `cd .ai/psychic-skill && git fetch origin && git reset --ha
 
 ### What gets installed
 
-- Skill files (Markdown) in `~/.claude/skills/psychic-skill/` or `~/.codex/skills/psychic-skill/` (and optional project installs at `.claude/skills/psychic-skill/` or `.codex/skills/psychic-skill/`)
+- Skill files (Markdown) in `~/.claude/skills/psychic-skill/` (Claude Code) or `~/.agents/skills/psychic-skill/` (Codex), with optional project installs at `.claude/skills/psychic-skill/` or `.agents/skills/psychic-skill/`
 - `psychic-skill` skill auto-loads when working with Dream/Psychic projects
 - `/psychic-update-skill` slash command (symlinked) for easy upgrades
 
-Everything lives inside your assistant's skills directory (`.claude` or `.codex`). Nothing touches your PATH or runs in the background.
+Everything lives inside your assistant's skills directory. Nothing touches your PATH or runs in the background.
 
 ## How it works
 
@@ -119,13 +119,13 @@ rm -rf .claude/skills/psychic-skill/.git
 cd .claude/skills/psychic-skill && ./setup
 
 # Codex personal install
-cd ~/.codex/skills/psychic-skill && git fetch origin && git reset --hard origin/main && ./setup
+cd ~/.agents/skills/psychic-skill && git fetch origin && git reset --hard origin/main && ./setup
 
 # Codex project install (optional)
-rm -rf .codex/skills/psychic-skill
-cp -Rf ~/.codex/skills/psychic-skill .codex/skills/psychic-skill
-rm -rf .codex/skills/psychic-skill/.git
-cd .codex/skills/psychic-skill && ./setup
+rm -rf .agents/skills/psychic-skill
+cp -Rf ~/.agents/skills/psychic-skill .agents/skills/psychic-skill
+rm -rf .agents/skills/psychic-skill/.git
+cd .agents/skills/psychic-skill && ./setup
 ```
 
 ## Uninstalling
@@ -138,10 +138,10 @@ rm -f .claude/skills/psychic-update-skill
 rm -rf .claude/skills/psychic-skill
 
 # Codex
-rm -f ~/.codex/skills/psychic-update-skill
-rm -rf ~/.codex/skills/psychic-skill
-rm -f .codex/skills/psychic-update-skill
-rm -rf .codex/skills/psychic-skill
+rm -f ~/.agents/skills/psychic-update-skill
+rm -rf ~/.agents/skills/psychic-skill
+rm -f .agents/skills/psychic-update-skill
+rm -rf .agents/skills/psychic-skill
 ```
 
 ## Skill files
