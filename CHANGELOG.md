@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.46.1 — 2026-06-24
+
+### Changed
+
+- **`bin/psychic-skill-config`** — Made the `set` path portable. It used BSD-only `sed -i ''`, which errors on GNU/Linux, so opting into a config change there (e.g. `set auto_upgrade true` from the "always keep me up to date" prompt) would fail. Replaced with a portable temp-file rewrite that works on both macOS and Linux.
+
 ## 0.46.0 — 2026-06-24
 
 ### Changed
