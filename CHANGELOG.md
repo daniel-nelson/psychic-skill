@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.46.2 — 2026-06-24
+
+### Fixed
+
+- **Added `~/.agents/skills/psychic-skill` to update-check and install-detection search paths.** Codex reads skills from `$HOME/.agents/skills/` per the official Codex docs, not `~/.codex/skills/`. The update-check preamble and `/psychic-update-skill` install detection now check `~/.agents/` first so the skill correctly finds itself and upgrades when installed in Codex.
+
 ## 0.46.1 — 2026-06-24
 
 ### Changed
