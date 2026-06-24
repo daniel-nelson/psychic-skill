@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.46.0 — 2026-06-24
+
+### Changed
+
+- **`models.md`** — Removed non-existent `'inclusion'` and `'exclusion'` validator types from the Validations section. Fixed the custom validation example to use `this.addError(column, message)` instead of direct `this.errors[col]` assignment.
+- **`models.md`** — Noted in Dirty Tracking that `changedAttributes()` is populated on unpersisted `.new()` instances before the first save.
+
+### Added
+
+- **`testing.md`** — Added rule: never run `uspec` and `fspec` concurrently — both share the test database lifecycle, so parallel execution produces transient false failures.
+
 ## 0.45.0 — 2026-06-22
 
 ### Added

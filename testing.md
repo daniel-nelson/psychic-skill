@@ -41,6 +41,8 @@ pnpm fspec:visible                            # Feature specs (visible browser)
 
 **Always run migrations before specs.** After generating a resource or migration, run `pnpm psy db:migrate` before `pnpm uspec` or `pnpm fspec`. The integrity check will fail with "Migrations need to be run on default database" if migrations are pending.
 
+**Never run `uspec` and `fspec` at the same time.** Both suites share the same test database lifecycle. Run them sequentially. It is fine to pass multiple file patterns to a single `pnpm uspec` or `pnpm fspec` invocation — the runner manages that suite's lifecycle internally.
+
 **Feature spec server management:** `pnpm fspec` automatically starts AND stops the frontend servers (client, admin, internal). Do NOT manually start them before running fspec — that will cause fspec to fail because it can't bind the ports.
 
 **Run specific specs within a file** using `.only` or `.skip`:

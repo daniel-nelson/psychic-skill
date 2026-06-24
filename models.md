@@ -447,12 +447,6 @@ public email: DreamColumn<User, 'email'>
 @deco.Validates('numericality', { min: 0, max: 100 })
 public volume: DreamColumn<User, 'volume'>
 
-@deco.Validates('inclusion', { in: ['active', 'inactive'] })
-public status: DreamColumn<User, 'status'>
-
-@deco.Validates('exclusion', { in: ['admin', 'root'] })
-public username: DreamColumn<User, 'username'>
-
 @deco.Validates('requiredBelongsTo')
 public user: User  // Validates the association exists
 
@@ -460,7 +454,7 @@ public user: User  // Validates the association exists
 @deco.Validate()
 public validateWeightConsistency(this: Sandbag) {
   if (this.weight && this.weightKgs) {
-    this.errors['weight'] = ['cannot include both weight and weightKgs']
+    this.addError('weight', 'cannot include both weight and weightKgs')
   }
 }
 ```
@@ -710,6 +704,8 @@ user.changedAttributes()          // { name: 'New Name' }
 user.hasChanges('name')           // true
 user.hasChanges('email')          // false
 ```
+
+`changedAttributes()` works before the first save too. `User.new({ name: 'Alice' })` marks `name` dirty immediately, so `changedAttributes()` is populated on the unpersisted instance.
 
 ## Batch Processing
 
