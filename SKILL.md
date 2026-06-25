@@ -119,12 +119,12 @@ npx @rvoh/create-psychic new <app-name> [options]
 | `--admin-client <type>` | Admin client app (same options as `--client`) |
 | `--internal-client <type>` | Internal client app (same options as `--client`) |
 | `--claude-psychic-skill` / `--no-claude-psychic-skill` | Install or exclude psychic-skill for Claude Code |
-| `--codex-psychic-skill` / `--no-codex-psychic-skill` | Install or exclude psychic-skill for Codex |
+| `--agents-psychic-skill` / `--no-agents-psychic-skill` | Install or exclude psychic-skill for Codex / .agents-compatible agents |
 
 Example:
 
 ```bash
-npx @rvoh/create-psychic new my-app --package-manager pnpm --primary-key-type uuid7 --workers --no-websockets --client react --admin-client none --internal-client none --claude-psychic-skill --no-codex-psychic-skill
+npx @rvoh/create-psychic new my-app --package-manager pnpm --primary-key-type uuid7 --workers --no-websockets --client react --admin-client none --internal-client none --claude-psychic-skill --no-agents-psychic-skill
 ```
 
 ## Project Structure

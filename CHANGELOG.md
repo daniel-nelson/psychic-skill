@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.47.1 — 2026-06-24
+
+### Fixed
+
+- **Updated `create-psychic` CLI flag reference.** `--codex-psychic-skill` was renamed to `--agents-psychic-skill` in create-psychic 3.5.6; updated the flag table and example command in this skill accordingly.
+
 ## 0.47.0 — 2026-06-24
 
 ### Added
