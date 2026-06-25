@@ -431,7 +431,7 @@ The shape is enforced by the OpenAPI-derived types: query-param keys come from t
 
 ### Transaction-callback type for helper methods
 
-For helper methods called inside a `.transaction(...)` callback, type the txn parameter as `DreamTransaction<Dream>` (imported from `@rvoh/dream`). The same type is used by `@AfterCreate` / `@AfterUpdate` hooks (see [models.md — After Hooks](models.md)) and shown in [SKILL.md — Transactions](SKILL.md). Don't reach for `Parameters<Parameters<typeof ApplicationModel.transaction>[0]>[0]` gymnastics.
+For helper methods called inside a `.transaction(...)` callback, type the txn parameter as `DreamTransaction<Dream>` (imported from `@rvoh/dream`). The same type is used by `@AfterCreate` / `@AfterUpdate` hooks (see [models.md — After Hooks](models.md)) and in [models.md — Transactions](models.md#transactions). Don't reach for `Parameters<Parameters<typeof ApplicationModel.transaction>[0]>[0]` gymnastics.
 
 ## Authentication Helper
 

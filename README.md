@@ -148,7 +148,7 @@ rm -rf .agents/skills/psychic-skill
 
 | File | Content |
 |------|---------|
-| `SKILL.md` | Main skill — critical rules, project structure, quick references for all topics |
+| `SKILL.md` | Main skill — always-on critical rules, project structure, key commands, and a decision map pointing to the topic files below for each task |
 | `models.md` | Dream models, organization/namespacing, associations, hooks, validations, scopes, operators, decorators |
 | `generators.md` | Scaffolding generators (`g:resource`/`g:model`/`g:sti-child`/`g:migration`) — decision tree, arguments, post-gen workflow, adding properties |
 | `controllers.md` | Psychic controllers, auth, CRUD, OpenAPI, parameters |

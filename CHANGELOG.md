@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.49.0 — 2026-06-25
+
+### Changed
+
+- **`SKILL.md` altitude audit — collapsed task-triggered depth to decision triggers + demanding pointers.** `SKILL.md` is the always-loaded core, so every token competes with the agent's working context. Twelve sections that had re-accreted mid-task depth — `## Models`, `## Controllers`, `## Serializers`, `## Soft Delete`, `## Default Scopes`, `## Single Table Inheritance (STI)`, `## Associations`, `## Internationalization (i18n)`, `## Background Workers`, `## Websockets`, `## Testing`, and `## OpenAPI Integration` — were rewritten to the same altitude as the already-refactored `## Generators` section: a decision trigger (when does an agent reach for this?), the 1–3 always-true principles that govern the decision, and a demanding "before you do X, read `<topic>.md`" pointer that names the worst landmine to create urgency without teaching it inline. An agent reading `SKILL.md` now comes away with the core principles and a map of where to go for each task, not a manual. `SKILL.md` drops from ~1003 to ~377 lines.
+- **No guidance was removed.** Every collapsed quick-reference, method table, and code example already lived in its topic file (`models.md`, `controllers.md`, `serializers.md`, `sti.md`, `soft-delete.md`, `workers.md`, `websockets.md`, `testing.md`, `i18n.md`, `querying.md`); the always-on Critical Rules, Key Commands, Project Structure, Naming Conventions, Routing, Migrations, Deploying, and Troubleshooting blocks stay resident in `SKILL.md`. Removed the standalone `g:controller` explanatory paragraph after Key Commands (the same detail lives in `controllers.md`).
+- **`testing.md`** — Repointed the transaction-callback-type cross-reference from the removed `SKILL.md` Transactions example to [models.md — Transactions](models.md#transactions).
+
 ## 0.48.0 — 2026-06-25
 
 ### Added
