@@ -103,6 +103,18 @@ public placeId: DreamColumn<Booking, 'placeId'>
 | `primaryKeyOverride` | column name \| null | Override the primary key column used for the join (defaults to `id`) |
 | `withoutDefaultScopes` | scope name[] | Default scopes to skip when loading this association |
 
+#### A required `BelongsTo` is a two-way non-nullable contract
+
+`optional` is the single source of truth for whether a `BelongsTo` can be null. A non-optional `BelongsTo` (the default) is typed non-null and serializes to a non-nullable OpenAPI field — "required" means "always present" — and Dream defends that contract at both ends:
+
+- **You may not conditionally load it.** A trailing constraint on a non-optional `BelongsTo` in `preload` / `load` / `leftJoinPreload` / `leftJoinLoad` is a **compile error** — the constraint could filter the parent out and null a field the spec declares non-nullable. (`innerJoin` / `leftJoin` are exempt; they don't hydrate a value.) See [querying.md — Conditions on associations in the chain](querying.md).
+- **Accessing it when null throws `MissingRequiredBelongsToAssociation`.** When an *internal* mechanism nulls a required parent — a default scope (e.g. soft-delete) filtered it out, an `and`/`on` baked into the association definition excluded it, or the parent row was hard-deleted leaving a dangling FK — the getter throws this error instead of returning a null the types say is impossible.
+
+The runtime error is a modeling bug, so the fix is a model change, not a looser spec:
+
+- add `dependent: 'destroy'` to the inverse `HasOne` / `HasMany` so the parent can't be orphaned, or
+- mark the `BelongsTo` `optional: true` if absence is legitimate — which makes the OpenAPI field nullable and re-allows conditional loading.
+
 #### Anchor polymorphism to a stable model
 
 When a record participates polymorphically in more than one direction, don't stack the polymorphic ownership directly onto a model that also has to stay generic elsewhere — the association shape becomes ambiguous and call sites get hard to read. Introduce a stable join model that owns the participant polymorphism and acts as the fixed boundary; the other polymorphic axis hangs off that boundary instead of off the same generic model.
@@ -600,6 +612,20 @@ public phone: DreamColumn<User, 'encryptedPhone'>
 // name (`phone`), not the encrypted DB column name. The accepted type is string
 // or string | null depending on whether the backing encrypted column is nullable;
 // extractParams enforces that type at runtime and in TypeScript.
+//
+// Column encryption must be configured before the getter/setter will work. This is
+// a Dream-app config in conf/dream.ts (distinct from the cookie encryption config in
+// conf/app.ts — see controllers.md "Cookie Encryption"):
+//   // conf/dream.ts — app is the DreamApp passed to the default export
+//   app.set('encryption', {
+//     columns: {
+//       current: { algorithm: 'aes-256-gcm', key: AppEnv.string('COLUMN_ENCRYPTION_KEY') },
+//     },
+//   })
+// Add an optional `legacy` key beside `current` to rotate keys (current is tried
+// first, then legacy). Generate keys with `pnpm psy g:encryption-key`. Without this
+// config the getter/setter throw. After adding @deco.Encrypted() and its migration,
+// run `pnpm psy sync` so the `encrypted<Column>` column is in the generated types.
 
 // Virtual — accepted by create(), update(), and extractParams() but not stored directly in DB.
 // Use getter/setter pairs to transform between the virtual and the actual DB column.

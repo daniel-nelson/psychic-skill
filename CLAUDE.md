@@ -2,6 +2,12 @@
 
 This repo IS the `psychic-skill` itself. Never invoke `psychic-skill` against this repo — there is no Dream/Psychic application here to reason about.
 
+## CLI command style: write `pnpm psy`, not bare `psy`
+
+Runnable command examples in the skill always use the `pnpm psy ...` form (e.g. `pnpm psy sync`, `pnpm psy g:resource`, `pnpm psy g:encryption-key`). `SKILL.md` carries the single disclaimer (around line 21) that examples use `pnpm` but a reader should substitute their project's actual package manager (`yarn psy ...`, `npm run psy ...`) — that note is what makes the `pnpm` prefix stand for "your package manager," so individual examples do **not** drop the prefix. Bare `psy ...` is acceptable **only** in inline prose that refers to a command by name (e.g. "`psy console` sessions are exempt"), never in a runnable code block or a step a reader is meant to copy. When adding or editing any command example, write `pnpm psy`.
+
+The agent-facing counterpart is Critical Rule #2 in `SKILL.md`, which tells a reader to detect the project's real package manager (from `package.json`'s `"packageManager"` field or the lockfile) and substitute — so writing `pnpm` here doesn't mislead a yarn/npm/bun project. Keep that rule and this note consistent; if either changes, update the other.
+
 ## Release process (required on every PR)
 
 "Publishing" a version means merging into `main`. There is no separate publish step — whatever is on `main` is the released skill, and installs upgrade by pulling `main`.

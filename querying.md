@@ -361,6 +361,27 @@ const users = await User.preload('posts', {
 }).all()
 ```
 
+#### Constraints on a required `BelongsTo` are forbidden
+
+A condition object on a **non-optional** `BelongsTo` (the default) is a **compile error** in the hydrating loaders — `preload`, `load`, `leftJoinPreload`, and `leftJoinLoad`. A constraint could filter the parent row out and leave the slot null, breaking the non-nullable field the OpenAPI spec promises for a required `BelongsTo`:
+
+```typescript
+// Room.place is `@deco.BelongsTo('Place')` — required (optional defaults to false).
+// COMPILE ERROR: the constraint could null a non-nullable field.
+await room.load('place', { and: { name: 'Cabin 4' } }).execute()
+
+// Allowed — load the required parent unconditionally:
+await room.load('place').execute()
+```
+
+Still allowed, because these can legitimately be empty/absent (so a constraint can't violate a non-nullable contract):
+
+- a constraint on an **optional** `BelongsTo` (`{ optional: true }`)
+- a constraint on a `HasOne` or `HasMany`
+- a constraint on `innerJoin` / `leftJoin` — these don't hydrate a value, so there's no nullability contract to break
+
+`optional` on the model's `BelongsTo` declaration is the single source of truth. If a parent can legitimately be absent, declare it `optional: true` — the OpenAPI field becomes nullable and the constraint is allowed again. The runtime counterpart is `MissingRequiredBelongsToAssociation`; see [models.md — required BelongsTo contract](models.md).
+
 ### Where clauses on joined/preloaded associations
 
 After joining or preloading an association, you can reference its columns in `where` clauses using `'associationName.column'` syntax:

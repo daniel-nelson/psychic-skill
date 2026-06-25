@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.47.0 — 2026-06-24
+
+### Added
+
+- **`querying.md`** — Documented that a trailing condition object on a non-optional `BelongsTo` is a compile error in the hydrating loaders (`preload` / `load` / `leftJoinPreload` / `leftJoinLoad`), because the constraint could null a field the OpenAPI spec declares non-nullable. Constraints on optional `BelongsTo`, `HasOne`, `HasMany`, and on `innerJoin` / `leftJoin` remain allowed (Dream 2.15.0).
+- **`models.md`** — New "required `BelongsTo` is a two-way non-nullable contract" subsection: a non-optional `BelongsTo` may not be conditionally loaded (compile-time), and accessing it when an internal mechanism (default scope, baked-in `and`/`on`, dangling FK) leaves it null throws `MissingRequiredBelongsToAssociation` (runtime). The fix is `dependent: 'destroy'` on the inverse `HasOne`/`HasMany` or `optional: true`, not a looser spec.
+- **`models.md`** — Documented the column-encryption config (`app.set('encryption', { columns: { current: { algorithm, key } } })` in `conf/dream.ts`) required for `@deco.Encrypted()`, distinct from the cookie encryption config in `conf/app.ts`.
+- **`serializers.md`** — Added a note tying the existing `optional`-as-source-of-truth guidance to the two-way contract and the `MissingRequiredBelongsToAssociation` runtime backstop.
+- **`SKILL.md`** — New Critical Rule #2: detect the project's package manager (from `package.json`'s `"packageManager"` field or the lockfile) before running any command, since `pnpm` in every example is a stand-in for the project's actual manager. Notes that `npm` and `bun` need the `run` verb (`npm run psy`, `bun run psy`) while `pnpm`/`yarn` invoke the binary directly. The package-manager disclaimer now also lists `bun run psy sync`. Renumbers prior Critical Rules 2–20 → 3–21 and updates the live cross-references in `SKILL.md`, `sti.md`, `controllers.md`, and `migrations.md`.
+
+### Changed
+
+- **`migrations.md`** — Replaced the vague "require column encryption to be configured" caveat on `encryptColumn` / `decryptColumn` with the concrete `app.set('encryption', { columns: ... })` setup in `conf/dream.ts`, plus the `pnpm psy g:encryption-key` and `pnpm psy sync` steps.
+- **`controllers.md`** — Stated explicitly that URL namespace, controller file namespace, and auth inheritance chain are three independent concerns: a versioned URL (`/v1/...`) should not force a matching controller ancestry, since `g:controller` generates files without adding routes and the route file can map any URL onto the controller with the correct ancestry.
+
+### Baseline
+
+- Bumped the documented `@rvoh/dream` baseline from 2.14.x to 2.15.x.
+
 ## 0.46.2 — 2026-06-24
 
 ### Fixed

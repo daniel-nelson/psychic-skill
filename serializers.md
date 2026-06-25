@@ -181,6 +181,8 @@ Restating `optional: true` in the serializer duplicates the declaration; **chang
 
 Note: `optional` on `rendersOne` is purely an OpenAPI nullability marker — the key is always rendered. `rendersOne` does not support `required: false`. If you need the key absent from the response, reshape the serializer (a custom attribute, or a different serializer variant) rather than reaching for an option that does not exist.
 
+The non-optional → non-nullable mapping is a contract Dream defends on both sides, so you never need to loosen a serializer to "maybe null" to stay safe. A non-optional `BelongsTo` cannot be conditionally loaded (a trailing constraint on it is a compile error in `preload`/`load`/`leftJoinPreload`/`leftJoinLoad`), and a required parent that goes missing at runtime throws `MissingRequiredBelongsToAssociation` rather than serializing as `null`. Both are signals to fix the model — add `dependent: 'destroy'` to the inverse `HasOne`/`HasMany`, or make the `BelongsTo` `optional: true` — not to mark the serializer field nullable. See [models.md — required BelongsTo contract](models.md).
+
 ### .rendersMany(name, options?)
 
 Array of associated objects:

@@ -4,7 +4,7 @@
 
 Dream migrations use Kysely under the hood. **Migrations are always created via generators** (`g:resource`, `g:model`, `g:sti-child`, or `g:migration`) - never create migration files by hand. This reference covers the Kysely API and DreamMigrationHelpers available for editing generated migrations.
 
-**Inviolable: never modify a migration file that has been merged into `main`.** Once merged, any change to that migration's behavior must be expressed as a new migration. Production data already reflects the original migration's effect; rewriting history would skip the new behavior entirely on machines that have already recorded the original as applied. (This restates Critical Rule #5 from `SKILL.md` because it's the foundation for everything below.)
+**Inviolable: never modify a migration file that has been merged into `main`.** Once merged, any change to that migration's behavior must be expressed as a new migration. Production data already reflects the original migration's effect; rewriting history would skip the new behavior entirely on machines that have already recorded the original as applied. (This restates Critical Rule #6 from `SKILL.md` because it's the foundation for everything below.)
 
 Migrations that are still on a feature branch — i.e., not yet merged into `main` — may be freely edited in place. There is no production data to worry about, so create columns with the correct constraints (e.g., `NOT NULL`) directly; don't write backfill `UPDATE` statements for data that doesn't exist yet.
 
@@ -202,8 +202,25 @@ export async function down(db: Kysely<any>): Promise<void> {
 `encryptColumn` renames `column` to `encrypted_<column>`, widens it to `text`, and
 encrypts each non-null value. `decryptColumn` performs the inverse; pass
 `columnType` when the decrypted column should be restored to something other than
-`text`. Both helpers run inside the migration transaction, preserve nulls, and require
-column encryption to be configured.
+`text`. Both helpers run inside the migration transaction and preserve nulls.
+
+They require column encryption to already be configured — they encrypt/decrypt through
+the same keys the `@deco.Encrypted()` getter/setter use. Configure them in
+`conf/dream.ts` before running the migration (this is Dream-app config, separate from
+the cookie encryption config in `conf/app.ts`):
+
+```typescript
+// conf/dream.ts — app is the DreamApp passed to the default export
+app.set('encryption', {
+  columns: {
+    current: { algorithm: 'aes-256-gcm', key: AppEnv.string('COLUMN_ENCRYPTION_KEY') },
+  },
+})
+```
+
+Generate a key with `pnpm psy g:encryption-key`. The model-side `@deco.Encrypted()`
+setup is in [models.md](models.md); run `pnpm psy sync` after adding the decorator so
+the `encrypted_<column>` column is registered in the generated types.
 
 These helpers intentionally rewrite one row at a time, reading rows in bounded
 batches. That keeps memory bounded but is still not an online migration for

@@ -426,7 +426,7 @@ Columns shared by **all** STI children should be on the STI base model instead, 
 
 ## Controller Pattern
 
-A single controller handles ALL STI types. The `create` action switches on `type` with a `_never` default — this is the STI application of [SKILL.md Critical Rule 14](SKILL.md#critical-rules) (exhaustive switch on closed enums); the rule applies to any closed-enum dispatch, not just STI discriminators.
+A single controller handles ALL STI types. The `create` action switches on `type` with a `_never` default — this is the STI application of [SKILL.md Critical Rule 15](SKILL.md#critical-rules) (exhaustive switch on closed enums); the rule applies to any closed-enum dispatch, not just STI discriminators.
 
 ```typescript
 export default class V1HostPlacesRoomsController extends V1HostPlacesBaseController {
@@ -512,7 +512,7 @@ export default class V1HostPlacesRoomsController extends V1HostPlacesBaseControl
 
 ### Bulk creation from a request-body array
 
-For endpoints that create many STI children in one request — `{ items: [{ type: 'Bedroom', position: 1, ... }, { type: 'Kitchen', position: 2, ... }] }` — use `extractParams(STIParent, [...], { key, array: true })` to validate each entry against the parent's safe columns. The framework still strips `type` (the STI discriminator) and FKs (e.g., `placeId`) per the standard exclusions, so pull `type` per-item from the raw request body and let an exhaustive switch (per [SKILL.md Critical Rule 14](SKILL.md#critical-rules)) enforce validity.
+For endpoints that create many STI children in one request — `{ items: [{ type: 'Bedroom', position: 1, ... }, { type: 'Kitchen', position: 2, ... }] }` — use `extractParams(STIParent, [...], { key, array: true })` to validate each entry against the parent's safe columns. The framework still strips `type` (the STI discriminator) and FKs (e.g., `placeId`) per the standard exclusions, so pull `type` per-item from the raw request body and let an exhaustive switch (per [SKILL.md Critical Rule 15](SKILL.md#critical-rules)) enforce validity.
 
 ```typescript
 // Body: { items: [{ type: 'Bedroom', position: 1, ... }, { type: 'Kitchen', position: 2, ... }] }
