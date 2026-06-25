@@ -202,7 +202,7 @@ pnpm lint                        # Check linting
 - **To add fields/associations to an existing model, use `pnpm psy g:migration`**, then add the `DreamColumn` declaration (and `@deco.BelongsTo` for FKs) to the model file.
 - **Run `pnpm psy sync`** after an association, serializer, OpenAPI decorator, or route changes. (`db:migrate` runs `sync` automatically — don't follow it with a standalone `sync`.)
 
-**For the full scaffolding workflow** — what each generator produces by default (auto-included `id`/timestamp/`deleted_at` columns, soft-delete on), the post-generate migrate → spec-first → commit steps, and the migration column DSL — see [generators.md](generators.md).
+**For the full scaffolding workflow** — what each generator produces by default (auto-included `id`/timestamp columns, plus `@SoftDelete()` so deletes set `deleted_at` and hide the row instead of removing it), the post-generate migrate → spec-first → commit steps, and the migration column DSL — see [generators.md](generators.md).
 
 ## Models
 
