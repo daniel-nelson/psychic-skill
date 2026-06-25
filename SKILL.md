@@ -228,9 +228,12 @@ Serializers turn Dream models (and plain view-model objects) into JSON responses
 
 ## Migrations
 
-For detailed migration patterns (column types, helpers, etc.), see [migrations.md](migrations.md).
+Migrations are Kysely-based schema changes — the only way the database shape changes (columns, tables, enums, indexes, foreign keys). Reach here whenever you add, alter, or remove one.
 
-**Migrations are always created via generators** (`g:resource`, `g:model`, `g:sti-child`, or `g:migration`), then edited as needed. Never create migration files by hand.
+- **Always generate, never hand-write.** Migrations come from `g:resource`, `g:model`, `g:sti-child`, or `g:migration`, then are edited as needed — never created from scratch.
+- **Adding a `NOT NULL` column to a table that already has rows needs a default or a backfill step**, or the migration fails against the existing data.
+
+**Before you write or edit a migration, read [migrations.md](migrations.md).** It owns the column-type DSL, `DreamMigrationHelpers` (prefer these over raw Kysely calls), foreign keys and indexes, the soft-delete column, the new-transaction escape hatch, and enum handling — including the two-migration pattern required to rename an in-use enum value (PostgreSQL can't add and use an enum value in one transaction).
 
 ## Routing
 
