@@ -49,7 +49,7 @@ The temporary default backfills existing rows; dropping it afterward keeps the "
 
 ### Generating column-only migrations
 
-For schema changes that just add columns (or a foreign key) to an existing table, `pnpm psy g:migration` accepts the same column shorthand as `g:resource` and `g:model` — including `BelongsTo:type` and `:optional` modifiers. See the canonical examples in [SKILL.md — Adding Properties to Existing Models](SKILL.md#adding-properties-to-existing-models). Hand-edit the generated migration only when the change isn't expressible as column shorthand (check constraints, enum alterations, custom backfill).
+For schema changes that just add columns (or a foreign key) to an existing table, `pnpm psy g:migration` accepts the same column shorthand as `g:resource` and `g:model` — including `BelongsTo:type` and `:optional` modifiers. See the canonical examples in [generators.md — Adding properties to an existing model](generators.md#adding-properties-to-an-existing-model). Hand-edit the generated migration only when the change isn't expressible as column shorthand (check constraints, enum alterations, custom backfill).
 
 ## DreamMigrationHelpers
 

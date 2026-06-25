@@ -75,7 +75,7 @@ Cursor, Aider, Cline, and similar tools don't auto-load skills, but they can sti
 git clone https://github.com/daniel-nelson/psychic-skill.git .ai/psychic-skill
 ```
 
-Then instruct your agent (via its rules file — `.cursorrules`, `.aider.conf.yml`, `AGENTS.md`, etc.) to read `SKILL.md` and the linked topic files (`models.md`, `controllers.md`, `serializers.md`, `sti.md`, `migrations.md`, `querying.md`, `testing.md`, `workers.md`, `websockets.md`) as required reading before making changes. The files are plain markdown — they work as documentation for any agent that can read files.
+Then instruct your agent (via its rules file — `.cursorrules`, `.aider.conf.yml`, `AGENTS.md`, etc.) to read `SKILL.md` and the linked topic files (`models.md`, `generators.md`, `controllers.md`, `serializers.md`, `sti.md`, `migrations.md`, `querying.md`, `testing.md`, `workers.md`, `websockets.md`) as required reading before making changes. The files are plain markdown — they work as documentation for any agent that can read files.
 
 To stay current, run `cd .ai/psychic-skill && git fetch origin && git reset --hard origin/main && ./setup` periodically. This is what `/psychic-update-skill` does under the hood for Claude Code and Codex.
 
@@ -148,8 +148,9 @@ rm -rf .agents/skills/psychic-skill
 
 | File | Content |
 |------|---------|
-| `SKILL.md` | Main skill — critical rules, project structure, quick references for all topics |
-| `models.md` | Dream models, associations, hooks, validations, scopes, operators, decorators |
+| `SKILL.md` | Main skill — always-on critical rules, project structure, key commands, and a decision map pointing to the topic files below for each task |
+| `models.md` | Dream models, organization/namespacing, associations, hooks, validations, scopes, operators, decorators |
+| `generators.md` | Scaffolding generators (`g:resource`/`g:model`/`g:sti-child`/`g:migration`) — decision tree, arguments, post-gen workflow, adding properties |
 | `controllers.md` | Psychic controllers, auth, CRUD, OpenAPI, parameters |
 | `querying.md` | Dream query patterns, `toKysely(...)`, and typed project `db()` usage |
 | `serializers.md` | DreamSerializer / ObjectSerializer, composition, STI serializers, passthrough |

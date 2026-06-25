@@ -190,444 +190,50 @@ pnpm format                      # Apply standard formatting
 pnpm lint                        # Check linting
 ```
 
-`g:controller` scaffolds the namespace base-controller chain as well as the leaf controller and unit spec. For `Path/Name`, it creates a `Path/BaseController.ts` and makes `Path/NameController` extend that base. It does not add routes. Use it even for custom/webhook controllers, then re-parent the generated namespace base to `UnauthedController` when the surface is intentionally unauthenticated.
+## Generators
 
-## Generator Usage Rules
-
-- **Generator preference order**:
-  1. **Resource generator** (`g:resource`) - the default for almost all new models
-  2. **STI-child generator** (`g:sti-child`) - for STI child models building on an existing STI base
-  3. **Model generator** (`g:model`) - only for models that will never be exposed via any API
-  4. **Migration generator** (`g:migration`) - for database changes when not generating a new model
-- **Most models should use `g:resource`.** It is rare for a model to not be exposed via *some* API — whether end-user facing, internal, or admin. `g:resource` generates the controller, controller specs, and route scaffolding that `g:model` does not. It is easier to delete unused controller actions than to retrofit them later. Only use `g:model` for models that are purely internal (e.g., join tables, audit logs).
-- **`g:resource` first argument is a plural kebab-case route path** (e.g., `v1/host/places` or `internal/action-plans`), not a class name or namespace. The second argument is the model file path relative to `src/app/models/` without `.ts` (e.g., `Place`, `Place/Room`). The class name defaults from the path but can be overridden with `--model-name`.
-- **Nested resources MUST pass `--owning-model=<fully-qualified owning model>`.** A nested resource has a parent-id placeholder in its route path (the `{}` segment, e.g. `v1/posts/{}/comments`, `internal/clients/{}/addresses`). For these, always pass `--owning-model` set to the fully-qualified nesting (parent) model name (`--owning-model=Post`, `--owning-model=Client`). This makes the generated controller scope every query and write through `associationQuery` / `createAssociation` on the owning model, and scaffolds the parent correctly throughout — including in the generated controller spec. Omitting it generates a controller that doesn't scope to the parent and a spec that references an unconstructed parent path-param variable (the symptom is a spec that 404s on the missing parent rather than exercising the action). For `admin`/`internal` paths (which drop `currentUser` scoping), `--owning-model` is also how you reintroduce ownership scoping.
-- **CRITICAL: Run `pnpm psy <command> --help` and read its output BEFORE running any generator or CLI command.** Do not infer syntax from examples in this skill or from prior experience — argument formats vary between commands and between Dream/Psychic versions. This is a hard prerequisite, not a suggestion.
-- `g:resource` and `g:model` automatically include `id`, `created_at`, `updated_at`, and `deleted_at` columns and decorate the model with `@SoftDelete()`. Do not specify these in the generator command. Use `--no-soft-delete` to opt out since hard deletion should be an intentional decision.
-- **If a model has a `type` column, consider whether it should use STI.** If different types will have different behavior, validations, serializers, or child-specific columns, use STI (`--sti-base-serializer` on the parent resource + `g:sti-child` for each child). The STI generators handle significant subtle scaffolding (check constraints, per-type serializers, type-discriminated OpenAPI schemas) that is much easier to get right at generation time than to refactor later. See [sti.md](sti.md).
-
-### Generator Workflow
-
-After a generator has run:
-
-1. **Update the migration file as needed** (e.g., add `unique()` to a column)
-2. **Run migrations**: `pnpm psy db:migrate`
-3. **If the generator was a resource generator**:
-   - Update the generated controller spec first
-   - Then update the corresponding generated controller
-   - Note: controller specs will hang if there is no response within a controller action (generated action code starts commented out)
-4. **Commit generated code as its own commit** with a message in this format:
-   ```
-   Generate Room resource
-
-   ```console
-   pnpm psy g:resource --sti-base-serializer --owning-model=Place v1/host/places/rooms Room type:enum:room_types:Bathroom,Bedroom,Kitchen,Den
-   ```
-   ```
-
-### When to Run `pnpm psy sync`
-
-Run `pnpm psy sync` whenever any of the following are added or changed:
-- An association in a Dream model
-- A serializer
-- An OpenAPI decorator on a controller action
-- A route
-
-If controller specs have type errors about what an endpoint accepts or returns, this means the OpenAPI shape is out of sync - run `pnpm psy sync`.
-
-## Adding Properties to Existing Models
-
-- **Always use the migration generator** (`pnpm psy g:migration`) to create a migration for schema changes.
-- **`g:migration` accepts the same column shorthand as `g:resource` and `g:model`** — including `BelongsTo:type` for foreign keys. Pass column descriptors as additional positional args; the migration body is generated correctly without hand-editing for the common cases.
-- The migration name is **kebab-case** (matches the migration filename convention `kebab-case-description.ts`), not snake_case.
-- Examples:
-  - Plain column: `pnpm psy g:migration add-timezone-to-users timezone:string`
-  - Multiple columns: `pnpm psy g:migration add-fields-to-bars name:string size:integer`
-  - Foreign key (notNull): `pnpm psy g:migration add-zip-code-id-to-candidates ZipCode:belongs_to`
-  - Foreign key (nullable): `pnpm psy g:migration add-zip-code-id-to-candidates ZipCode:belongs_to:optional`
-  - Aliased FK (`@alias`): `pnpm psy g:migration add-canceled-by-to-message-requests InternalUser@canceled_by:belongs_to:optional` produces `canceled_by_id` column, `canceledById` property, and `canceledBy` association from one token. Canonical for `_by` columns (`created_by`, `approved_by`) and multiple FKs to the same model (`Message@last_inbound`, `Message@last_outbound`). See [migrations.md — Aliased BelongsTo shorthand](migrations.md#aliased-belongsto-shorthand-modelaliasbelongs_to) for the full reference.
-- After running the migration (`pnpm psy db:migrate`), add the matching `public ...: DreamColumn<Model, 'columnName'>` declaration to the model file. For a BelongsTo, also add the `@deco.BelongsTo(...)` declaration. Commit the auto-generated `src/types/db.ts` / `src/types/dream.ts` changes alongside.
-- The generator scaffolding can be modified for changes that aren't expressible as column shorthand (check constraints, enum alterations, custom backfill) — use DreamMigrationHelpers methods over compound Kysely calls when available.
+- **Never hand-roll what a generator can make.** Models, resources, migrations, and STI children are always created with `pnpm psy g:*` and then edited — never written from scratch.
+- **Generator order:** `g:resource` (default for almost any model) → `g:sti-child` (STI children) → `g:model` (only for models never exposed via any API) → `g:migration` (schema change without a new model).
+- **Before you run any generator, read [generators.md](generators.md) and run `pnpm psy <command> --help`.** It carries the argument contract, the mandatory `--owning-model` rule for nested resources, what each generator scaffolds by default, and the post-generate workflow. Reaching for a generator without reading it produces subtly wrong scaffolding that is expensive to unwind.
 
 ## Models
 
-For detailed model patterns, see [models.md](models.md).
+A Dream model is the source of truth for one table — its columns, associations, validations, hooks, scopes, and the serializers it renders through. Reach here whenever you define or change a model, query through it, or write inside a transaction.
 
-### Quick Reference
+- **Prefer Dream's public query and association APIs**; drop to Kysely only for SQL they don't cover.
+- **Inside a transaction, bind every operation with `.txn(txn)`** — creates, updates, queries, and association calls alike. Miss it and that operation runs outside the transaction and won't roll back.
+- **Name a model by what it *is*, not by its route or its owner** — a nested route plus `--owning-model` does not imply a `Parent/Child` namespace.
 
-```typescript
-import { Decorators, DreamConst, SoftDelete, STI } from '@rvoh/dream'
-import { DreamColumn, DreamSerializers } from '@rvoh/dream/types'
-import ApplicationModel from './ApplicationModel.js'
-
-const deco = new Decorators<typeof Place>()
-
-@SoftDelete()
-export default class Place extends ApplicationModel {
-  public override get table() {
-    return 'places' as const
-  }
-
-  public get serializers(): DreamSerializers<Place> {
-    return { default: 'PlaceSerializer', summary: 'PlaceSummarySerializer' }
-  }
-
-  // Columns - use DreamColumn<Model, 'columnName'> for type safety
-  public id: DreamColumn<Place, 'id'>
-  public name: DreamColumn<Place, 'name'>
-  public style: DreamColumn<Place, 'style'>
-  public sleeps: DreamColumn<Place, 'sleeps'>
-  public createdAt: DreamColumn<Place, 'createdAt'>
-  public updatedAt: DreamColumn<Place, 'updatedAt'>
-  public deletedAt: DreamColumn<Place, 'deletedAt'>
-
-  // Encrypted columns
-  @deco.Encrypted()
-  public phone: DreamColumn<Place, 'encryptedPhone'>
-  // Request bodies and OpenAPI use `phone`, not `encryptedPhone`; the accepted
-  // type is string or string | null based on the encrypted column's nullability.
-
-  // Virtual — accepted by create(), update(), and extractParams() but not stored directly in DB.
-  // Decorator goes on whichever accessor is declared first.
-  // Getter and setter MUST be synchronous — never async. Type argument sets the
-  // OpenAPI shape in serializers and model-derived request bodies. See models.md.
-  // Note the use of `DreamColumn<Place, 'grams'>` to specify the type of the
-  // getter return type and setter params because these types are simply
-  // mutations of what is in the database and the database is the source
-  // of truth for the type.
-  const GRAMS_PER_POUND = 453.592
-
-  @deco.Virtual(['number', 'null'])
-  public get pounds(): DreamColumn<Place, 'grams'> {
-    const grams = this.getAttribute('grams')
-    return grams === null ? null : grams / GRAMS_PER_POUND
-  }
-
-  public set pounds(pounds: DreamColumn<Place, 'grams'>) {
-    this.setAttribute('grams', pounds === null ? null : pounds * GRAMS_PER_POUND)
-  }
-
-  // Associations
-  @deco.HasMany('Room', { order: 'position', dependent: 'destroy' })
-  public rooms: Room[]
-
-  @deco.HasMany('HostPlace', { dependent: 'destroy' })
-  public hostPlaces: HostPlace[]
-
-  @deco.HasMany('Host', { through: 'hostPlaces' })
-  public hosts: Host[]
-
-  @deco.BelongsTo('User')
-  public user: User
-  public userId: DreamColumn<Place, 'userId'>
-
-  // Hooks
-  @deco.AfterCreate()
-  public async createDefaultRoom(this: Place) {
-    await this.createAssociation('rooms', { type: 'LivingRoom' })
-  }
-
-  @deco.AfterUpdateCommit({ ifChanged: ['status'] })
-  public async notifyStatusChange(this: Place) {
-    await NotificationService.background('placeStatusChanged', this.id)
-  }
-
-  // Validations
-  @deco.Validates('presence')
-  public declare name: DreamColumn<Place, 'name'>
-
-  @deco.Validates('numericality', { min: 1, max: 50 })
-  public declare sleeps: DreamColumn<Place, 'sleeps'>
-
-  // Scopes
-  @deco.Scope()
-  public static active(query: Query<Place>) {
-    return query.where({ status: 'active' })
-  }
-
-  // Note: @SoftDelete() above automatically adds a default scope (dream:SoftDelete)
-  // that hides records where deletedAt is not null. No manual default scope needed.
-
-  // Sortable (requires deferrable unique constraint in migration)
-  @deco.Sortable({ scope: 'place' })
-  public position: DreamColumn<Place, 'position'>
-}
-```
-
-### Key Model Operations
-
-```typescript
-// Create
-const place = await Place.create({ name: 'Cozy Cabin', style: 'cabin', sleeps: 4 })
-
-// Find
-const place = await Place.find(id)              // or null
-const place = await Place.findOrFail(id)         // throws -> 404 in controller
-const place = await Place.findBy({ name: 'x' }) // by attributes
-
-// Update
-await place.update({ name: 'New Name' })
-
-// Destroy (soft delete if @SoftDelete)
-await place.destroy()
-await place.undestroy()       // restore soft-deleted record
-await place.reallyDestroy()   // permanent delete
-
-// Find-or-create / upsert (see models.md for full reference)
-await User.findOrCreateBy({ email }, { createWith: { name } })       // find first, create if missing
-await User.createOrFindBy({ email }, { createWith: { name } })       // create first (needs unique constraint, no txn)
-await User.updateOrCreateBy({ email }, { with: { name } })           // find & update, or create
-await User.createOrUpdateBy({ email }, { with: { name } })           // create first (needs unique constraint, no txn)
-
-// Query
-const places = await Place.where({ style: 'cabin' }).order('createdAt', 'desc').all()
-const count = await Place.where({ style: 'cabin' }).count()
-const exists = await Place.where({ id: placeId }).exists()
-
-// Operators
-import { ops } from '@rvoh/dream'
-await Place.where({ name: ops.like('%cabin%') }).all()
-await Place.where({ sleeps: ops.greaterThan(4) }).all()
-await Place.whereAny([{ style: 'cabin' }, { style: 'cottage' }]).all()
-
-// Associations
-const rooms = await place.associationQuery('rooms').where({ type: 'Bedroom' }).all()
-const room = await place.createAssociation('rooms', { type: 'Bedroom' })
-await place.load('rooms').execute()
-
-// Preloading (prevents N+1) — see querying.md for full association chaining docs
-// IMPORTANT: multiple string args form a CHAIN, not parallel loads
-const places = await Place.preload('rooms').all()                  // preload rooms on each place
-const places = await Place.preload('rooms').preload('hosts').all() // preload rooms AND hosts (parallel)
-const users = await User.preload('posts', 'comments').all()        // chain: posts → comments (nested)
-const places = await Place.preloadFor('summary').all()              // serializer-driven (preferred)
-
-// Pagination
-const result = await Place.cursorPaginate({ cursor: cursorString })
-// Returns: { cursor: string | null, results: Place[] }
-
-// Transactions — EVERY operation inside must use .txn(txn)
-// If you forget .txn(txn), the operation runs outside the transaction
-await ApplicationModel.transaction(async txn => {
-  const place = await Place.txn(txn).create({ ... })
-  await HostPlace.txn(txn).create({ host, place })
-  const found = await Place.txn(txn).findBy({ name: 'x' }) // queries too
-})
-
-// Extracting a transaction callback into a separate method?
-// Type the txn parameter as DreamTransaction<Dream> — the same type already used
-// for AfterCreate/AfterUpdate hooks (see models.md). Don't reach for
-// Parameters<Parameters<typeof ApplicationModel.transaction>[0]>[0] gymnastics.
-import { DreamTransaction, Dream } from '@rvoh/dream'
-
-await ApplicationModel.transaction(async txn => {
-  await this.createItems(txn, place)
-})
-
-// Helper method:
-private async createItems(txn: DreamTransaction<Dream>, place: Place) {
-  await Room.txn(txn).create({ place, type: 'Bedroom' })
-  await Room.txn(txn).create({ place, type: 'Kitchen' })
-}
-```
-
-### Querying Beyond Dream
-
-For detailed query guidance, including when to use `toKysely(...)` and when to start from the project's typed `db()` entrypoint, see [querying.md](querying.md).
-
-The rule is simple: always prefer Dream's built in, public query and association APIs; only drop down to Kysely when Dream's supported APIs do not cover the SQL you need.
-
-Use `range` from `@rvoh/dream/utils` directly in `where` clauses when a single column has a natural lower and/or upper bound, including `CalendarDate`, `DateTime`, `ClockTime`, and `ClockTimeTz` columns. For multi-column interval logic, named `ops` comparisons can be clearer because the boundary semantics are visible at the call site. See [querying.md — Range Predicates](querying.md#range-predicates).
+**Before you add an association, write a hook or validation, run a multi-step or preloaded query, or open a transaction, read [models.md](models.md)** — and [querying.md](querying.md) for queries that reach past Dream's public API. It owns the column and decorator setup, the full association reference (including the required-`BelongsTo` two-way contract that throws `MissingRequiredBelongsToAssociation` at runtime when violated, `selfAnd`/`selfAndNot`, polymorphism, and `through` restrictions), hooks, scopes, find-or-create/upsert, and the transaction rules. Guessing association options or transaction binding from memory produces code that compiles and then fails or corrupts data at runtime.
 
 ## Controllers
 
-For detailed controller patterns, see [controllers.md](controllers.md).
+A Psychic controller authenticates a request, pulls and validates params, does the work through Dream models, and renders a response. Reach here whenever you add or change an endpoint.
 
-### Quick Reference
+- **The controller directory tree *is* the auth architecture, and auth only ever gets stricter downhill** — never introduce a looser authentication pattern deeper in a branch.
+- **Generate controllers; never hand-roll them.** `g:resource` / `g:controller` build the namespace base-controller chain that shared auth lives on. For an intentionally unauthenticated surface, generate normally and then re-parent that namespace's base to `UnauthedController`.
+- **`extractParams` is an explicit, per-action allowlist**, intersected with the model's `paramSafeColumns`. Foreign keys, the STI `type`, and timestamps are always stripped — pull those explicitly via `castParam`.
 
-```typescript
-import { BeforeAction, OpenAPI } from '@rvoh/psychic'
-
-export default class V1HostPlacesController extends V1HostBaseController {
-  @OpenAPI(Place, {
-    status: 200,
-    tags: ['places'],
-    cursorPaginate: true,
-    serializerKey: 'summary',
-    fastJsonStringify: true,
-  })
-  public async index() {
-    const places = await this.currentHost
-      .associationQuery('places')
-      .preloadFor('summary')
-      .cursorPaginate({ cursor: this.castParam('cursor', 'string', { allowNull: true }) })
-    this.ok(places)
-  }
-
-  @OpenAPI(Place, { status: 201, tags: ['places'], fastJsonStringify: true })
-  public async create() {
-    let place = await ApplicationModel.transaction(async txn => {
-      const place = await Place.txn(txn).create(this.extractParams(Place, ['name', 'style', 'sleeps']))
-      await HostPlace.txn(txn).create({ host: this.currentHost, place })
-      return place
-    })
-    if (place.isPersisted) place = await place.loadFor('default').execute()
-    this.created(place)
-  }
-
-  @OpenAPI(Place, { status: 200, tags: ['places'], fastJsonStringify: true })
-  public async show() {
-    this.ok(await this.place())
-  }
-
-  @OpenAPI(Place, { status: 204, tags: ['places'] })
-  public async update() {
-    await (await this.place()).update(this.extractParams(Place, ['name', 'style', 'sleeps']))
-    this.noContent()
-  }
-
-  @OpenAPI({ status: 204, tags: ['places'] })
-  public async destroy() {
-    await (await this.place()).destroy()
-    this.noContent()
-  }
-
-  private async place() {
-    return await this.currentHost
-      .associationQuery('places')
-      .preloadFor('default')
-      .findOrFail(this.castParam('id', 'string'))
-  }
-}
-```
-
-### Controller Key Methods
-
-| Method | Purpose |
-|--------|---------|
-| `this.params` | Merged URL + body + query params |
-| `this.castParam('name', 'type', opts?)` | Validate and cast a single param. Types: `uuid`, `string`, `integer`, `bigint`, `date`, `datetime`, `number`, `enum`. Array variants: `uuid[]`, `string[]`, etc. Options: `{ allowNull: true, enum: [...] }` |
-| `this.extractParams(Model, allowed, opts?)` | Extract and validate request body params against a Dream model. `allowed` is an explicit positional allowlist, TS-checked and intersected with the model's `paramSafeColumns`. Options: `{ only, including, key, array }`. |
-| `this.ok(data)` | 200 response |
-| `this.created(data)` | 201 response |
-| `this.noContent()` | 204 response |
-| `this.unauthorized()` | 401 response |
-| `this.forbidden()` | 403 response |
-| `this.notFound()` | 404 response |
-| `this.serializerPassthrough(obj)` | Pass context (e.g., locale) to serializers |
-| `this.header('name')` | Read request header |
-| `this.startSession(user)` / `this.endSession()` | Session management |
-
-`extractParams` safe params include real columns, Encrypted columns, and Virtual columns. Encrypted params are typed and validated as `string` or `string | null` from the backing encrypted column's nullability; Virtual params use the `@deco.Virtual(...)` type.
-
-Generated CRUD scaffolds hoist a shared `paramSafeColumns` const and pass it to both `extractParams` and the `@OpenAPI` `requestBody`, keeping the documented request body and runtime allowlist in lockstep from one edit point.
-
-### @BeforeAction Pattern
-
-```typescript
-export default class AuthedController extends ApplicationController {
-  protected currentUser: User
-
-  @BeforeAction()
-  protected async authenticate() {
-    const userId = this.authedUserId()
-    if (!userId) return this.unauthorized()
-    const user = await User.find(userId)
-    if (!user) return this.unauthorized()
-    this.currentUser = user
-  }
-
-  // With only/except filters
-  @BeforeAction({ only: ['create', 'update'] })
-  protected validatePermissions() { ... }
-
-  @BeforeAction({ except: ['index'] })
-  protected loadResource() { ... }
-}
-```
+**Before you write an action, an `@OpenAPI` decorator, a `@BeforeAction`, or any param handling, read [controllers.md](controllers.md).** It owns the hierarchy/auth rules, the CRUD patterns, the full `castParam`/`extractParams`/`requestBody` contracts, response methods, cookie/session handling, and logging. Hand-writing a controller skips the namespace base chain where auth is enforced — the most expensive mistake to unwind in this layer.
 
 ## Serializers
 
-For detailed serializer patterns, see [serializers.md](serializers.md).
+Serializers turn Dream models (and plain view-model objects) into JSON responses and generate the matching OpenAPI schema in one place. Reach here whenever a response shape changes.
 
-### Quick Reference
+- **Serializers are function-based and use named exports only** — never class-based, never `export default`. Named exports keep runtime global names and OpenAPI component names explicit.
+- **`serializerKey` does not cascade.** A nested `rendersOne`/`rendersMany` defaults to the associated model's `'default'` serializer unless you pass the key explicitly at every level.
+- **Serializers are synchronous and cannot query** — preload everything first with `preloadFor`/`loadFor`, not a hand-built `preload` chain that drifts and throws `NonLoadedAssociation`.
 
-Serializers are **function-based** (not class-based or decorator-based):
-
-Serializer files use named exports only; do not `export default` serializer functions. Named exports keep runtime global names and OpenAPI component names explicit.
-
-```typescript
-import { DreamSerializer, ObjectSerializer } from '@rvoh/dream'
-
-// Summary serializer (base layer)
-export const PlaceSummarySerializer = (place: Place) =>
-  DreamSerializer(Place, place)
-    .attribute('id')
-    .attribute('name')
-
-// Default serializer (extends summary)
-export const PlaceSerializer = (place: Place) =>
-  PlaceSummarySerializer(place)
-    .attribute('style')
-    .attribute('sleeps')
-    .attribute('deletedAt')
-    .rendersMany('rooms', { serializerKey: 'summary' })
-
-// Serializer with passthrough context
-export const PlaceForGuestsSerializer = (place: Place, passthrough: { locale: LocalesEnum }) =>
-  PlaceSummarySerializer(place)
-    .customAttribute('displayStyle', () => i18n(passthrough.locale, `places.style.${place.style}`), {
-      openapi: 'string',
-    })
-    .delegatedAttribute('currentLocalizedText', 'title', { openapi: 'string' })
-    .rendersMany('rooms', { serializerKey: 'forGuests' })
-
-// ObjectSerializer for non-Dream objects
-export const BedTypeSerializer = (bedType: BedTypesEnum, passthrough: { locale: LocalesEnum }) =>
-  ObjectSerializer({ bedType }, passthrough)
-    .attribute('bedType', { as: 'value', openapi: { type: 'string', enum: BedTypesEnumValues } })
-    .customAttribute('label', () => i18n(passthrough.locale, `rooms.Bedroom.bedTypes.${bedType}`), {
-      openapi: 'string',
-    })
-```
-
-For OpenAPI-visible nested computed/view-model response shapes, export every nested `ObjectSerializer` used by `rendersOne` or `rendersMany` so OpenAPI registers a named schema instead of anonymous `Unnamed` schemas. Runtime serializer global names include the serializer path, but OpenAPI component names for named exports are based on the export name; use distinct names such as a `ViewSerializer` suffix for computed serializers that share a domain noun with a Dream model serializer.
-
-### Serializer Methods
-
-| Method | Purpose |
-|--------|---------|
-| `.attribute('name')` | Include a model column |
-| `.attribute('name', { as: 'alias' })` | Rename in output |
-| `.attribute('name', { precision: 2 })` | Decimal precision |
-| `.attribute('name', { openapi: { type: 'string', enum: [...] } })` | OpenAPI type hint |
-| `.customAttribute('name', fn, { openapi: 'string' })` | Computed field |
-| `.delegatedAttribute('assocName', 'field', { openapi: 'string' })` | Nested field |
-| `.rendersOne('assoc')` | Single association |
-| `.rendersOne('assoc', { serializerKey: 'summary' })` | With specific serializer |
-| `.rendersMany('assoc')` | Array association |
-| `.rendersMany('items', { serializer: CustomFn })` | Custom serializer function |
-
-### STI Serializer Pattern
-
-```typescript
-// Base room serializer (generic)
-export const RoomSummarySerializer = <T extends Room>(StiChildClass: typeof Room, room: T) =>
-  DreamSerializer(StiChildClass ?? Room, room)
-    .attribute('id')
-    .attribute('type', { openapi: { type: 'string', enum: [(StiChildClass ?? Room).sanitizedName] } })
-
-// STI child serializer
-export const RoomBedroomSerializer = (bedroom: Bedroom) =>
-  RoomSerializer(Bedroom, bedroom)
-    .attribute('bedTypes')
-```
+**Before you write or change a serializer, read [serializers.md](serializers.md)** — and [sti.md](sti.md) for STI base/child serializers. It owns the composition pattern, every method (`attribute`/`customAttribute`/`delegatedAttribute`/`rendersOne`/`rendersMany`), flattening and attribute-shadowing, passthrough context, and `ObjectSerializer` for non-Dream shapes. A hand-written STI serializer that drops the `type`/`StiChildClass` shape silently collapses every child to one schema — correct in a unit spec, broken over HTTP. Run `pnpm psy sync` after changing any serializer so the OpenAPI specs and generated clients update.
 
 ## Migrations
 
-For detailed migration patterns (column types, helpers, etc.), see [migrations.md](migrations.md).
+Migrations are Kysely-based schema changes — the only way the database shape changes (columns, tables, enums, indexes, foreign keys). Reach here whenever you add, alter, or remove one.
 
-**Migrations are always created via generators** (`g:resource`, `g:model`, `g:sti-child`, or `g:migration`), then edited as needed. Never create migration files by hand.
+- **Always generate, never hand-write.** Migrations come from `g:resource`, `g:model`, `g:sti-child`, or `g:migration`, then are edited as needed — never created from scratch.
+- **Adding a `NOT NULL` column to a table that already has rows needs a default or a backfill step**, or the migration fails against the existing data.
+
+**Before you write or edit a migration, read [migrations.md](migrations.md).** It owns the column-type DSL, `DreamMigrationHelpers` (prefer these over raw Kysely calls), foreign keys and indexes, the soft-delete column, the new-transaction escape hatch, and enum handling — including the two-migration pattern required to rename an in-use enum value (PostgreSQL can't add and use an enum value in one transaction).
 
 ## Routing
 
@@ -668,339 +274,75 @@ export default function routes(r: PsychicRouter) {
 
 ## Soft Delete
 
-For detailed soft delete patterns, see [soft-delete.md](soft-delete.md).
+`@SoftDelete()` makes `destroy()` set `deletedAt` instead of removing the row, and a `dream:SoftDelete` default scope hides those rows from every query. Generators apply it by default. Reach here when a model needs "removed but recoverable / auditable" semantics — and don't hand-roll a `removed` / `deactivatedAt` flag, which fights the lifecycle.
 
-### Quick Reference
+- **Every model in a `dependent: 'destroy'` chain must also have `@SoftDelete()`** — otherwise destroying the parent permanently deletes those children. Dream does not check this for you.
+- **STI children never carry `@SoftDelete()`** — it lives on the STI parent and all children inherit it.
 
-Generators automatically apply `@SoftDelete()` and include a `deleted_at` column. This makes `destroy()` set `deletedAt` instead of removing the row. A default scope (`dream:SoftDelete`) automatically hides soft-deleted records from all queries. Use `--no-soft-delete` when generating if hard deletion is intentionally desired.
-
-```typescript
-import { SoftDelete } from '@rvoh/dream'
-
-@SoftDelete()
-export default class Place extends ApplicationModel {
-  public deletedAt: DreamColumn<Place, 'deletedAt'>
-}
-```
-
-```typescript
-await place.destroy()                  // Sets deletedAt (soft delete)
-await place.undestroy()                // Restores (sets deletedAt to null)
-await place.reallyDestroy()            // Permanent delete
-
-// Query multiple soft-deleted records — removeDefaultScope preserves other scopes
-await Place.removeDefaultScope('dream:SoftDelete').all()
-
-// Find a specific soft-deleted record — removeAllDefaultScopes ensures it's found
-await Place.removeAllDefaultScopes().findOrFail(id)
-```
-
-**Key rules:**
-- Requires a `deleted_at` datetime column (nullable)
-- Use `restrict` (the default) for foreign key constraints, not `cascade`
-- **Every model in a `dependent: 'destroy'` chain MUST also have `@SoftDelete()`** — otherwise those associated records will be permanently deleted
-- Both `destroy()` and `undestroy()` cascade through `dependent: 'destroy'` associations
-- STI children cannot use `@SoftDelete()` — it must be on the STI parent
+**Before you add soft delete to an existing model, query soft-deleted rows, or build a `dependent: 'destroy'` chain, read [soft-delete.md](soft-delete.md).** It owns the setup, the `restrict`-not-`cascade` FK rule, `undestroy` / `reallyDestroy`, and the `removeDefaultScope` vs `removeAllDefaultScopes` distinction.
 
 ## Default Scopes
 
-Default scopes are query conditions automatically applied to every query on a model. For full documentation, see [models.md - Default Scopes](models.md#default-scopes).
+Default scopes are conditions automatically applied to every query on a model. Two are built in — **`dream:SoftDelete`** (added by `@SoftDelete()`, hides `deletedAt` rows) and **`dream:STI`** (added by `@STI()`, restricts a child query to its type); define your own with `@deco.Scope({ default: true })`.
 
-Dream provides built-in default scopes:
-- **`dream:SoftDelete`** — added by `@SoftDelete()`, hides records where `deletedAt` is not null
-- **`dream:STI`** — added by `@STI()`, restricts STI child queries to their type
+- **Bypass one with `removeDefaultScope('name')` when querying a plurality** (it preserves other scopes) and **`removeAllDefaultScopes()` when targeting one specific record.**
 
-Models can define custom default scopes with `@deco.Scope({ default: true })`. Use `removeDefaultScope('scopeName')` when querying for a plurality (preserves other scopes). Use `removeAllDefaultScopes()` when targeting a specific record.
+Full reference: [models.md — Default Scopes](models.md#default-scopes).
 
 ## Single Table Inheritance (STI)
 
-STI allows multiple model types to share a single database table. For detailed generation, model, serializer, migration, and controller patterns see [sti.md](sti.md)
+STI stores several model types in one table, discriminated by a `type` enum column. Reach for it when a `type` column's values carry different behavior, validations, serializers, or child-specific columns.
 
-### Quick Reference
+- **STI `type` values must exactly match the child class names** (`Bedroom`, `LivingRoom`) — the enum and the classes are one namespace.
+- **Generate, never hand-roll:** `g:resource --sti-base-serializer` for the parent, `g:sti-child` per child. They emit the check constraints, per-child serializers, and type-discriminated OpenAPI that are painful to retrofit.
+- **Creating an STI child dispatches on `type` through an exhaustive `switch` with a `_never` default** (Critical Rule 15) — `if/else` chains silently no-op when a type is added.
 
-```typescript
-// Parent model
-export default class Room extends ApplicationModel {
-  public override get table() { return 'rooms' as const }
-  public type: DreamColumn<Room, 'type'>
-}
-
-// Child model
-@STI(Room)
-export default class Bedroom extends Room {
-  public bedTypes: DreamColumn<Bedroom, 'bedTypes'>
-  public override get serializers(): DreamSerializers<Bedroom> {
-    return { default: 'Room/BedroomSerializer', summary: 'Room/BedroomSummarySerializer' }
-  }
-}
-```
-
-**STI limitations**: STI children cannot use `@SoftDelete()` (must be on parent) and cannot use `@ReplicaSafe()`.
-
-**Creating STI instances in controllers** — per Critical Rule 15 (exhaustive switch on closed enums), the `create` action switches on `type` with a `_never` default:
-
-```typescript
-const roomType = this.castParam('type', 'string', { enum: RoomTypesEnumValues })
-let room: Room
-switch (roomType) {
-  case 'Bathroom': room = await Bathroom.create({ place, ...params }); break
-  case 'Bedroom':  room = await Bedroom.create({ place, ...params }); break
-  case 'Kitchen':  room = await Kitchen.create({ place, ...params }); break
-  default: { const _never: never = roomType; throw new Error(`Unhandled: ${_never}`) }
-}
-```
+**Before you generate an STI parent or child, write an STI serializer, or build the create action, read [sti.md](sti.md).** It owns the full generation workflow, the generic base-serializer shape (drop the `StiChildClass` / `type` parts and discrimination breaks silently over HTTP), the migration / check-constraint patterns, and the controller switch. STI children also cannot use `@SoftDelete()`, `@ReplicaSafe()`, `@Sortable()`, or define their own associations — all live on the parent.
 
 ## Associations
 
-For the full reference including all options and option tables, see [models.md](models.md).
+Associations declare how models relate — `BelongsTo`, `HasMany`, `HasOne`, `through` for many-to-many, and polymorphic variants. Reach here whenever you wire two models together.
 
-### Types
+- **A `BelongsTo` lives on the model holding the foreign key, and you must declare the FK column too** (`public userId: DreamColumn<...>` beside the `@deco.BelongsTo('User')`).
+- **A non-optional `BelongsTo` is a non-nullable contract on both ends** — it can't be conditionally loaded (compile error) and throws `MissingRequiredBelongsToAssociation` if an internal mechanism nulls it. The fix is a model change (`dependent: 'destroy'` on the inverse, or `optional: true`), not a looser serializer.
+- **`through` associations cannot use** `dependent`, `primaryKeyOverride`, `withoutDefaultScopes`, `on`, or `polymorphic`.
 
-```typescript
-// BelongsTo (FK on this model)
-@deco.BelongsTo('User')
-public user: User
-public userId: DreamColumn<Post, 'userId'>
-
-// BelongsTo optional
-@deco.BelongsTo('User', { optional: true })
-public approver: User | null
-
-// HasMany
-@deco.HasMany('Post', { dependent: 'destroy' })
-public posts: Post[]
-
-// HasOne
-@deco.HasOne('Profile')
-public profile: Profile
-
-// Through (many-to-many via join table)
-@deco.HasMany('Host', { through: 'hostPlaces' })
-public hosts: Host[]
-
-// Polymorphic HasMany
-@deco.HasMany('LocalizedText', { polymorphic: true, on: 'localizableId', dependent: 'destroy' })
-public localizedTexts: LocalizedText[]
-
-// Polymorphic BelongsTo
-@deco.BelongsTo(['Host', 'Place', 'Room'], { polymorphic: true, on: 'localizableId' })
-public localizable: Host | Place | Room
-
-// With conditions (and, andAny, andNot)
-@deco.HasMany('Post', { and: { published: true } })
-public publishedPosts: Post[]
-
-@deco.HasMany('Post', { andAny: [{ featured: true }, { published: true }] })
-public visiblePosts: Post[]
-
-@deco.HasMany('Post', { andNot: { archived: true } })
-public activePosts: Post[]
-
-// selfAnd — join where associated column matches a column on THIS model
-// Format: { associatedColumn: 'thisModelColumn' }
-// Links to DailyChallenge by position instead of FK, allowing re-shuffling
-@deco.HasOne('DailyChallenge', {
-  on: 'position',
-  selfAnd: { position: 'currentPosition' },
-})
-public currentChallenge: DailyChallenge
-
-// selfAndNot — exclude where columns match (e.g., siblings = parent's children minus self)
-@deco.HasMany('TreeNode', {
-  through: 'parent', source: 'children',
-  selfAndNot: { id: 'id' },
-})
-public siblings: TreeNode[]
-
-// DreamConst.passthrough — value supplied at query time via .passthrough({ locale: 'en-US' })
-@deco.HasOne('LocalizedText', {
-  polymorphic: true, on: 'localizableId',
-  and: { locale: DreamConst.passthrough },
-})
-public currentLocalizedText: LocalizedText
-
-// DreamConst.required — value supplied via { and: { category: value } } in the loading chain
-@deco.HasOne('Preference', {
-  and: { category: DreamConst.required },
-})
-public preference: Preference
-
-// With order and distinct
-@deco.HasMany('Tag', { through: 'postTags', distinct: true, order: 'name' })
-public tags: Tag[]
-
-// Skip default scopes when loading
-@deco.HasMany('Post', { withoutDefaultScopes: ['dream:SoftDelete'] })
-public allPosts: Post[]
-
-// Override primary key used for join
-@deco.BelongsTo('Widget', { primaryKeyOverride: 'legacyId' })
-public widget: Widget
-```
-
-### Association Option Summary
-
-**BelongsTo**: `on`, `optional`, `polymorphic`, `primaryKeyOverride`, `withoutDefaultScopes`
-
-**HasMany / HasOne**: `and`, `andAny`, `andNot`, `dependent`, `on`, `order` (HasMany only), `distinct` (HasMany only), `polymorphic`, `primaryKeyOverride`, `selfAnd`, `selfAndNot`, `through`, `source`, `withoutDefaultScopes`
-
-**Through associations** cannot use: `dependent`, `primaryKeyOverride`, `withoutDefaultScopes`, `on`, or `polymorphic`.
+**Before you add or change an association, read the full reference in [models.md](models.md)** — every option, the conditions (`and` / `andAny` / `andNot`), `selfAnd` / `selfAndNot`, `DreamConst.passthrough` / `required`, and polymorphism. Run `pnpm psy sync` after any association change.
 
 ## Internationalization (i18n)
 
-For detailed i18n patterns, see [i18n.md](i18n.md). Psychic supports two complementary patterns:
+Psychic supports two complementary translation patterns: **code-driven** (enum values and static labels via `I18nProvider` and locale files in `src/conf/locales/`) and **data-driven** (user-generated content via a polymorphic `LocalizedText` model with `DreamConst.passthrough`). Both read the `Accept-Language` header and flow to serializers via `serializerPassthrough({ locale })`.
 
-- **Code-driven i18n** - Translate enum values and static labels using `I18nProvider` from `@rvoh/psychic/system` with locale files in `src/conf/locales/`
-- **Data-driven i18n** - Translate user-generated content using a polymorphic `LocalizedText` model with `DreamConst.passthrough` for locale-conditioned associations
-
-Both use the `Accept-Language` request header, passed to serializers via `serializerPassthrough({ locale })`.
+**Before you add either pattern, read [i18n.md](i18n.md).**
 
 ## Background Workers
 
-For detailed worker patterns (services, models, scheduling, configuration, testing), see [workers.md](workers.md).
+Background jobs (BullMQ / Redis) offload slow, costly, or failure-prone work off the request path, with automatic retry. Services are the standard surface; models can background their own methods. Reach here whenever work should not block a response.
 
-### Quick Reference
+- **Never pass model data as job arguments — pass IDs only** and re-look-up inside the implementation. Model payloads bloat Redis, lose type information through JSON, and go stale.
+- **Use `find` (not `findOrFail`) in implementations and return early on null** — the record may have been deleted before the worker runs, and `findOrFail` would retry for ~6 days.
+- **Enqueue only after the transaction commits** — from a model hook use the `Commit` variant (`@deco.AfterCreateCommit`), and never call `background(...)` from inside an open `txn`, or the worker races the commit and silently strands the record.
 
-Backgrounded services use a two-method pattern: a public entry method that exposes an expressive API to callers, and a private implementation method (prefixed with `_`) that does the work. This encapsulates backgrounding as an implementation detail — callers don't need to know the work is backgrounded. **Never pass model data as arguments** — pass only IDs and look up the record in the implementation method. Passing model data bloats Redis, loses type information when serialized to JSON, and creates immediately stale snapshots.
-
-```typescript
-import ApplicationBackgroundedService from './ApplicationBackgroundedService.js'
-
-export class NotificationService extends ApplicationBackgroundedService {
-  // Public entry point — called from application code
-  public static async sendWelcome(user: User) {
-    await this.background('_sendWelcome', user.id)
-  }
-
-  // Private implementation — called by the worker
-  public static async _sendWelcome(userId: string) {
-    // Use find (not findOrFail) — the record may have been deleted since the job was queued
-    const user = await User.find(userId)
-    // Exit if target model no longer exists
-    if (!user) return
-    // Welcome notication logic
-  }
-
-  // Optional: configure priority/workstream
-  public static override get backgroundJobConfig() {
-    return { priority: 'urgent' }
-  }
-}
-
-// Called from application code (e.g., controller or model hook):
-await NotificationService.sendWelcome(user)
-
-// IMPORTANT: When backgrounding from a Dream model lifecycle hook, the `Commit` variant of the hook **MUST** be used, e.g., AfterCreateCommit **NOT** AfterCreate:
-@deco.AfterCreateCommit()
-public async notifyCreation(this: Place) {
-  await NotificationService.placeCreated(this)
-}
-```
+**Before you write a backgrounded service, a scheduled job, or a model hook that enqueues work, read [workers.md](workers.md).** It owns the two-method service pattern, priorities / workstreams, the scheduled-vs-backgrounded split, large-set fan-out, and why a `try/catch` inside a job (which fakes success and kills retry) is almost always a bug.
 
 ## Websockets
 
-For detailed websocket patterns, see [websockets.md](websockets.md).
+Psychic Websockets gives real-time push over Socket.IO with Redis pub/sub. Typed channels are declared with `Ws`, messages emit to a user id, and connections register a socket to a user. Reach here whenever the app pushes to clients.
 
-### Quick Reference
+- **`PsychicAppWebsockets` must initialize in every process that calls `Ws.emit()`** — web, worker, and ws server alike. Skipping it in any of them throws an obscure `cachePsychicAppWebsockets` error that looks like a framework bug.
+- **Set `transports: ['websocket']` on the client** — Socket.IO's long-polling default causes subtle stale-data failures.
 
-```typescript
-import { Ws } from '@rvoh/psychic-websockets'
-
-// Define typed channels
-const ws = new Ws(['/notifications/new', '/data/update'] as const)
-
-// Emit to user
-await ws.emit(userId, '/notifications/new', { message: 'Hello' })
-
-// Register on connection (in conf/initializers/websockets.ts)
-wsApp.on('ws:start', io => {
-  io.of('/').on('connection', async socket => {
-    const user = await User.find(extractUserId(socket))
-    if (user) await Ws.register(socket, user.id)
-  })
-})
-```
+**Before you wire up channels, connection auth, or emit from a worker, read [websockets.md](websockets.md).** It owns the initializer / auth scaffolding, the origin allowlist, and the worker-emit pattern.
 
 ## Testing
 
-For detailed testing patterns, see [testing.md](testing.md).
+Tests use Vitest against real database records — never mocks of Dream internals (Critical Rule 5). Unit specs cover models and controllers; feature specs cover end-to-end flows; factories build test data. Reach here whenever you add or change behavior.
 
-### Factory Pattern
+- **Write the failing spec first** (Critical Rule 9), then implement. Generated scaffolding is the only exception.
+- **Every bug is a missing spec** — write the regression spec *before* committing the fix, even for a one-line "couldn't regress" change.
+- **Create real records with factories**, not stubs.
 
-```typescript
-// spec/factories/PlaceFactory.ts
-let counter = 0
-export default async function createPlace(attrs: UpdateableProperties<Place> = {}) {
-  return await Place.create({
-    name: `Place name ${++counter}`,
-    style: 'cottage',
-    sleeps: 1,
-    ...attrs,
-  })
-}
-```
-
-### Controller Spec Pattern
-
-```typescript
-describe('V1/Host/PlacesController', () => {
-  let request: SpecRequestType
-  let user: User
-  let host: Host
-
-  beforeEach(async () => {
-    user = await createUser()
-    host = await createHost({ user })
-    request = await session(user)
-  })
-
-  describe('POST create', () => {
-    it('creates a Place', async () => {
-      const { body } = await request.post('/v1/host/places', 201, {
-        data: { name: 'Cozy Cabin', style: 'cabin', sleeps: 4 },
-      })
-      const place = await host.associationQuery('places').firstOrFail()
-      expect(place.name).toEqual('Cozy Cabin')
-      expect(body).toEqual(expect.objectContaining({ id: place.id }))
-    })
-  })
-
-  describe('GET index', () => {
-    it('returns only this host places', async () => {
-      const place = await createPlace()
-      await createHostPlace({ host, place })
-      const otherPlace = await createPlace()  // Not associated
-
-      const { body } = await request.get('/v1/host/places', 200)
-      expect(body.results).toHaveLength(1)
-      expect(body.results[0].id).toEqual(place.id)
-    })
-  })
-})
-```
-
-### Model Spec Pattern
-
-```typescript
-describe('Place', () => {
-  describe('associations', () => {
-    it('has many rooms', async () => {
-      const place = await createPlace()
-      const room = await createBedroom({ place })
-      expect(await place.associationQuery('rooms').all()).toMatchDreamModels([room])
-    })
-  })
-
-  describe('soft delete', () => {
-    it('soft deletes and cascades', async () => {
-      const place = await createPlace()
-      await place.destroy()
-      expect(await Place.where({ id: place.id }).exists()).toBe(false)
-      expect(await Place.where({ id: place.id }).removeAllDefaultScopes().exists()).toBe(true)
-    })
-  })
-})
-```
+**Before you write a factory, a model / controller spec, or a feature spec, read [testing.md](testing.md).** It owns the factory pattern (including STI and side-effect-hook factories), the `session(...)` auth helper, the matchers (`toMatchDreamModels`, action / expectation matchers), spec organization, and worker / feature-spec specifics.
 
 ## Naming Conventions
 
@@ -1022,28 +364,12 @@ describe('Place', () => {
 
 ## OpenAPI Integration
 
-Every controller action should have an `@OpenAPI` decorator:
+Every controller action carries an `@OpenAPI` decorator that derives its request and response schema from Dream models and serializers. Reach here whenever you document an endpoint.
 
-```typescript
-@OpenAPI(Place, {
-  status: 200,                          // HTTP status code
-  tags: ['places'],                     // OpenAPI grouping
-  description: 'List all places',       // Endpoint description
-  serializerKey: 'summary',             // Which serializer variant
-  many: true,                           // Response is array
-  cursorPaginate: true,                 // Cursor pagination wrapper
-  fastJsonStringify: true,              // Performance optimization
-  query: {                              // Query parameters
-    search: { required: false, schema: 'string' },
-  },
-  requestBody: { including: ['name'] }, // Request body fields
-})
-```
+- **Never hand-write a schema Psychic can derive** (Critical Rule 21) — model request bodies use `requestBody: { params }` / `{ including }`, model responses use `@OpenAPI(Model, { serializerKey })`, computed responses use an `ObjectSerializer`. Hand-written JSON Schema is only for genuinely ad hoc shapes.
+- **Automatic error handling** maps `castParam` / validation failures → 400 and `findOrFail` misses → 404; don't document or throw these by hand.
 
-Automatic error handling:
-- `castParam` invalid -> 400
-- `findOrFail` not found -> 404
-- Validation-layer failure -> 400
+**Before you write or change an `@OpenAPI` decorator, read the full options and `requestBody` shorthand reference in [controllers.md](controllers.md).** Run `pnpm psy sync` afterward so the specs and generated clients update.
 
 ## Deploying
 
