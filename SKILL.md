@@ -192,17 +192,11 @@ pnpm lint                        # Check linting
 
 `g:controller` scaffolds the namespace base-controller chain as well as the leaf controller and unit spec. For `Path/Name`, it creates a `Path/BaseController.ts` and makes `Path/NameController` extend that base. It does not add routes. Use it even for custom/webhook controllers, then re-parent the generated namespace base to `UnauthedController` when the surface is intentionally unauthenticated.
 
-## Generator Usage Rules
+## Generators
 
-- **Generator preference order**: `g:resource` (the default for almost all new models) > `g:sti-child` (STI children) > `g:model` (only for models never exposed via any API, e.g. join tables, audit logs) > `g:migration` (schema changes without a new model). `g:resource` scaffolds the controller, specs, and routes that `g:model` does not; it is easier to delete unused actions than to retrofit them.
-- **CRITICAL: Run `pnpm psy <command> --help` and read its output BEFORE running any generator or CLI command.** Argument formats vary between commands and between Dream/Psychic versions. This is a hard prerequisite, not a suggestion.
-- **`g:resource` arguments are orthogonal**: 1st arg = plural kebab-case route path (`v1/host/places`); 2nd arg = model file path relative to `src/app/models/` without `.ts` (`Place`, `Place/Room`; override class name with `--model-name`); `--owning-model` = query scoping only. A **nested route does not imply a namespaced model** — choose the model namespace by identity, not by route or owner. See [generators.md](generators.md#gresource-argument-contract) and [models.md — Model Organization & Namespacing](models.md#model-organization--namespacing).
-- **Nested resources MUST pass `--owning-model=<fully-qualified owning model>`.** A nested route has a `{}` parent-id placeholder (`v1/posts/{}/comments` → `--owning-model=Post`); this scopes the controller through `associationQuery` / `createAssociation`. Omitting it yields a controller that doesn't scope to the parent and a spec that 404s on an unconstructed parent path-param.
-- **If a model has a `type` column, consider STI** (`--sti-base-serializer` + `g:sti-child`). See [sti.md](sti.md).
-- **To add fields/associations to an existing model, use `pnpm psy g:migration`**, then add the `DreamColumn` declaration (and `@deco.BelongsTo` for FKs) to the model file.
-- **Run `pnpm psy sync`** after an association, serializer, OpenAPI decorator, or route changes. (`db:migrate` runs `sync` automatically — don't follow it with a standalone `sync`.)
-
-**For the full scaffolding workflow** — what each generator produces by default (auto-included `id`/timestamp columns, plus `@SoftDelete()` so deletes set `deleted_at` and hide the row instead of removing it), the post-generate migrate → spec-first → commit steps, and the migration column DSL — see [generators.md](generators.md).
+- **Never hand-roll what a generator can make.** Models, resources, migrations, and STI children are always created with `pnpm psy g:*` and then edited — never written from scratch.
+- **Generator order:** `g:resource` (default for almost any model) → `g:sti-child` (STI children) → `g:model` (only for models never exposed via any API) → `g:migration` (schema change without a new model).
+- **Before you run any generator, read [generators.md](generators.md) and run `pnpm psy <command> --help`.** It carries the argument contract, the mandatory `--owning-model` rule for nested resources, what each generator scaffolds by default, and the post-generate workflow. Reaching for a generator without reading it produces subtly wrong scaffolding that is expensive to unwind.
 
 ## Models
 
