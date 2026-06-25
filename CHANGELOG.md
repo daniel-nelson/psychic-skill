@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.48.0 — 2026-06-25
+
+### Added
+
+- **`generators.md`** (new file) — A dedicated home for the scaffolding-generator workflow, previously scattered across `SKILL.md`. Owns the generator decision tree, the mandatory `--help` preflight, the `g:resource` argument contract (route path / model file path / `--owning-model` as three orthogonal inputs), the nested-resource `--owning-model` rule, generated defaults (`--no-soft-delete`), the post-generation edit/migrate/spec/commit workflow, `sync` triggers, and the "adding properties to an existing model" migration workflow. Linked from the README manifest and required-reading list.
+- **`models.md`** — New "Model Organization & Namespacing" section establishing that a model's namespace should describe what it *is*, not where it is routed or what owns it. A nested route plus `--owning-model` does not imply a `Parent/Child` model namespace (a `Booking` under `v1/host/places/{}/bookings --owning-model=Place` is not `Place/Booking`). `Parent/Child` is for STI subtypes (`Room/Bedroom`) and subdomain / bounded-context modules (`Reservations/Booking`); apps are flat when small and grouped by subdomain as they grow, never organized by the owning model or route. A model that `belongsTo` two parents is its own aggregate root and belongs under neither.
+
+### Changed
+
+- **`SKILL.md`** — Trimmed the generator guidance to a terse, must-not-miss residue (preference order, `--help`-first, the orthogonal `g:resource` arguments, the nested-`--owning-model` rule, the `g:migration`-for-existing-models and `sync` triggers) with pointers to the new `generators.md` and to `models.md` for namespace judgment. Removed the full "Generator Workflow", "When to Run sync", and "Adding Properties to Existing Models" sections, which now live in `generators.md`.
+- **`migrations.md`** — Repointed the column-shorthand cross-reference from the removed `SKILL.md` "Adding Properties" section to [generators.md — Adding properties to an existing model](generators.md#adding-properties-to-an-existing-model).
+
 ## 0.47.1 — 2026-06-24
 
 ### Fixed

@@ -18,6 +18,23 @@ export default class ApplicationModel extends Dream {
 }
 ```
 
+## Model Organization & Namespacing
+
+A model's file path under `src/app/models/` becomes its class name, table name, and namespace, so where you place it is a domain-modeling decision, not a generator mechanic. (For how the `g:resource` route / model-path / `--owning-model` arguments map to files, see [generators.md](generators.md#gresource-argument-contract).)
+
+**Namespace a model by what it *is*, not by where it is routed or what owns it.** A model namespace should describe the model's identity, not its URL or its querying parent. Do not namespace a model under its route or association parent just because the endpoint is nested: a `Booking` routed at `v1/host/places/{}/bookings --owning-model=Place` is **not** `Place/Booking`. The nested route and `--owning-model` already give you parent-scoped queries; they say nothing about the model's namespace.
+
+Use a `Parent/Child` namespace in two cases:
+
+- **STI subtypes** — `Room/Bedroom`, `Room/Bathroom`. The namespace expresses "is a kind of." See [sti.md](sti.md).
+- **Subdomain / bounded-context modules** — `Reservations/Booking`, `Billing/Invoice`. The namespace expresses which part of the application's domain the model belongs to.
+
+**Flat when small, grouped by subdomain when large.** A small app is commonly flat — most models sit directly under `src/app/models/`, and that is fine. As the model set grows, group models into subdomain modules rather than leaving dozens of unrelated top-level peers; a sprawling flat directory is a sign the domain hasn't been carved into bounded contexts. Do not pre-create a one-model subdomain on day one either — introduce the module when there are models to put in it. The axis to organize on is the subdomain, never the owning model or the route.
+
+**A model that belongs to multiple parents is its own aggregate root.** When a model `belongsTo` two parents — a `Booking` belongs to both a `Place` and a `Guest` — it is usually its own organizing concept, not a sub-part of either. Namespacing it under one parent (`Place/Booking`) wrongly couples a two-parent model to that parent. Leave it top-level, or place it in its subdomain module (`Reservations/Booking`) — never under one of its parents.
+
+Getting the namespace wrong is expensive to undo: the model file path bakes into the class name, the table name, every import, the serializer/controller paths, and the migration. A later rename touches all of those plus generated types, OpenAPI, and front-end clients. Decide the namespace deliberately at generation time.
+
 ## Column Types
 
 Use `DreamColumn<ModelClass, 'columnName'>` for all database-backed columns. The type is inferred from the database schema via Kysely codegen.

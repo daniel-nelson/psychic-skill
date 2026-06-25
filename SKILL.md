@@ -194,60 +194,15 @@ pnpm lint                        # Check linting
 
 ## Generator Usage Rules
 
-- **Generator preference order**:
-  1. **Resource generator** (`g:resource`) - the default for almost all new models
-  2. **STI-child generator** (`g:sti-child`) - for STI child models building on an existing STI base
-  3. **Model generator** (`g:model`) - only for models that will never be exposed via any API
-  4. **Migration generator** (`g:migration`) - for database changes when not generating a new model
-- **Most models should use `g:resource`.** It is rare for a model to not be exposed via *some* API — whether end-user facing, internal, or admin. `g:resource` generates the controller, controller specs, and route scaffolding that `g:model` does not. It is easier to delete unused controller actions than to retrofit them later. Only use `g:model` for models that are purely internal (e.g., join tables, audit logs).
-- **`g:resource` first argument is a plural kebab-case route path** (e.g., `v1/host/places` or `internal/action-plans`), not a class name or namespace. The second argument is the model file path relative to `src/app/models/` without `.ts` (e.g., `Place`, `Place/Room`). The class name defaults from the path but can be overridden with `--model-name`.
-- **Nested resources MUST pass `--owning-model=<fully-qualified owning model>`.** A nested resource has a parent-id placeholder in its route path (the `{}` segment, e.g. `v1/posts/{}/comments`, `internal/clients/{}/addresses`). For these, always pass `--owning-model` set to the fully-qualified nesting (parent) model name (`--owning-model=Post`, `--owning-model=Client`). This makes the generated controller scope every query and write through `associationQuery` / `createAssociation` on the owning model, and scaffolds the parent correctly throughout — including in the generated controller spec. Omitting it generates a controller that doesn't scope to the parent and a spec that references an unconstructed parent path-param variable (the symptom is a spec that 404s on the missing parent rather than exercising the action). For `admin`/`internal` paths (which drop `currentUser` scoping), `--owning-model` is also how you reintroduce ownership scoping.
-- **CRITICAL: Run `pnpm psy <command> --help` and read its output BEFORE running any generator or CLI command.** Do not infer syntax from examples in this skill or from prior experience — argument formats vary between commands and between Dream/Psychic versions. This is a hard prerequisite, not a suggestion.
-- `g:resource` and `g:model` automatically include `id`, `created_at`, `updated_at`, and `deleted_at` columns and decorate the model with `@SoftDelete()`. Do not specify these in the generator command. Use `--no-soft-delete` to opt out since hard deletion should be an intentional decision.
-- **If a model has a `type` column, consider whether it should use STI.** If different types will have different behavior, validations, serializers, or child-specific columns, use STI (`--sti-base-serializer` on the parent resource + `g:sti-child` for each child). The STI generators handle significant subtle scaffolding (check constraints, per-type serializers, type-discriminated OpenAPI schemas) that is much easier to get right at generation time than to refactor later. See [sti.md](sti.md).
+- **Generator preference order**: `g:resource` (the default for almost all new models) > `g:sti-child` (STI children) > `g:model` (only for models never exposed via any API, e.g. join tables, audit logs) > `g:migration` (schema changes without a new model). `g:resource` scaffolds the controller, specs, and routes that `g:model` does not; it is easier to delete unused actions than to retrofit them.
+- **CRITICAL: Run `pnpm psy <command> --help` and read its output BEFORE running any generator or CLI command.** Argument formats vary between commands and between Dream/Psychic versions. This is a hard prerequisite, not a suggestion.
+- **`g:resource` arguments are orthogonal**: 1st arg = plural kebab-case route path (`v1/host/places`); 2nd arg = model file path relative to `src/app/models/` without `.ts` (`Place`, `Place/Room`; override class name with `--model-name`); `--owning-model` = query scoping only. A **nested route does not imply a namespaced model** — choose the model namespace by identity, not by route or owner. See [generators.md](generators.md#gresource-argument-contract) and [models.md — Model Organization & Namespacing](models.md#model-organization--namespacing).
+- **Nested resources MUST pass `--owning-model=<fully-qualified owning model>`.** A nested route has a `{}` parent-id placeholder (`v1/posts/{}/comments` → `--owning-model=Post`); this scopes the controller through `associationQuery` / `createAssociation`. Omitting it yields a controller that doesn't scope to the parent and a spec that 404s on an unconstructed parent path-param.
+- **If a model has a `type` column, consider STI** (`--sti-base-serializer` + `g:sti-child`). See [sti.md](sti.md).
+- **To add fields/associations to an existing model, use `pnpm psy g:migration`**, then add the `DreamColumn` declaration (and `@deco.BelongsTo` for FKs) to the model file.
+- **Run `pnpm psy sync`** after an association, serializer, OpenAPI decorator, or route changes. (`db:migrate` runs `sync` automatically — don't follow it with a standalone `sync`.)
 
-### Generator Workflow
-
-After a generator has run:
-
-1. **Update the migration file as needed** (e.g., add `unique()` to a column)
-2. **Run migrations**: `pnpm psy db:migrate`
-3. **If the generator was a resource generator**:
-   - Update the generated controller spec first
-   - Then update the corresponding generated controller
-   - Note: controller specs will hang if there is no response within a controller action (generated action code starts commented out)
-4. **Commit generated code as its own commit** with a message in this format:
-   ```
-   Generate Room resource
-
-   ```console
-   pnpm psy g:resource --sti-base-serializer --owning-model=Place v1/host/places/rooms Room type:enum:room_types:Bathroom,Bedroom,Kitchen,Den
-   ```
-   ```
-
-### When to Run `pnpm psy sync`
-
-Run `pnpm psy sync` whenever any of the following are added or changed:
-- An association in a Dream model
-- A serializer
-- An OpenAPI decorator on a controller action
-- A route
-
-If controller specs have type errors about what an endpoint accepts or returns, this means the OpenAPI shape is out of sync - run `pnpm psy sync`.
-
-## Adding Properties to Existing Models
-
-- **Always use the migration generator** (`pnpm psy g:migration`) to create a migration for schema changes.
-- **`g:migration` accepts the same column shorthand as `g:resource` and `g:model`** — including `BelongsTo:type` for foreign keys. Pass column descriptors as additional positional args; the migration body is generated correctly without hand-editing for the common cases.
-- The migration name is **kebab-case** (matches the migration filename convention `kebab-case-description.ts`), not snake_case.
-- Examples:
-  - Plain column: `pnpm psy g:migration add-timezone-to-users timezone:string`
-  - Multiple columns: `pnpm psy g:migration add-fields-to-bars name:string size:integer`
-  - Foreign key (notNull): `pnpm psy g:migration add-zip-code-id-to-candidates ZipCode:belongs_to`
-  - Foreign key (nullable): `pnpm psy g:migration add-zip-code-id-to-candidates ZipCode:belongs_to:optional`
-  - Aliased FK (`@alias`): `pnpm psy g:migration add-canceled-by-to-message-requests InternalUser@canceled_by:belongs_to:optional` produces `canceled_by_id` column, `canceledById` property, and `canceledBy` association from one token. Canonical for `_by` columns (`created_by`, `approved_by`) and multiple FKs to the same model (`Message@last_inbound`, `Message@last_outbound`). See [migrations.md — Aliased BelongsTo shorthand](migrations.md#aliased-belongsto-shorthand-modelaliasbelongs_to) for the full reference.
-- After running the migration (`pnpm psy db:migrate`), add the matching `public ...: DreamColumn<Model, 'columnName'>` declaration to the model file. For a BelongsTo, also add the `@deco.BelongsTo(...)` declaration. Commit the auto-generated `src/types/db.ts` / `src/types/dream.ts` changes alongside.
-- The generator scaffolding can be modified for changes that aren't expressible as column shorthand (check constraints, enum alterations, custom backfill) — use DreamMigrationHelpers methods over compound Kysely calls when available.
+**For the full scaffolding workflow** — generated defaults (`--no-soft-delete`), the edit/migrate/spec/commit steps, and the migration column DSL — see [generators.md](generators.md).
 
 ## Models
 
