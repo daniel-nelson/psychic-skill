@@ -59,6 +59,6 @@ if [ ${#LINKED[@]} -gt 0 ]; then
 fi
 
 echo "The following skill is now available:"
-echo "  dream-psychic  (auto-loads when working with Dream/Psychic projects)"
+echo "  psychic-skill  (auto-loads when working with Dream/Psychic projects)"
 echo "  /psychic-update-skill  (update to latest version)"
 echo ""

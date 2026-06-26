@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.49.1 — 2026-06-26
+
+### Fixed
+- `setup` script post-install message reported `dream-psychic` instead of `psychic-skill`
+
 ## 0.49.0 — 2026-06-25
 
 ### Changed
