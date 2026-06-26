@@ -33,6 +33,10 @@ A PR that changes skill content without a `VERSION` bump + `CHANGELOG` entry is 
 
 `SKILL.md` carries an "Ecosystem versions & staleness policy" block listing the `@rvoh/*` package versions the skill is written against. **Before finalizing any skill change, verify that block against the actual current published versions** — check the `version` in each package's `package.json` in the monorepo at `~/work/dream_and_psychic` (`@rvoh/dream`, `@rvoh/psychic`, `@rvoh/psychic-workers`, `@rvoh/psychic-websockets`, `@rvoh/psychic-spec-helpers`), or `npm view <pkg> version`. If any have moved, update the baseline block in the same PR. The list is exactly the packages the skill documents — do not add packages the skill doesn't cover (`@rvoh/dream-plugin-json-snapshot`, for instance, is intentionally excluded — see below). Never annotate per-feature "available since" versions; the single baseline plus the "stay current / upgrade if reality disagrees" policy is the whole mechanism, by design.
 
+## Delete stale guidance cleanly
+
+When correcting outdated or incorrect skill guidance, remove the stale pattern without adding explanatory prose whose only purpose is to contrast with, justify, or memorialize the removed mistake. The skill should teach the current generated/currently-correct shape directly. Add an explanation only when it helps an agent make a future implementation decision that remains relevant after the old guidance is gone.
+
 ## What this skill deliberately does not document
 
 ### `@rvoh/dream-plugin-json-snapshot`
@@ -45,6 +49,14 @@ There is also a category difference: workers, soft-delete, websockets are option
 
 The plugin is fully documented in the psychic-guides site (`psychicframework.com/docs/plugins/snapshot`), which is the right place for developer discovery. If the use case becomes common enough that agents should suggest it by default, add a short paragraph near the workers section — not a full file — pointing to the docs and stating the one-liner constraint.
 
-## When asked to "open a PR" / "ship" / "publish"
+## When asked to "Put up a PR" / "open a PR" / "ship" / "publish"
 
-Before opening the PR, verify the working branch already contains the `VERSION` bump and the `CHANGELOG` entry for this change. If either is missing, add it first, then open the PR. Do not rely on a post-merge fixup.
+Treat this as the complete release workflow for the current change:
+
+1. If currently on `main`, create a new branch with a short descriptive name.
+2. Verify the working branch contains the intended tracked changes and no unrelated user changes are staged.
+3. Bump `VERSION` for the change scope.
+4. Add the matching `CHANGELOG.md` entry under a new `## <version> — <YYYY-MM-DD>` heading.
+5. Commit the intended files, push the branch, and open the PR.
+
+Do not open the PR until the branch includes the version bump and changelog entry. Do not rely on a post-merge fixup.

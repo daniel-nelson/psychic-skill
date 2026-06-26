@@ -550,7 +550,7 @@ import createPlace from '../PlaceFactory.js'
 import { UpdateableProperties } from '@rvoh/dream/types'
 
 export default async function createBedroom(
-  attrs: UpdateableProperties<Bedroom> & { place?: Place } = {}
+  attrs: UpdateableProperties<Bedroom> = {}
 ) {
   const place = attrs.place ?? await createPlace()
   return await Bedroom.create({

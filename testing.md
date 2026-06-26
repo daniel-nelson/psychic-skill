@@ -103,7 +103,7 @@ import createPlace from './PlaceFactory.js'
 import { UpdateableProperties } from '@rvoh/dream/types'
 
 export default async function createHostPlace(
-  attrs: UpdateableProperties<HostPlace> & { host?: Host; place?: Place } = {}
+  attrs: UpdateableProperties<HostPlace> = {}
 ) {
   const host = attrs.host ?? await createHost()
   const place = attrs.place ?? await createPlace()
@@ -125,7 +125,7 @@ import createPlace from '../PlaceFactory.js'
 import { UpdateableProperties } from '@rvoh/dream/types'
 
 export default async function createBedroom(
-  attrs: UpdateableProperties<Bedroom> & { place?: Place } = {}
+  attrs: UpdateableProperties<Bedroom> = {}
 ) {
   const place = attrs.place ?? await createPlace()
   return await Bedroom.create({

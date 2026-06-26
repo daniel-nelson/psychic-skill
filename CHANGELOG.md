@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.49.2 — 2026-06-26
+
+### Fixed
+
+- Factory examples now match Dream's generated factory shape by typing `attrs` as plain `UpdateableProperties<Model>`, including STI child factories.
+
+### Changed
+
+- Added maintainer guidance to remove stale patterns cleanly instead of preserving explanations that only contrast with corrected outdated guidance.
+
 ## 0.49.1 — 2026-06-26
 
 ### Fixed
