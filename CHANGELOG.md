@@ -5,6 +5,7 @@
 ### Fixed
 
 - Factory examples with required associations now match Dream's generated conditional default pattern (`association: attrs.association ? null : await createAssociation(), ...attrs`).
+- The STI child migration rollback example now matches Dream's generated shape by dropping the child column directly instead of explicitly dropping the generated check constraint first.
 
 ## 0.49.2 — 2026-06-26
 

@@ -381,7 +381,6 @@ export async function up(db: Kysely<any>): Promise<void> {
 }
 
 export async function down(db: Kysely<any>): Promise<void> {
-  await db.schema.alterTable('rooms').dropConstraint('rooms_not_null_bath_or_shower_style').execute()
   await db.schema.alterTable('rooms').dropColumn('bath_or_shower_style').execute()
   await db.schema.dropType('bath_or_shower_styles_enum').execute()
 }
