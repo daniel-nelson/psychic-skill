@@ -321,7 +321,7 @@ Background jobs (BullMQ / Redis) offload slow, costly, or failure-prone work off
 
 - **Never pass model data as job arguments — pass IDs only** and re-look-up inside the implementation. Model payloads bloat Redis, lose type information through JSON, and go stale.
 - **Use `find` (not `findOrFail`) in implementations and return early on null** — the record may have been deleted before the worker runs, and `findOrFail` would retry for ~6 days.
-- **Enqueue only after the transaction commits** — from a model hook use the `Commit` variant (`@deco.AfterCreateCommit`), and never call `background(...)` from inside an open `txn`, or the worker races the commit and silently strands the record.
+- **Enqueue only after the transaction commits** — any lifecycle hook that queues background work must use a `Commit` variant (`@deco.AfterCreateCommit`, `@deco.AfterUpdateCommit`, `@deco.AfterSaveCommit`). This applies whether the hook calls a backgrounded service or backgrounds a model method, and whether the worker needs a newly-created row or newly-updated persisted data. Never call `background(...)` from inside an open `txn`, or the worker races the commit and silently strands the record.
 
 **Before you write a backgrounded service, a scheduled job, or a model hook that enqueues work, read [workers.md](workers.md).** It owns the two-method service pattern, priorities / workstreams, the scheduled-vs-backgrounded split, large-set fan-out, and why a `try/catch` inside a job (which fakes success and kills retry) is almost always a bug.
 

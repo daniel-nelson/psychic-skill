@@ -131,7 +131,7 @@ await user.background('sendNotification', 'Hello!')
 
 ## Critical Pattern: Use AfterCommit Hooks
 
-**ALWAYS use after-commit lifecycle hooks (`@deco.AfterCreateCommit`, `@deco.AfterUpdateCommit`, or `@deco.AfterSaveCommit`) instead of the regular hooks (`@deco.AfterCreate`, `@deco.AfterUpdate`, or `@deco.AfterSave`) when queuing background work from a Dream lifecycle hook.** Regular hooks run inside the transaction, so the worker may pick up the job before the transaction commits — meaning the record either doesn't exist yet or has stale data from the worker's perspective.
+**ALWAYS use after-commit lifecycle hooks (`@deco.AfterCreateCommit`, `@deco.AfterUpdateCommit`, or `@deco.AfterSaveCommit`) instead of the regular hooks (`@deco.AfterCreate`, `@deco.AfterUpdate`, or `@deco.AfterSave`) when queuing background work from a Dream lifecycle hook.** This applies to any enqueue path: calling a backgrounded service, calling `this.background(...)` on an `ApplicationBackgroundedModel`, or calling another model/service method that queues the job. Regular hooks run inside the transaction, so the worker may pick up the job before the transaction commits — meaning the record either doesn't exist yet after create, or still has stale persisted data after update.
 
 ```typescript
 // CORRECT — job runs after the transaction commits, so the worker can find the record

@@ -393,6 +393,24 @@ public validateCanDelete(this: Place) { ... }
 public validateNewEmail(this: User) { ... }
 ```
 
+**Do not call `save()` or `update()` on `this` from inside its own lifecycle hook.** If the hook is changing attributes on the record being persisted, use a before hook and assign the values directly so Dream persists them in the original write:
+
+```typescript
+// GOOD: same-record changes belong in a before hook.
+@deco.BeforeSave()
+public normalizeAddress(this: Place) {
+  if (this.city) this.city = this.city.trim()
+}
+
+// BAD: this starts another persistence cycle from inside this model's hook.
+@deco.AfterSave()
+public async normalizeAddress(this: Place) {
+  if (this.city) await this.update({ city: this.city.trim() })
+}
+```
+
+Use after hooks for side effects that require the row to already exist, such as creating associated records or delegating to a service. If that side effect writes other records, pass the provided `txn` through; if it must run after commit, use a `Commit` hook variant.
+
 ### After Hooks (run in same transaction, after DB write)
 
 ```typescript
@@ -441,7 +459,7 @@ export default class SeedDefaultRooms {
 
 ### After Commit Hooks (run AFTER transaction commits)
 
-**CRITICAL**: Always use commit hooks when sending models to background jobs. This prevents race conditions where the job runs before the transaction commits.
+**CRITICAL**: Always use commit hooks when queuing background jobs from model lifecycle hooks. This applies whether the hook calls a backgrounded service or backgrounds the model itself. It prevents races where the job runs before the transaction commits, so the worker cannot see a newly-created row or sees stale persisted data after an update.
 
 ```typescript
 @deco.AfterCreateCommit()
@@ -908,7 +926,7 @@ Both `Model.txn(null)` (class-level) and `instance.txn(null)` (instance-level) w
 
 **Restrictions inside transactions:** Methods that rely on foreign key violations to function (`createOrFindBy`, `createOrUpdateBy`) cannot be used inside a transaction. Use their transaction-safe counterparts (`findOrCreateBy`, `updateOrCreateBy`) instead. See the [find-or-create methods](#find-or-create-and-upsert-methods) table for details.
 
-**Background jobs and transactions:** When queuing background work from a Dream lifecycle hook, always use the `Commit` variant of the hook (e.g., `@deco.AfterCreateCommit` instead of `@deco.AfterCreate`). Regular hooks run inside the transaction, so the worker may execute before the transaction commits. This also applies to imperative `background()` calls from services with a `txn` parameter — see [workers.md](workers.md) for both forms.
+**Background jobs and transactions:** When queuing background work from a Dream lifecycle hook, always use the `Commit` variant of the hook (e.g., `@deco.AfterCreateCommit` instead of `@deco.AfterCreate`). This applies to backgrounded services, model instance backgrounding, and indirect helper methods that enqueue jobs. Regular hooks run inside the transaction, so the worker may execute before the transaction commits and either miss a newly-created row or read stale persisted data after an update. This also applies to imperative `background()` calls from services with a `txn` parameter — see [workers.md](workers.md) for both forms.
 
 **What goes inside `ApplicationModel.transaction(...)` is database writes only.** HTTP fetches, S3 / object-storage uploads, sending email, calling third-party APIs, file I/O, sleeps, and any other non-DB work belong outside the transaction.
 
