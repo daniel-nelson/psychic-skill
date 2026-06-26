@@ -552,9 +552,8 @@ import { UpdateableProperties } from '@rvoh/dream/types'
 export default async function createBedroom(
   attrs: UpdateableProperties<Bedroom> = {}
 ) {
-  const place = attrs.place ?? await createPlace()
   return await Bedroom.create({
-    place,
+    place: attrs.place ? null : await createPlace(),
     bedTypes: ['queen'],
     ...attrs,
   })

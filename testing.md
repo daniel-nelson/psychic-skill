@@ -105,12 +105,9 @@ import { UpdateableProperties } from '@rvoh/dream/types'
 export default async function createHostPlace(
   attrs: UpdateableProperties<HostPlace> = {}
 ) {
-  const host = attrs.host ?? await createHost()
-  const place = attrs.place ?? await createPlace()
-
   return await HostPlace.create({
-    host,
-    place,
+    host: attrs.host ? null : await createHost(),
+    place: attrs.place ? null : await createPlace(),
     ...attrs,
   })
 }
@@ -127,9 +124,8 @@ import { UpdateableProperties } from '@rvoh/dream/types'
 export default async function createBedroom(
   attrs: UpdateableProperties<Bedroom> = {}
 ) {
-  const place = attrs.place ?? await createPlace()
   return await Bedroom.create({
-    place,
+    place: attrs.place ? null : await createPlace(),
     bedTypes: ['queen'],
     ...attrs,
   })

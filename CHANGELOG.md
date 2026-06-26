@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.49.3 — 2026-06-26
+
+### Fixed
+
+- Factory examples with required associations now match Dream's generated conditional default pattern (`association: attrs.association ? null : await createAssociation(), ...attrs`).
+
 ## 0.49.2 — 2026-06-26
 
 ### Fixed
