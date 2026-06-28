@@ -1,8 +1,19 @@
 # Changelog
 
-## 0.50.1 — 2026-06-28
+## 0.51.0 — 2026-06-28
+
+### Added
+
+- **`testing.md`** — New "What the text matchers actually read" subsection: `toMatchTextContent` / `toNotMatchTextContent` assert on rendered `innerText` (joined across elements, input/textarea values included), so they reflect CSS `text-transform`. Default to a case-insensitive regex for text content because case carries no meaning in rendered copy, with a carve-out for identifiers whose case is part of their value (codes, tokens, case-sensitive IDs); plus a note that case-insensitivity is separate from match specificity, and that split label/value markup (`<dt>`/`<dd>`) matches contiguously so no `page.$eval` workaround is needed.
+
+### Changed
+
+- **`models.md` Column Types** — added a rule that column fields must be declared bare, with no `=` initializer: Dream serves column reads through prototype accessors and deletes any shadowing instance property after construction, so a field initializer is silently discarded (the default never applies). Set defaults in a `@deco.BeforeCreate`/`@deco.BeforeSave` hook instead.
+- **`SKILL.md` Rule 13** — clarified that the "always use `AppEnv`" rule governs reading *application config*; a dev-only launcher composing the environment for spawned child processes legitimately reads `process.env` to spread into `spawn(..., { env })`, since no `AppEnv` accessor represents the whole forwarded environment.
 
 ### Fixed
+
+- **`testing.md`** — corrected a stale cross-reference: "every bug is a missing spec" now points at SKILL.md Rule #9 (BDD approach); Rule #8 is now "Sources of truth".
 
 - `/psychic-update-skill` forced checks now bypass stale `just-upgraded-from` markers instead of letting marker state mask a newer remote release.
 - Standalone update guidance now verifies the installed version against the remote even when the helper exits cleanly without `UPGRADE_AVAILABLE`, preventing false "up to date" results from cached/local marker state.

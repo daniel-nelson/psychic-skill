@@ -46,6 +46,8 @@ public createdAt: DreamColumn<User, 'createdAt'>
 public updatedAt: DreamColumn<User, 'updatedAt'>
 ```
 
+**Never give a column field an `=` initializer.** Declare columns as bare fields. Dream serves column reads through prototype accessors and deletes any shadowing instance property after construction, so an initializer like `public status: DreamColumn<Place, 'status'> = 'draft'` is silently discarded — no error, the default just never takes effect. Set defaults in a `@deco.BeforeCreate`/`@deco.BeforeSave` hook instead (see [Before Hooks](#before-hooks-run-in-same-transaction-before-db-write)).
+
 **Decimal columns return JavaScript `number`, not `string` or a `Decimal` wrapper.** Dream's type-sync converts PostgreSQL `numeric`/`decimal` columns to TS `number`, so `DreamColumn<Place, 'latitude'>` resolves to `number | null` (or `number` if NOT NULL). No `Number(value)` coercion is needed when reading.
 
 Use the serializer `precision` option (`.attribute('latitude', { precision: 7 })`, also supported on `.delegatedAttribute`) to control how many decimal places appear in the rendered response. This handles the typical floating-point quirk where `1.1 + 2.2` becomes `3.3000000000000003` — a value that rounds cleanly to `3.30` at the precision the schema actually cares about. The OpenAPI shape and the rendered output stay consistent because precision is declared once at the serializer.

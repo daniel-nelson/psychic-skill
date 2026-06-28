@@ -6,7 +6,7 @@ Tests use **Vitest** with real database records (not mocks). We practice **BDD, 
 
 ### Every bug is a missing spec
 
-This is the operational corollary to [SKILL.md Rule #8](SKILL.md) (BDD approach) for bugs discovered after the fact. When you discover a bug — in QA, in production logs, during an audit, by hand-testing a flow — the bug itself is evidence that an automated test was missing. **Write the regression spec before committing the fix.**
+This is the operational corollary to [SKILL.md Rule #9](SKILL.md) (BDD approach) for bugs discovered after the fact. When you discover a bug — in QA, in production logs, during an audit, by hand-testing a flow — the bug itself is evidence that an automated test was missing. **Write the regression spec before committing the fix.**
 
 This applies even when:
 
@@ -534,6 +534,23 @@ await expect(page).toHaveLink('Documentation')              // Page has a link w
 await expect(page).toHaveChecked('Remember me')             // Checkbox with text is checked
 await expect(page).toHaveUnchecked('Opt out')               // Checkbox with text is unchecked
 ```
+
+### What the text matchers actually read
+
+`toMatchTextContent` / `toNotMatchTextContent` assert on what the page **renders**, not its DOM source. They collect each element's `innerText` (joined with spaces, with `input`/`textarea` values included), so they see CSS `text-transform`, visibility, and other rendered output. Two consequences:
+
+**Default to a case-insensitive regex for text content.** A label whose source is `5 out of 5` but is rendered with an `uppercase` class matches as `5 OUT OF 5`. The literal string fails, and hardcoding `'5 OUT OF 5'` couples the spec to cosmetic styling. Match on meaning instead:
+
+```typescript
+await expect(page).toMatchTextContent(/5 out of 5/i)   // robust
+// not '5 out of 5' (fails on the transform), not '5 OUT OF 5' (pins the spec to CSS)
+```
+
+Case carries no meaning in rendered copy — the same reason search is case-insensitive — so this is the outcomes-not-implementation stance this file opens with, applied to text. The exception is when the displayed string is an identifier whose case is part of its value: a coupon code `SAVE20`, an invite token, a case-sensitive ID. There, assert the exact case, because `/save20/i` would pass on the wrong value.
+
+Keep this separate from **specificity**. Case-insensitivity does not make a match looser on its own; an over-broad pattern does — `/error/i` also matches `no errors found`. Choose a pattern specific enough to avoid accidental substring hits, independent of case.
+
+**Split label/value markup matches contiguously.** Because per-element text is joined with spaces, `<dt>Sleeps</dt><dd>4</dd>` lands in the matched string as `Sleeps 4`. So `toMatchTextContent('Sleeps 4')` matches a label/value split with no `page.$eval` workaround.
 
 ### Full Example
 
