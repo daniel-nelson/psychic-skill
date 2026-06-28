@@ -423,7 +423,7 @@ await request.post('/v1/host/places', 201, {
 })
 ```
 
-The types resolve against the `tests` spec because every surface includes `'tests'` in its `openapiNames`; see [openapi.md](openapi.md#the-tests-spec).
+The types resolve against the `tests` spec because every surface includes `'tests'` in its `openapiNames`; see [openapi.md](openapi.md#the-tests-spec). Any `openapiNames` override you write must keep `'tests'` in the list — an endpoint left out of the tests spec has no generated types, so its controller spec can't type-check (see [controllers.md](controllers.md#opting-controllers-into-an-openapi-namespace)).
 
 ### Generate resourceful controllers first
 

@@ -207,6 +207,8 @@ public static override get openapiNames(): PsychicOpenapiNames<ApplicationContro
 
 All controllers inheriting from these base controllers automatically inherit the same `openapiNames`. Every base includes `'tests'`, which is what lets controller specs across all surfaces type-check against one aggregated spec. Run `pnpm psy sync` after adding a new namespace so the `openapiNames` types update.
 
+**Always keep `'tests'` in any `openapiNames` override you write.** A controller whose list omits `'tests'` is left out of the aggregated tests spec, so its endpoints get no generated types — the typed request helper won't recognize their paths and the controller spec can't type-check. When you add a new surface or namespace, the list is `['<surface>', 'tests']`, never `['<surface>']` alone.
+
 The named specs themselves — output files, the `mobile` enum-shaping, the `tests` spec, defaults, validation — are configured in `conf/app.ts`. See [openapi.md](openapi.md#outputfilepath-and-namespaces).
 
 ## Nested Resource Base Controller Pattern
