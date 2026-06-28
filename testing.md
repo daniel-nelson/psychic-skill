@@ -660,6 +660,19 @@ Feature specs start the `PsychicServer` inside the same Vitest worker as the tes
 
 This matters because a common (wrong) assumption is "a feature spec runs a real server I can't reach into, so I must use a live API key or record HTTP." Not so. To make a feature spec deterministic and offline, stub the backend boundary — an external API gateway, the clock, a third-party client — with `vi.spyOn` in the feature spec, the same way you would anywhere else. Reserve HTTP recording (Polly) for cases where you genuinely want to exercise the real client code path.
 
+### Running a real external service: wrap the command, don't touch the harness
+
+Occasionally a feature spec needs a real external dependency running rather than a stub — most often an emulator the front end and API both talk to (e.g. a Firebase Auth emulator). The harness assumes any such dependency is already listening: `globalSetup` launches the front-end dev servers (`PsychicDevtools.launchDevServer`), then `hooks.ts` `beforeAll` starts the in-process `PsychicServer` and the browser. None of that starts external services, and all of it may depend on them being up.
+
+Supply the service from outside the harness by wrapping the existing spec command with the service's own runner, rather than editing `globalSetup` / `hooks.ts`. Prefer an `exec`-style launcher — one that starts the service, runs the wrapped command to completion, then tears it down — over a long-running "start" command, so each run owns a fresh instance and nothing leaks between runs:
+
+```jsonc
+// package.json — wrap the whole command; the harness is untouched
+"fspec": "<service> exec '<existing fspec command>'"
+```
+
+Leave `uspec` unwrapped: unit specs don't drive the browser or the dev servers, so they shouldn't pay the startup cost or depend on the service's port.
+
 ## Organize Feature Specs by Actor and Scenario
 
 Follow the BDD convention from Cucumber/RSpec: organize by **actor** (role/persona), with filenames as **third-person verb phrases** that describe what the actor does. The directory provides the subject; the filename completes the sentence — read as "**guest** browses places", "**host** creates a place".

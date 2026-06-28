@@ -5,6 +5,7 @@
 ### Added
 
 - New `openapi.md` documenting the automatic OpenAPI derivation model (Psychic builds the spec from database column types, serializers, and routes; you declare only the remainder) and the conf-level `psy.set('openapi', ...)` customization surface in `conf/app.ts`: namespaces and `outputFilepath`, `defaults` (headers, responses, security schemes, security, components), `validate`, and `syncTypes`. Declaring a bearer security scheme is now covered there as an example of conf-level customization, including the type note that `defaults.security` is an array (`OpenapiSecurity = Record<string, string[]>[]`), not the object form shown in the framework TSDoc.
+- **`testing.md`** — New "Running a real external service" subsection: when a feature spec needs a real external dependency (e.g. an auth emulator) rather than a stub, wrap the existing spec command with the service's own `exec`-style runner instead of editing the `globalSetup` / `hooks.ts` harness, since the harness assumes external dependencies are already listening when it boots.
 
 ### Changed
 
