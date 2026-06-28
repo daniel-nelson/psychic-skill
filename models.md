@@ -725,7 +725,7 @@ public get email(): DreamColumn<User, 'email'> {
 }
 
 public set email(value: DreamColumn<User, 'email'>) {
-  this.setAttribute('email', value === null ? null : value.trim().toLowerCase())
+  this.setAttribute('email', value === null ? null : value.toLowerCase())
 }
 ```
 

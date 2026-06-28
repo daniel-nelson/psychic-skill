@@ -440,6 +440,10 @@ const BOOKABLE_ROOM_TYPES: Extract<RoomTypesEnum, 'Bedroom' | 'Den' | 'LivingRoo
 this.castParam('roomType', 'string', { enum: BOOKABLE_ROOM_TYPES })
 ```
 
+### String params are trimmed automatically
+
+Psychic strips leading and trailing whitespace from scalar string params before validation and casting. Both `castParam` and `extractParams` resolve scalar strings through the same `Params.cast` path, so `'  Cozy Cabin  '` arrives as `'Cozy Cabin'`. Don't re-trim in a controller, a model setter, or a hook — it's already done. This covers scalar `'string'` params, `enum` strings, and Virtual string params. The one exception: elements of a string or enum *array* (`'string[]'`, an array enum column) are cast individually and are **not** trimmed, so trim those yourself if it matters.
+
 ### extractParams
 
 `extractParams(Model, allowedParams, opts?)` validates an incoming request body against a Dream model's writable params and returns a typed, safe-to-write attributes object. The `allowedParams` array is an explicit positional allowlist, TS-checked at compile time against the model's safe params: real columns, Encrypted columns, and Virtual columns. Encrypted params are accepted as `string` or `string | null` based on the backing encrypted column's nullability; Virtual params use the type declared in `@deco.Virtual(...)`. The runtime intersects the allowlist with the model's `paramSafeColumns` (when declared) and the always-excluded set described below.
