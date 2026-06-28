@@ -4,7 +4,11 @@
 
 ### Added
 
-- OpenAPI bearer security scheme: documented how to declare `defaults.securitySchemes` and `defaults.security` in a `psy.set('openapi', ...)` config block so the generated hey-api client honors `client.setConfig({ auth })` automatically. Includes a type note that `defaults.security` is typed as an array (`OpenapiSecurity = Record<string, string[]>[]`), not the object form shown in the framework TSDoc.
+- New `openapi.md` documenting the automatic OpenAPI derivation model (Psychic builds the spec from database column types, serializers, and routes; you declare only the remainder) and the conf-level `psy.set('openapi', ...)` customization surface in `conf/app.ts`: namespaces and `outputFilepath`, `defaults` (headers, responses, security schemes, security, components), `validate`, and `syncTypes`. Declaring a bearer security scheme is now covered there as an example of conf-level customization, including the type note that `defaults.security` is an array (`OpenapiSecurity = Record<string, string[]>[]`), not the object form shown in the framework TSDoc.
+
+### Changed
+
+- Conf-level OpenAPI configuration moved out of `controllers.md` into `openapi.md`. `controllers.md` now covers only the per-action `@OpenAPI` decorator and the `openapiNames` controller override, linking to `openapi.md` for spec-wide config. `SKILL.md`'s OpenAPI Integration section now points at `openapi.md` as the entry point for the derivation model and spec-wide configuration.
 
 ## 0.49.3 — 2026-06-26
 

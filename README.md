@@ -75,7 +75,7 @@ Cursor, Aider, Cline, and similar tools don't auto-load skills, but they can sti
 git clone https://github.com/daniel-nelson/psychic-skill.git .ai/psychic-skill
 ```
 
-Then instruct your agent (via its rules file — `.cursorrules`, `.aider.conf.yml`, `AGENTS.md`, etc.) to read `SKILL.md` and the linked topic files (`models.md`, `generators.md`, `controllers.md`, `serializers.md`, `sti.md`, `migrations.md`, `querying.md`, `testing.md`, `workers.md`, `websockets.md`) as required reading before making changes. The files are plain markdown — they work as documentation for any agent that can read files.
+Then instruct your agent (via its rules file — `.cursorrules`, `.aider.conf.yml`, `AGENTS.md`, etc.) to read `SKILL.md` and the linked topic files (`models.md`, `generators.md`, `controllers.md`, `serializers.md`, `openapi.md`, `sti.md`, `migrations.md`, `querying.md`, `testing.md`, `workers.md`, `websockets.md`) as required reading before making changes. The files are plain markdown — they work as documentation for any agent that can read files.
 
 To stay current, run `cd .ai/psychic-skill && git fetch origin && git reset --hard origin/main && ./setup` periodically. This is what `/psychic-update-skill` does under the hood for Claude Code and Codex.
 
@@ -154,6 +154,7 @@ rm -rf .agents/skills/psychic-skill
 | `controllers.md` | Psychic controllers, auth, CRUD, OpenAPI, parameters |
 | `querying.md` | Dream query patterns, `toKysely(...)`, and typed project `db()` usage |
 | `serializers.md` | DreamSerializer / ObjectSerializer, composition, STI serializers, passthrough |
+| `openapi.md` | OpenAPI derivation model and spec-wide `psy.set('openapi', ...)` config in `conf/app.ts` — namespaces, defaults, security schemes, validation, type sync |
 | `sti.md` | Complete STI guide — generation, models, serializers, migrations, controllers, testing |
 | `migrations.md` | Kysely migrations, column types, enums, indexes, helpers |
 | `testing.md` | Factories, model/controller specs, BDD patterns |

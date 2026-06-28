@@ -364,12 +364,12 @@ Tests use Vitest against real database records — never mocks of Dream internal
 
 ## OpenAPI Integration
 
-Every controller action carries an `@OpenAPI` decorator that derives its request and response schema from Dream models and serializers. Reach here whenever you document an endpoint.
+Psychic derives the OpenAPI spec from database column types, serializers, and routes; you declare only the remainder. Reach here whenever you document an endpoint or customize the spec.
 
 - **Never hand-write a schema Psychic can derive** (Critical Rule 21) — model request bodies use `requestBody: { params }` / `{ including }`, model responses use `@OpenAPI(Model, { serializerKey })`, computed responses use an `ObjectSerializer`. Hand-written JSON Schema is only for genuinely ad hoc shapes.
 - **Automatic error handling** maps `castParam` / validation failures → 400 and `findOrFail` misses → 404; don't document or throw these by hand.
 
-**Before you write or change an `@OpenAPI` decorator, read the full options and `requestBody` shorthand reference in [controllers.md](controllers.md).** Run `pnpm psy sync` afterward so the specs and generated clients update.
+**Start with [openapi.md](openapi.md)** for the derivation model ([How Psychic builds the spec](openapi.md#how-psychic-builds-the-spec)) and the spec-wide `psy.set('openapi', ...)` configuration in `conf/app.ts` ([Conf-level configuration](openapi.md#conf-level-configuration) — namespaces, default headers/responses, security schemes, validation, type sync). The per-action `@OpenAPI` decorator and `requestBody` shorthand live in [controllers.md](controllers.md); response schema comes from serializers, see [serializers.md](serializers.md). Run `pnpm psy sync` after any change so the specs and generated clients update.
 
 ## Deploying
 
