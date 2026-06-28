@@ -442,7 +442,7 @@ this.castParam('roomType', 'string', { enum: BOOKABLE_ROOM_TYPES })
 
 ### String params are trimmed automatically
 
-Psychic strips leading and trailing whitespace from scalar string params before validation and casting. Both `castParam` and `extractParams` resolve scalar strings through the same `Params.cast` path, so `'  Cozy Cabin  '` arrives as `'Cozy Cabin'`. Don't re-trim in a controller, a model setter, or a hook — it's already done. This covers scalar `'string'` params, `enum` strings, and Virtual string params. The one exception: elements of a string or enum *array* (`'string[]'`, an array enum column) are cast individually and are **not** trimmed, so trim those yourself if it matters.
+Psychic strips leading and trailing whitespace from string params before validation and casting. Both `castParam` and `extractParams` resolve strings through the same `Params.cast` path, so `'  Cozy Cabin  '` arrives as `'Cozy Cabin'`. This applies to scalar `'string'` params, `enum` strings, Virtual string params, and the elements of string and enum arrays (`'string[]'`, array enum columns). Don't re-trim in a controller, a model setter, or a hook — it's already done.
 
 ### extractParams
 
