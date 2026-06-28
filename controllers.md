@@ -224,6 +224,25 @@ public static override get openapiNames(): PsychicOpenapiNames<ApplicationContro
 
 All controllers inheriting from these base controllers automatically inherit the same `openapiNames`.
 
+### Bearer Security Scheme
+
+To make the generated hey-api client honor `client.setConfig({ auth: () => token })` automatically — attaching `Authorization: Bearer <token>` to every request without per-call headers — declare a security scheme and top-level `security` in the `defaults` of the relevant `psy.set('openapi', ...)` block:
+
+```typescript
+psy.set('openapi', {
+  outputFilepath: path.join('src', 'openapi', 'openapi.json'),
+  validate: { requestBody: true, headers: true, query: true, responseBody: AppEnv.isTest },
+  defaults: {
+    securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer' } },
+    security: [{ bearerAuth: [] }],
+  },
+})
+```
+
+After `pnpm psy sync`, the generated `openapi.json` gains `components.securitySchemes.bearerAuth` and a top-level `security: [{ bearerAuth: [] }]`, which the generated SDK stamps onto every operation. Calls like `getV1Me({ throwOnError: true })` then carry the bearer header automatically.
+
+**Type note:** The `defaults.security` field is typed as `OpenapiSecurity = Record<string, string[]>[]` (an array of objects). Use the array form `[{ bearerAuth: [] }]` — the TSDoc example in the framework shows the object form, but the exported type and the renderer both expect an array.
+
 ## Nested Resource Base Controller Pattern
 
 ```typescript

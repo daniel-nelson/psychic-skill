@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.50.0 — 2026-06-28
+
+### Added
+
+- OpenAPI bearer security scheme: documented how to declare `defaults.securitySchemes` and `defaults.security` in a `psy.set('openapi', ...)` config block so the generated hey-api client honors `client.setConfig({ auth })` automatically. Includes a type note that `defaults.security` is typed as an array (`OpenapiSecurity = Record<string, string[]>[]`), not the object form shown in the framework TSDoc.
+
 ## 0.49.3 — 2026-06-26
 
 ### Fixed
