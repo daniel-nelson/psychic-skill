@@ -46,7 +46,7 @@ public createdAt: DreamColumn<User, 'createdAt'>
 public updatedAt: DreamColumn<User, 'updatedAt'>
 ```
 
-**Never give a column field an `=` initializer.** Declare columns as bare fields. Dream serves column reads through prototype accessors and deletes any shadowing instance property after construction, so an initializer like `public status: DreamColumn<Place, 'status'> = 'draft'` is silently discarded — no error, the default just never takes effect. Set defaults in a `@deco.BeforeCreate`/`@deco.BeforeSave` hook instead (see [Before Hooks](#before-hooks-run-in-same-transaction-before-db-write)).
+**Never give a column field an `=` initializer.** Declare columns as bare fields. Dream serves column reads through prototype accessors and deletes any shadowing instance property after construction, so an initializer like `public status: DreamColumn<Place, 'status'> = 'draft'` is silently discarded — no error, the default just never takes effect. Set the default at the database layer instead (`col.defaultTo(value).notNull()` — see [migrations.md — NOT NULL columns and defaults](migrations.md)); fall back to a `@deco.BeforeCreate`/`@deco.BeforeSave` hook only for a caller-dependent value the DB can't express. To transform or clamp an *input* on write (normalize null, bound a range), use a custom getter/setter on the column — see [Transforming a column on write](#transforming-a-column-on-write).
 
 **Decimal columns return JavaScript `number`, not `string` or a `Decimal` wrapper.** Dream's type-sync converts PostgreSQL `numeric`/`decimal` columns to TS `number`, so `DreamColumn<Place, 'latitude'>` resolves to `number | null` (or `number` if NOT NULL). No `Number(value)` coercion is needed when reading.
 
@@ -714,6 +714,29 @@ public set pounds(pounds: DreamColumn<Place, 'grams'>) {
 @STI(Room)
 export default class Bedroom extends Room { ... }
 ```
+
+## Transforming a column on write
+
+To normalize or clamp an *input* as it is written to a real column (lowercase an email, bound a number, coerce null), define a custom getter/setter pair on the model over the column's own name. Read through `getAttribute` and write through `setAttribute`: `setAttribute` writes the attribute bag directly and does **not** re-enter your setter, so it avoids the infinite recursion that `this.email = ...` inside the setter would cause.
+
+```typescript
+public get email(): DreamColumn<User, 'email'> {
+  return this.getAttribute('email')
+}
+
+public set email(value: DreamColumn<User, 'email'>) {
+  this.setAttribute('email', value === null ? null : value.trim().toLowerCase())
+}
+```
+
+This is distinct from `@deco.Virtual`: a virtual backs a property that is not a column (or maps to a differently-named one, like `pounds` → `grams` above), whereas here the accessors wrap the column under its own name. No decorator is needed — the model's accessor simply overrides the one Dream installs.
+
+**Which writes run the setter.** Dream splits attribute assignment into two paths:
+
+- `create()`, `update()`, `assignAttribute` / `assignAttributes`, and a plain `this.email = …` **run** your custom setter (`assignAttribute` is literally `this[attr] = value`).
+- `setAttribute` / `setAttributes` (plural) **bypass** custom setters and write the bag raw — use these when you deliberately want the untransformed value, and inside the setter body itself.
+
+So input arriving through `create` / `update` / extracted params is transformed, while internal hydration (loading a row from the DB) writes raw and is never double-transformed.
 
 ## Creating and Updating
 

@@ -8,7 +8,8 @@
 
 ### Changed
 
-- **`models.md` Column Types** — added a rule that column fields must be declared bare, with no `=` initializer: Dream serves column reads through prototype accessors and deletes any shadowing instance property after construction, so a field initializer is silently discarded (the default never applies). Set defaults in a `@deco.BeforeCreate`/`@deco.BeforeSave` hook instead.
+- **`models.md` Column Types** — added a rule that column fields must be declared bare, with no `=` initializer: Dream serves column reads through prototype accessors and deletes any shadowing instance property after construction, so a field initializer is silently discarded (the default never applies). The remedy points at a database-layer default (`col.defaultTo(value).notNull()`, per `migrations.md`), with a `BeforeCreate`/`BeforeSave` hook only as the fallback for caller-dependent values.
+- **`models.md`** — new "Transforming a column on write" section documenting the custom getter/setter pattern on a real column: read via `getAttribute`, write via `setAttribute` (which bypasses the setter, avoiding recursion), and the invoke-vs-bypass split between `create`/`update`/`assignAttribute(s)`/`this.col =` (run custom setters) and `setAttribute(s)` (bypass them). Distinguished from `@deco.Virtual`.
 - **`SKILL.md` Rule 13** — clarified that the "always use `AppEnv`" rule governs reading *application config*; a dev-only launcher composing the environment for spawned child processes legitimately reads `process.env` to spread into `spawn(..., { env })`, since no `AppEnv` accessor represents the whole forwarded environment.
 
 ### Fixed
