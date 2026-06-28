@@ -148,35 +148,47 @@ cd "$INSTALL_DIR" && ./setup
 rm -rf "$INSTALL_DIR.bak" "$TMP_DIR"
 ```
 
-### Step 4.5: Sync local vendored copy
+### Step 4.5: Sync local vendored copies
 
-Use the install directory from Step 2. Check if there's also a local vendored copy that needs updating:
+Use the install directory from Step 2. Check if there are also local vendored copies that need updating:
 
 ```bash
 _ROOT=$(git rev-parse --show-toplevel 2>/dev/null || true)
-LOCAL_COPY=""
+LOCAL_COPIES=""
 for _SUBDIR in .agents/skills/psychic-skill .claude/skills/psychic-skill .codex/skills/psychic-skill; do
   if [ -n "$_ROOT" ] && [ -d "$_ROOT/$_SUBDIR" ]; then
     _RESOLVED_LOCAL=$(cd "$_ROOT/$_SUBDIR" && pwd -P)
     _RESOLVED_PRIMARY=$(cd "$INSTALL_DIR" && pwd -P)
     if [ "$_RESOLVED_LOCAL" != "$_RESOLVED_PRIMARY" ]; then
-      LOCAL_COPY="$_ROOT/$_SUBDIR"
-      break
+      LOCAL_COPIES="${LOCAL_COPIES}${LOCAL_COPIES:+
+}$_ROOT/$_SUBDIR"
     fi
   fi
 done
-echo "LOCAL_COPY=$LOCAL_COPY"
+printf 'LOCAL_COPIES=%s\n' "$LOCAL_COPIES"
 ```
 
-If `LOCAL_COPY` is non-empty, update it by copying from the freshly-upgraded primary install:
+For each path in `LOCAL_COPIES`, compare versions first. Only sync copies whose version differs from the primary:
 ```bash
-mv "$LOCAL_COPY" "$LOCAL_COPY.bak"
-cp -Rf "$INSTALL_DIR" "$LOCAL_COPY"
-rm -rf "$LOCAL_COPY/.git"
-cd "$LOCAL_COPY" && ./setup
-rm -rf "$LOCAL_COPY.bak"
+PRIMARY_VER=$(cat "$INSTALL_DIR/VERSION" 2>/dev/null || echo "unknown")
+printf '%s\n' "$LOCAL_COPIES" | while IFS= read -r LOCAL_COPY; do
+  [ -n "$LOCAL_COPY" ] || continue
+  LOCAL_VER=$(cat "$LOCAL_COPY/VERSION" 2>/dev/null || echo "unknown")
+  if [ "$LOCAL_VER" = "$PRIMARY_VER" ]; then
+    echo "LOCAL_COPY_CURRENT $LOCAL_COPY $LOCAL_VER"
+    continue
+  fi
+
+  rm -rf "$LOCAL_COPY.bak"
+  mv "$LOCAL_COPY" "$LOCAL_COPY.bak"
+  cp -Rf "$INSTALL_DIR" "$LOCAL_COPY"
+  rm -rf "$LOCAL_COPY/.git"
+  (cd "$LOCAL_COPY" && ./setup)
+  rm -rf "$LOCAL_COPY.bak"
+  echo "LOCAL_COPY_UPDATED $LOCAL_COPY $LOCAL_VER $PRIMARY_VER"
+done
 ```
-Tell user: "Also updated vendored copy at `$LOCAL_COPY` — commit it when you're ready."
+Tell user which vendored copies were updated and which were already current. If any were updated, add: "Commit the vendored copy when you're ready."
 
 If `./setup` fails, restore from backup and warn the user:
 ```bash
@@ -218,14 +230,15 @@ After showing What's New, continue with whatever skill the user originally invok
 
 When invoked directly as `/psychic-update-skill` (not from a preamble):
 
-1. Detect the install directory first (run the Step 2 bash block). Then attempt a forced update check:
+1. Detect the install directory first (run the Step 2 bash block). Then attempt a forced update check. Avoid using shell variable names like `status` in zsh; `status` is read-only there.
 ```bash
 UPDATE_CHECK_OUTPUT=""
 UPDATE_CHECK_OK=false
 for d in "${CLAUDE_SKILL_DIR:-}" "${CODEX_SKILL_DIR:-}" "$HOME/.agents/skills/psychic-skill" "$HOME/.claude/skills/psychic-skill" "$HOME/.codex/skills/psychic-skill" ".agents/skills/psychic-skill" ".claude/skills/psychic-skill" ".codex/skills/psychic-skill"; do
   if [ -n "$d" ] && [ -x "$d/bin/psychic-skill-update-check" ]; then
     UPDATE_CHECK_OUTPUT=$("$d/bin/psychic-skill-update-check" --force 2>/dev/null)
-    [ $? -eq 0 ] && UPDATE_CHECK_OK=true
+    rc=$?
+    [ $rc -eq 0 ] && UPDATE_CHECK_OK=true
     break
   fi
 done
@@ -235,7 +248,7 @@ echo "UPDATE_CHECK_OUTPUT=$UPDATE_CHECK_OUTPUT"
 
 2. If `UPDATE_CHECK_OUTPUT` contains `UPGRADE_AVAILABLE <old> <new>`: follow Steps 2-6 above.
 
-3. If `UPDATE_CHECK_OK=true` and no `UPGRADE_AVAILABLE` in output: the update-check script ran cleanly and reported no upgrade. Check for a stale local vendored copy (skip to step 5).
+3. If `UPDATE_CHECK_OK=true` and no `UPGRADE_AVAILABLE` in output: do **not** assume the install is current yet. The helper may have emitted `JUST_UPGRADED`, `UP_TO_DATE`, or no output from cached/local state. Confirm by comparing the installed version to the remote version using the Step 4 fallback block. If the remote differs, treat it as `UPGRADE_AVAILABLE $INSTALLED_VERSION $REMOTE_VERSION` and follow Steps 2-6. If they match, continue to step 5.
 
 4. **If `UPDATE_CHECK_OK=false`** (script failed or was not found — e.g. sandbox filesystem restrictions): fall back to directly checking the remote version:
 ```bash
@@ -249,17 +262,20 @@ echo "INSTALLED=$INSTALLED_VERSION REMOTE=$REMOTE_VERSION"
 
 **Never conclude "up to date" solely because the update-check script produced no output.** No output can mean the script failed. Always confirm by comparing installed vs. remote version before telling the user they are current.
 
-5. Check for a stale local vendored copy. Run the Step 2 bash block to confirm `INSTALL_TYPE` and `INSTALL_DIR`, then run the Step 4.5 detection bash block to check for `LOCAL_COPY`.
+5. Check for stale local vendored copies. Run the Step 2 bash block to confirm `INSTALL_TYPE` and `INSTALL_DIR`, then run the Step 4.5 detection bash block to check for `LOCAL_COPIES`.
 
-**If `LOCAL_COPY` is empty** (no local vendored copy): tell the user "You're already on the latest version (v{version})."
+**If `LOCAL_COPIES` is empty** (no local vendored copies): tell the user "You're already on the latest version (v{version})."
 
-**If `LOCAL_COPY` is non-empty**, compare versions:
+**If `LOCAL_COPIES` is non-empty**, compare versions for every copy:
 ```bash
 PRIMARY_VER=$(cat "$INSTALL_DIR/VERSION" 2>/dev/null || echo "unknown")
-LOCAL_VER=$(cat "$LOCAL_COPY/VERSION" 2>/dev/null || echo "unknown")
-echo "PRIMARY=$PRIMARY_VER LOCAL=$LOCAL_VER"
+printf '%s\n' "$LOCAL_COPIES" | while IFS= read -r LOCAL_COPY; do
+  [ -n "$LOCAL_COPY" ] || continue
+  LOCAL_VER=$(cat "$LOCAL_COPY/VERSION" 2>/dev/null || echo "unknown")
+  echo "PRIMARY=$PRIMARY_VER LOCAL_COPY=$LOCAL_COPY LOCAL=$LOCAL_VER"
+done
 ```
 
-**If versions differ:** follow the Step 4.5 sync bash block above to update the local copy from the primary. Tell user: "Global v{PRIMARY_VER} is up to date. Updated local vendored copy from v{LOCAL_VER} → v{PRIMARY_VER}. Commit the vendored copy when you're ready."
+**If any versions differ:** follow the Step 4.5 sync bash block above to update stale local copies from the primary. Tell user: "Global v{PRIMARY_VER} is up to date. Updated stale local vendored copies to v{PRIMARY_VER}. Commit the vendored copies when you're ready."
 
-**If versions match:** tell the user "You're on the latest version (v{PRIMARY_VER}). Global and local vendored copy are both up to date."
+**If all versions match:** tell the user "You're on the latest version (v{PRIMARY_VER}). Global and local vendored copies are all up to date."

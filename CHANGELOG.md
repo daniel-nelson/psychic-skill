@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.50.1 — 2026-06-28
+
+### Fixed
+
+- `/psychic-update-skill` forced checks now bypass stale `just-upgraded-from` markers instead of letting marker state mask a newer remote release.
+- Standalone update guidance now verifies the installed version against the remote even when the helper exits cleanly without `UPGRADE_AVAILABLE`, preventing false "up to date" results from cached/local marker state.
+- Local vendored sync now detects and checks all project copies (`.agents`, `.claude`, and `.codex`) instead of stopping at the first one, so mixed-agent repos do not leave a stale copy behind.
+- The standalone shell snippet avoids zsh's read-only `status` variable name.
+
 ## 0.50.0 — 2026-06-28
 
 ### Added

@@ -97,7 +97,7 @@ if [ -z "$LOCAL" ]; then
 fi
 
 # ─── Step 2: Check "just upgraded" marker ─────────────────────
-if [ -f "$MARKER_FILE" ]; then
+if [ "$FORCE_CHECK" != "true" ] && [ -f "$MARKER_FILE" ]; then
   OLD="$(cat "$MARKER_FILE" 2>/dev/null | tr -d '[:space:]')"
   rm -f "$MARKER_FILE" 2>/dev/null || true
   rm -f "$SNOOZE_FILE" 2>/dev/null || true
