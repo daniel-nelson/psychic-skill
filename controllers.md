@@ -185,17 +185,29 @@ export default class InternalAuthedController extends ApplicationController {
 
 ### Opting Controllers into an OpenAPI Namespace
 
-Each surface's controllers are routed to a separate OpenAPI spec via the `openapiNames` getter, so internal or admin endpoints stay out of a published public spec. Surface auth controllers (both `AuthedController` and `UnauthedController` within each surface) override `openapiNames` to include their surface name plus `'tests'`:
+Each surface's controllers are routed to one or more OpenAPI specs via the `openapiNames` getter, so endpoints land in the specs meant for their audience. A controller is documented into *every* spec it lists.
+
+A fresh app sets this up on the base controllers. `ApplicationController` (the client base) defaults to all three client-relevant specs, so client controllers are documented into the web and mobile specs at once, from the same code:
 
 ```typescript
+// ApplicationController — client controllers serve web and mobile from one place
+public static override get openapiNames(): PsychicOpenapiNames<ApplicationController> {
+  return ['default', 'mobile', 'tests']
+}
+```
+
+The admin and internal surface bases (both `AuthedController` and `UnauthedController`) override it to their own surface plus `'tests'`, keeping their endpoints out of the client specs:
+
+```typescript
+// Admin/AuthedController and Admin/UnauthedController
 public static override get openapiNames(): PsychicOpenapiNames<ApplicationController> {
   return ['admin', 'tests']
 }
 ```
 
-All controllers inheriting from these base controllers automatically inherit the same `openapiNames`. Run `pnpm psy sync` after adding a new namespace so the `openapiNames` types update.
+All controllers inheriting from these base controllers automatically inherit the same `openapiNames`. Every base includes `'tests'`, which is what lets controller specs across all surfaces type-check against one aggregated spec. Run `pnpm psy sync` after adding a new namespace so the `openapiNames` types update.
 
-The named specs themselves — output files, defaults, validation — are configured in `conf/app.ts`. See [openapi.md](openapi.md#outputfilepath-and-namespaces).
+The named specs themselves — output files, the `mobile` enum-shaping, the `tests` spec, defaults, validation — are configured in `conf/app.ts`. See [openapi.md](openapi.md#outputfilepath-and-namespaces).
 
 ## Nested Resource Base Controller Pattern
 

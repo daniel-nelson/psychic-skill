@@ -405,6 +405,32 @@ describe('V1/Host/PlacesController', () => {
 })
 ```
 
+### Request and response types come from the `tests` spec
+
+The `request` returned by `session(...)` is an `OpenapiSpecRequest` parameterized by the `tests` spec's generated `paths` types. Because of that, the URI string literal and HTTP method you pass select the endpoint from the spec, and the call is typed on every side:
+
+- path params (keys matching the `{id}` placeholders), the request body (`RequestBody<'post', '/v1/host/places'>`), and query params (`RequestQuery<...>`) are typed to what the endpoint accepts;
+- the response `body` is typed to what the endpoint returns for the status you assert.
+
+`RequestBody` / `RequestQuery` are exposed from the generated `spec/unit/helpers/authentication.ts`. Pass the URI as a literal with `{placeholder}` params, not an interpolated string, so it can index the spec.
+
+This makes the spec and the API contract impossible to drift apart silently: change an endpoint's params or response shape, run `pnpm psy sync`, and any spec that no longer matches stops compiling under `pnpm build:spec` until it is updated. For example, an out-of-enum value or an unknown param fails the type-check:
+
+```typescript
+await request.post('/v1/host/places', 201, {
+  data: { name: 'Cozy Cabin', style: 'not_a_real_style', sleeps: 4 },
+  //                           ^ TS error: not assignable to the style enum union from the spec
+})
+```
+
+The types resolve against the `tests` spec because every surface includes `'tests'` in its `openapiNames`; see [openapi.md](openapi.md#the-tests-spec).
+
+### Generate resourceful controllers first
+
+`pnpm psy g:resource` generates the controller spec already wired up this way — the typed `session` request, `RequestBody<...>` bodies, and per-action blocks with status-code generics. A bare controller generator emits only a placeholder spec (`it.todo(...)`) with none of the typing.
+
+So build resourceful controllers before non-resourceful ones. It seeds the codebase with the correct, fully-typed pattern, which both people and agents then mimic when hand-writing the specs a bare controller leaves as a stub. See [generators.md](generators.md).
+
 ### Query parameters in spec requests
 
 **Query parameters nest under `query: {...}`; path parameters are direct keys.** The third argument to `request.get/post/patch/delete` carries everything the request needs beyond URL and expected status: path params as top-level keys (matching the `{name}` placeholders in the URI), and query-string params under a `query` key. Passing a flat `{ search: 'Alice' }` will be silently treated as a path-param attempt and won't reach the controller as a query.

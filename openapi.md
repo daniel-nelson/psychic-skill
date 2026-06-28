@@ -16,13 +16,24 @@ The spec-wide configuration lives in `conf/app.ts`. The default (client-facing) 
 
 ### outputFilepath and namespaces
 
-`outputFilepath` is where the spec JSON is written. Each `psy.set('openapi', '<name>', ...)` call defines a separate named spec with its own output file. Use namespaces to publish separate admin, internal, and public specs so internal or admin endpoints never leak into a public API document.
+`outputFilepath` is where the spec JSON is written. Each `psy.set('openapi', '<name>', ...)` call defines a separate named spec with its own output file. Namespaces exist for two reasons:
+
+- **Separate by access domain.** Publish admin, internal, and public endpoints as their own specs so endpoints meant for one audience never appear in a document meant for another. Add new specs as the app grows — for example a public server-to-server `partner` spec you publish while keeping the client, admin, and internal specs private.
+- **Shape the schema per consumer.** The same endpoints can emit a different schema shape into different specs to fit how each client consumes them. The built-in `mobile` spec is this case (see [The mobile spec](#the-mobile-spec-and-strongly-typed-consumers) below).
+
+A fresh create-psychic app ships five specs: `default` (client/web), `mobile`, `admin`, `internal`, and `tests`.
 
 ```typescript
-// Default (client-facing) — controllers without an openapiNames override
+// Default (client/web) — controllers without an openapiNames override
 psy.set('openapi', {
   outputFilepath: path.join('src', 'openapi', 'openapi.json'),
   validate: { requestBody: true, headers: true, query: true, responseBody: AppEnv.isTest },
+})
+
+// Mobile — same endpoints as default, enums emitted as described strings
+psy.set('openapi', 'mobile', {
+  outputFilepath: path.join('src', 'openapi', 'mobile.openapi.json'),
+  suppressResponseEnums: true,
 })
 
 // Named specs — controllers opt in via the openapiNames getter
@@ -36,7 +47,7 @@ psy.set('openapi', 'internal', {
   validate: { requestBody: true, headers: true, query: true, responseBody: AppEnv.isTest },
 })
 
-// Tests spec — surfaces include 'tests' so controller specs type-check against one spec
+// Tests spec — every surface includes 'tests' so controller specs type-check against one spec
 psy.set('openapi', 'tests', {
   outputFilepath: path.join('src', 'openapi', 'tests.openapi.json'),
   syncTypes: true,
@@ -44,6 +55,16 @@ psy.set('openapi', 'tests', {
 ```
 
 Controllers route into a named spec by overriding the `openapiNames` getter; that side lives in [controllers.md](controllers.md#opting-controllers-into-an-openapi-namespace). Run `pnpm psy sync` after adding a new namespace so the `openapiNames` types update.
+
+### The mobile spec and strongly-typed consumers
+
+`mobile` is identical to `default` except it sets `suppressResponseEnums: true`: instead of emitting an enum as a closed set of values, the spec emits a plain `string` whose description lists the allowed values.
+
+This exists because a strongly-typed mobile client compiles an enum into a closed type. When the backend later adds an enum value, an older app version that hasn't been rebuilt crashes on the unrecognized value, which makes the API rigid — every new value is a breaking change for anyone who hasn't updated. Emitting strings keeps the mobile contract open: the app ignores values it doesn't recognize, and often handles the set dynamically (rendering whatever options the backend sends in a select, for instance). Web front ends compile to JavaScript, which isn't strongly typed, so the `default` spec keeps real enums — front-end tooling benefits from them and production doesn't break when the backend adds a value.
+
+### The tests spec
+
+Every base controller includes `'tests'` in its `openapiNames`, so the `tests` spec aggregates endpoints from all surfaces (client, admin, internal) into one document. With `syncTypes: true`, `pnpm psy sync` generates TypeScript `paths` types from it, and those types make controller specs type-safe on both the request and the response. See [testing.md](testing.md#request-and-response-types-come-from-the-tests-spec) for how specs consume them.
 
 ### defaults
 
@@ -108,7 +129,7 @@ it('returns posts', async () => {
 
 ### The long tail
 
-`info` (version/title/description), `servers`, `suppressResponseEnums`, and `checkDiffs` are configured in the same block. For their full shapes see the TSDoc on `PsychicOpenapiBaseOptions` in `@rvoh/psychic`.
+`info` (version/title/description), `servers`, and `checkDiffs` are configured in the same block. For their full shapes see the TSDoc on `PsychicOpenapiBaseOptions` in `@rvoh/psychic`.
 
 ## Declaring a security scheme
 
