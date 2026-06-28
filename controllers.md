@@ -183,38 +183,9 @@ export default class InternalAuthedController extends ApplicationController {
 }
 ```
 
-### OpenAPI Namespaces
+### Opting Controllers into an OpenAPI Namespace
 
-Each surface's controllers are routed to separate OpenAPI spec files via `openapiNames`. This prevents internal or admin endpoints from being exposed when you publish a public API spec. Namespaces are configured in `src/conf/app.ts`:
-
-```typescript
-// Default (client-facing) — all controllers without an openapiNames override
-psy.set('openapi', {
-  outputFilepath: path.join('src', 'openapi', 'openapi.json'),
-  validate: { requestBody: true, headers: true, query: true, responseBody: AppEnv.isTest },
-})
-
-// Named namespaces — controllers opt in via openapiNames
-psy.set('openapi', 'admin', {
-  outputFilepath: path.join('src', 'openapi', 'admin.openapi.json'),
-  validate: { requestBody: true, headers: true, query: true, responseBody: AppEnv.isTest },
-})
-
-psy.set('openapi', 'internal', {
-  outputFilepath: path.join('src', 'openapi', 'internal.openapi.json'),
-  validate: { requestBody: true, headers: true, query: true, responseBody: AppEnv.isTest },
-})
-
-// Tests namespace — all surfaces include 'tests' so controller specs can type-check against one spec
-psy.set('openapi', 'tests', {
-  outputFilepath: path.join('src', 'openapi', 'tests.openapi.json'),
-  syncTypes: true,
-})
-```
-
-Run `pnpm psy sync` after adding a new namespace for the `openapiNames` types to update.
-
-Surface auth controllers (both `AuthedController` and `UnauthedController` within each surface) override `openapiNames` to include their surface name plus `'tests'`:
+Each surface's controllers are routed to a separate OpenAPI spec via the `openapiNames` getter, so internal or admin endpoints stay out of a published public spec. Surface auth controllers (both `AuthedController` and `UnauthedController` within each surface) override `openapiNames` to include their surface name plus `'tests'`:
 
 ```typescript
 public static override get openapiNames(): PsychicOpenapiNames<ApplicationController> {
@@ -222,26 +193,9 @@ public static override get openapiNames(): PsychicOpenapiNames<ApplicationContro
 }
 ```
 
-All controllers inheriting from these base controllers automatically inherit the same `openapiNames`.
+All controllers inheriting from these base controllers automatically inherit the same `openapiNames`. Run `pnpm psy sync` after adding a new namespace so the `openapiNames` types update.
 
-### Bearer Security Scheme
-
-To make the generated hey-api client honor `client.setConfig({ auth: () => token })` automatically — attaching `Authorization: Bearer <token>` to every request without per-call headers — declare a security scheme and top-level `security` in the `defaults` of the relevant `psy.set('openapi', ...)` block:
-
-```typescript
-psy.set('openapi', {
-  outputFilepath: path.join('src', 'openapi', 'openapi.json'),
-  validate: { requestBody: true, headers: true, query: true, responseBody: AppEnv.isTest },
-  defaults: {
-    securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer' } },
-    security: [{ bearerAuth: [] }],
-  },
-})
-```
-
-After `pnpm psy sync`, the generated `openapi.json` gains `components.securitySchemes.bearerAuth` and a top-level `security: [{ bearerAuth: [] }]`, which the generated SDK stamps onto every operation. Calls like `getV1Me({ throwOnError: true })` then carry the bearer header automatically.
-
-**Type note:** The `defaults.security` field is typed as `OpenapiSecurity = Record<string, string[]>[]` (an array of objects). Use the array form `[{ bearerAuth: [] }]` — the TSDoc example in the framework shows the object form, but the exported type and the renderer both expect an array.
+The named specs themselves — output files, defaults, validation — are configured in `conf/app.ts`. See [openapi.md](openapi.md#outputfilepath-and-namespaces).
 
 ## Nested Resource Base Controller Pattern
 
