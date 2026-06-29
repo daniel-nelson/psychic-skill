@@ -37,6 +37,8 @@ A PR that changes skill content without a `VERSION` bump + `CHANGELOG` entry is 
 
 When correcting outdated or incorrect skill guidance, remove the stale pattern without adding explanatory prose whose only purpose is to contrast with, justify, or memorialize the removed mistake. The skill should teach the current generated/currently-correct shape directly. Add an explanation only when it helps an agent make a future implementation decision that remains relevant after the old guidance is gone.
 
+The same rule applies to the framework itself, not just to the skill's own prior wording: **do not document past or changed behaviors in the Dream/Psychic ecosystem.** The skill always teaches the current (or imminent) state, never narrates what the framework used to do or that a behavior changed. State the behavior as it is now; never write "an older version did X; current tooling does Y," "this used to…," or "X disappears on regen — that's a correction." A reader on an older package version is served by the "Ecosystem versions & staleness policy" baseline ("upgrade if reality disagrees"), not by historical narration in the skill. The one exception is a breaking change that genuinely needs migration steps — that belongs in a dedicated `upgrade.md` (or similar) with explicit version-to-version guidance, not woven into the feature docs.
+
 ## What this skill deliberately does not document
 
 ### `@rvoh/dream-plugin-json-snapshot`
