@@ -25,7 +25,7 @@ Preference order:
 
 `g:resource` takes three **orthogonal** identity inputs:
 
-- **1st arg — route path**: a plural kebab-case route path (e.g., `v1/host/places` or `internal/action-plans`), not a class name or namespace. May be nested with `{}` parent-id placeholders. Controls the controller name and the generated routes (URLs).
+- **1st arg — route path**: a plural kebab-case route path (e.g., `v1/host/places` or `internal/action-plans`), not a class name or namespace. May be nested with `{}` parent-id placeholders. Controls the controller name and the generated routes (URLs). Its **top-level segment is an auth decision** — it picks the controller's branch, and the branch *is* the auth architecture. Authed client endpoints go under `v1/...`; any surface that loosens auth (public/maybe-authed, webhooks, server-to-server) is its own top-level namespace with the version nested inside (`visitor/v1/...`, `webhooks/v1/...`, `api/v1/...`), never `v1/visitor/...`. After generating a loosen-auth surface, reparent that namespace's base controller once. See [controllers.md — Controller Hierarchy](controllers.md#controller-hierarchy).
 - **2nd arg — model file path**: the path relative to `src/app/models/` without `.ts` (e.g., `Place`, `Place/Room`). Controls where the model class is written, which drives the class name, table name, and every import. The class name defaults from the path; override with `--model-name`.
 - **`--owning-model=<Parent>`**: scoping only. Controls whether the generated controller scopes its queries and writes through the parent (`associationQuery` / `createAssociation`). It does **not** affect where the model file is written.
 

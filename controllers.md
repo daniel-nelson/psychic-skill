@@ -6,6 +6,8 @@ The controller directory structure **is** the authentication and authorization a
 
 **The cardinal rule:** never introduce a looser authentication pattern deeper in a directory hierarchy. Authentication flows downhill — it gets stricter, never weaker.
 
+This tree is the *controller* auth architecture. Model namespacing is a separate, identity-based decision — don't mirror this controller tree into model names. See [models.md — Model Organization & Namespacing](models.md#model-organization--namespacing).
+
 ### Directory Structure
 
 Each application surface — client (`V1/`), public browse + bootstrap (`Visitor/`), external webhooks (`Webhooks/`), partner API (`Api/`), admin, internal — gets its own top-level directory branch with its own auth base controllers. Any surface that loosens authentication is its own top-level namespace; versions nest inside it (see Key Principle #3):
@@ -76,7 +78,7 @@ controllers/
 
 3. **Loosened auth lives in its own top-level namespace; versions nest inside it.** An authed surface may be versioned at the top (`V1/Guest/`, `V1/Host/` — all authed). Any surface that *loosens* auth — maybe-authed, unauthed, or server-to-server — is its own top-level namespace (`Visitor/`, `Webhooks/`, `Api/`) with the version nested inside (`Visitor/V1/`, `Webhooks/V1/`, `Api/V1/`), never `V1/Visitor/`, which would bury an auth change deep in the authed client branch. A separate auth surface (`Admin/`, `Internal/`) likewise gets its own top-level namespace and its own `AuthedController` / `UnauthedController`.
 
-4. **Use generators** to create controllers. `pnpm psy g:resource` and `pnpm psy g:controller` set up the correct inheritance chain automatically.
+4. **Use generators** to create controllers. `pnpm psy g:resource` and `pnpm psy g:controller` set up the correct inheritance chain automatically. See [generators.md](generators.md) for the full scaffolding workflow (and where reparenting fits).
 
 5. **Generate every surface; reparent the namespace base once when it loosens auth.** Always scaffold with the generators — they wire the inheritance chain and base controllers. The generator defaults each new namespace base to the client `AuthedController`, so an *authed* surface needs nothing extra:
    - `pnpm psy g:resource v1/host/places Place` → chains `V1/Host/PlacesController` → `V1/Host/BaseController` → `V1/BaseController` → `AuthedController`. No reparenting.

@@ -99,6 +99,8 @@ All CLI commands in this document are run via the local project's package manage
     - Computed / view-model responses use an `ObjectSerializer` passed to `@OpenAPI(SerializerFn, { status })`; nested computed objects become nested `ObjectSerializer`s. If the ObjectSerializer does not exist yet, create it.
     - Hand-written JSON Schema is only for genuinely ad hoc inputs or outputs that cannot sensibly be represented by a Dream model, serializer, or newly-created ObjectSerializer. Do not use "there is no serializer yet" as a reason to hand-write `responses`. Keeping OpenAPI attached to serializers gives TypeScript a single implementation surface for the returned data and documented schema instead of letting a plain object and a duplicated schema drift independently.
 
+22. **The controller directory tree IS the auth architecture; a surface that loosens auth is its own top-level namespace.** Authed client endpoints live under `V1/`; any surface that loosens auth — public/maybe-authed, webhooks, partner API — is its own top-level namespace with the version nested inside (`Visitor/V1/`, `Webhooks/V1/`, `Api/V1/`), never `V1/Visitor/`. `Admin/` and `Internal/` are separate top-level surfaces with their own `AuthedController`. Generate the surface, then reparent its top-level namespace base controller once. Auth is enforced by ancestry, so nesting a looser surface inside an authed one changes auth deep in the tree — the placement *is* the enforcement, there is no other correct way to express it. Full rules: [controllers.md](controllers.md#controller-hierarchy).
+
 ## Creating a New Psychic Application
 
 If you are not already inside a Psychic project, use `create-psychic` to scaffold one:
@@ -211,6 +213,7 @@ A Dream model is the source of truth for one table — its columns, associations
 A Psychic controller authenticates a request, pulls and validates params, does the work through Dream models, and renders a response. Reach here whenever you add or change an endpoint.
 
 - **The controller directory tree *is* the auth architecture, and auth only ever gets stricter downhill** — never introduce a looser authentication pattern deeper in a branch.
+- **A surface that loosens auth is its own top-level namespace, version nested inside** (`Visitor/V1/`, `Webhooks/V1/`, `Api/V1/`) — never `V1/Visitor/`. `V1/` is the authed client surface; `Admin/` and `Internal/` are separate top-level surfaces each with their own `AuthedController`.
 - **Generate controllers; never hand-roll them.** `g:resource` / `g:controller` build the namespace base-controller chain that shared auth lives on. For an intentionally unauthenticated surface, generate normally and then re-parent that namespace's base to `UnauthedController`.
 - **`extractParams` is an explicit, per-action allowlist**, intersected with the model's `paramSafeColumns`. Foreign keys, the STI `type`, and timestamps are always stripped — pull those explicitly via `castParam`.
 
@@ -241,7 +244,8 @@ Migrations are Kysely-based schema changes — the only way the database shape c
 import { PsychicRouter } from '@rvoh/psychic'
 
 export default function routes(r: PsychicRouter) {
-  // Namespace groups routes and infers controller paths
+  // Namespace groups routes and infers controller paths.
+  // Authed client API — everything under v1/ is authenticated.
   r.namespace('v1', r => {
     r.namespace('host', r => {
       // Full CRUD: index, show, create, update, destroy
@@ -255,6 +259,21 @@ export default function routes(r: PsychicRouter) {
       r.resources('places', { only: ['index', 'show'] })
     })
   })
+
+  // A surface that LOOSENS auth is its OWN top-level namespace, version nested inside —
+  // never under v1/. The directory tree is the auth architecture (see controllers.md).
+  r.namespace('webhooks', r => {     // unauthed external callbacks: /webhooks/v1/zoom
+    r.namespace('v1', r => {
+      r.post('zoom', WebhooksV1ZoomController, 'create')
+    })
+  })
+  r.namespace('api', r => {          // server-to-server partner API: /api/v1/reservations
+    r.namespace('v1', r => {
+      r.resources('reservations', { only: ['index', 'show', 'create'] })
+    })
+  })
+  // The maybe-authed Visitor surface lives top-level too (Visitor/V1); it can map to a
+  // clean /v1 URL via an explicit `controller:` reference — see controllers.md.
 
   // Simple routes
   r.get('ping', PingController, 'ping')
