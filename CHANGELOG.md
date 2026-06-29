@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.52.0 — 2026-06-29
+
+### Added
+
+- **`controllers.md`** — new "Cross-Cutting Authorization Gates" subsection: a cross-cutting authorization precondition (accepted-current-ToS, completed-onboarding, active-subscription, verified-email) belongs in one `@BeforeAction` on the shared `AuthedController`, declared after `authenticate`; endpoints that clear the precondition or must answer for a not-yet-cleared user are exempted structurally by re-parenting to `MaybeAuthedController` and self-guarding. Framed as the intentional guarantee that a base controller's hooks are authoritative for its whole subtree.
+- **`controllers.md`** — new "`@BeforeAction` scoping" subsection: `{ only, except }` filter by action method name (not by controller), and there is no `skipBeforeAction` / per-subclass override — descendants inherit, redeclaring a same-named hook is a no-op, so vary auth by re-parenting.
+- **`controllers.md`** — new "Error markers" subsection: `forbidden(msg)` / `unauthorized(msg)` JSON-stringify the message as the response body, and default error response components are schema-less, so a marker string is a spec-invisible, untyped runtime discriminator for two same-status causes. Plus the typed-enum upgrade (declare the status body as a string `enum`) with the caveat that it only types the spec and the thrown value must be hand-synced, and a scope rule: action-specific cause → per-action `responses`; cross-cutting cause from a shared base → redefine the shared component once at conf level.
+- **`openapi.md`** — new "Customizing default error responses" section: the default error set is uniform across auth levels; how to override one status, reshape a shared response once via conf `defaults.components.responses.*`, drop the set with `omitDefaultResponses` (all-or-nothing, then re-add), the per-status precedence order, and the note that `omitDefaultResponses` / `omitDefaultHeaders` are per-action or per-controller (`openapiConfig`) only, never conf-level.
+- **`openapi.md`** — new "Relocating or renaming a controller is spec-neutral" section: the spec is keyed by path + HTTP method with no controller class name or `operationId`, so relocating a controller while keeping its route is a zero-diff, no-regen change.
+
+### Fixed
+
+- **`openapi.md`** — corrected the stale claim that Psychic supplies a default `422` response. The default set is `400/401/403/404/409/500`; Psychic never auto-emits a `422` (the `ValidationErrors` component exists but no operation references it by default, and `validate.*` does not add one). A `422` produced by older tooling disappears on a fresh regen as a correction, not a regression.
+
 ## 0.51.0 — 2026-06-28
 
 ### Added
