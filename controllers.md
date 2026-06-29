@@ -8,7 +8,7 @@ The controller directory structure **is** the authentication and authorization a
 
 ### Directory Structure
 
-Each application surface (client-facing, admin, internal) gets its own directory branch with its own auth base controllers:
+Each application surface — client (`V1/`), public browse + bootstrap (`Visitor/`), external webhooks (`Webhooks/`), partner API (`Api/`), admin, internal — gets its own top-level directory branch with its own auth base controllers. Any surface that loosens authentication is its own top-level namespace; versions nest inside it (see Key Principle #3):
 
 ```
 controllers/
@@ -16,44 +16,56 @@ controllers/
 ├── AuthedController.ts               (client auth — @BeforeAction, 401 if no user)
 ├── MaybeAuthedController.ts          (client auth — currentUser null if absent)
 ├── UnauthedController.ts             (no auth)
+├── StatusController.ts               (health check — extends UnauthedController)
 │
-├── V1/                               (client API namespace)
-│   ├── SignInController.ts           (extends UnauthedController)
-│   ├── SignOutController.ts          (extends AuthedController)
-│   ├── Visitor/                      (public browse with optional auth)
-│   │   ├── BaseController.ts         (extends MaybeAuthedController)
-│   │   └── PlacesController.ts       (extends Visitor/BaseController)
+├── V1/                               (client API — AUTHED ONLY)
+│   ├── BaseController.ts             (extends AuthedController)
 │   ├── Guest/                        (authed Guest endpoints)
-│   │   ├── BaseController.ts         (extends AuthedController, loads currentGuest, 403 if current User has no Guest)
-│   │   ├── PlacesController.ts       (extends Guest/BaseController)
-│   │   └── FavoritesController.ts    (extends Guest/BaseController)
+│   │   ├── BaseController.ts         (extends V1/BaseController, loads currentGuest, 403 if current User has no Guest)
+│   │   ├── BookingsController.ts     (extends V1/Guest/BaseController)
+│   │   └── FavoritesController.ts    (extends V1/Guest/BaseController)
 │   └── Host/                         (authed Host endpoints)
-│       ├── BaseController.ts         (extends AuthedController, loads currentHost, 403 if current User has no Host)
-│       ├── PlacesController.ts       (extends Host/BaseController)
+│       ├── BaseController.ts         (extends V1/BaseController, loads currentHost, 403 if current User has no Host)
+│       ├── PlacesController.ts       (extends V1/Host/BaseController)
 │       └── Places/
-│           ├── BaseController.ts     (extends Host/BaseController, loads currentPlace)
-│           └── RoomsController.ts    (extends Host/Places/BaseController)
+│           ├── BaseController.ts     (extends V1/Host/BaseController, loads currentPlace)
+│           └── RoomsController.ts    (extends V1/Host/Places/BaseController)
 │
-├── Admin/                            (admin surface — separate auth chain)
-│   ├── AuthedController.ts           (admin auth — validates admin user; overrides openapi namespaces to: 'admin', 'tests')
+├── Visitor/                          (MAYBE-AUTHED client surface — public browse + bootstrap)
+│   ├── BaseController.ts             (REPARENTED: extends MaybeAuthedController)
+│   └── V1/
+│       ├── BaseController.ts         (extends Visitor/BaseController)
+│       ├── SignUpController.ts       (records app user + ToS consent; self-guards on currentUser)
+│       ├── MeController.ts           (session probe; answers for a not-yet-cleared user)
+│       └── PlacesController.ts       (public browse; varies when logged in)
+│
+├── Webhooks/                         (external callbacks — UNAUTHED; each provider verifies its own signature)
+│   ├── BaseController.ts             (REPARENTED: extends UnauthedController — auth level only; no shared signature check)
+│   └── V1/
+│       ├── BaseController.ts         (extends Webhooks/BaseController)
+│       ├── ZoomController.ts         (verifies the Zoom signature in a @BeforeAction)
+│       └── TwilioController.ts       (verifies the Twilio signature in a @BeforeAction)
+│
+├── Api/                              (server-to-server partner API — UNAUTHED session, API-key auth)
+│   ├── BaseController.ts             (REPARENTED: extends UnauthedController; verifies the API key in a @BeforeAction)
+│   └── V1/
+│       ├── BaseController.ts         (extends Api/BaseController)
+│       └── ReservationsController.ts (extends Api/V1/BaseController)
+│
+├── Admin/                            (admin surface — separate auth chain, unversioned)
+│   ├── AuthedController.ts           (admin auth — validates AdminUser; overrides openapi namespaces to: 'admin', 'tests')
 │   ├── UnauthedController.ts         (admin unauthed; overrides openapi namespaces to: 'admin', 'tests')
-│   ├── UsersController.ts            (extends Admin/AuthedController)
 │   ├── CitiesController.ts           (extends Admin/AuthedController)
 │   ├── SignInController.ts           (extends Admin/UnauthedController)
-│   ├── SignOutController.ts          (extends Admin/AuthedController)
 │   └── Cities/
 │       ├── BaseController.ts         (extends Admin/AuthedController, loads currentCity)
 │       └── TravelTimesController.ts  (extends Admin/Cities/BaseController)
 │
-├── Internal/                         (internal employee surface — separate auth chain)
-│   ├── AuthedController.ts           (internal auth — validates internal user; overrides openapi namespaces to: 'internal', 'tests')
-│   ├── UnauthedController.ts         (internal unauthed; overrides openapi namespaces to: 'internal', 'tests')
-│   ├── PlacesController.ts           (extends Internal/AuthedController)
-│   ├── SignInController.ts           (extends Internal/UnauthedController)
-│   ├── SignOutController.ts          (extends Internal/AuthedController)
-│   └── Places/
-│       ├── BaseController.ts         (extends Internal/AuthedController, loads currentPlace)
-│       ├── RoomsController.ts        (extends Internal/Places/BaseController)
+└── Internal/                         (internal employee surface — separate auth chain, unversioned)
+    ├── AuthedController.ts           (internal auth — validates InternalUser; overrides openapi namespaces to: 'internal', 'tests')
+    ├── UnauthedController.ts         (internal unauthed; overrides openapi namespaces to: 'internal', 'tests')
+    ├── PlacesController.ts           (extends Internal/AuthedController)
+    └── SignInController.ts           (extends Internal/UnauthedController)
 ```
 
 ### Key Principles
@@ -62,17 +74,26 @@ controllers/
 
 2. **Every controller extends the base controller in its own directory** (or the authed/unauthed controller if at the top of its branch). Controllers never reach across branches or skip levels.
 
-3. **Dedicated directories for each auth level.** If a surface needs both authenticated and unauthenticated endpoints, it has separate base controllers in the same directory (e.g., `Admin/AuthedController` and `Admin/UnauthedController`). If client-facing code needs both authed and maybe-authed endpoints, use separate directories (`V1/Guest/` and `V1/Visitor/`).
+3. **Loosened auth lives in its own top-level namespace; versions nest inside it.** An authed surface may be versioned at the top (`V1/Guest/`, `V1/Host/` — all authed). Any surface that *loosens* auth — maybe-authed, unauthed, or server-to-server — is its own top-level namespace (`Visitor/`, `Webhooks/`, `Api/`) with the version nested inside (`Visitor/V1/`, `Webhooks/V1/`, `Api/V1/`), never `V1/Visitor/`, which would bury an auth change deep in the authed client branch. A separate auth surface (`Admin/`, `Internal/`) likewise gets its own top-level namespace and its own `AuthedController` / `UnauthedController`.
 
 4. **Use generators** to create controllers. `pnpm psy g:resource` and `pnpm psy g:controller` set up the correct inheritance chain automatically.
 
-5. **Custom-token surfaces are still generated, then re-parented.** For a surface authenticated by a custom token rather than the app's normal user/session (a signed public link, a webhook, a partner API), still scaffold the resource/controllers with the generators into their own dedicated namespace — don't hand-roll the shape. Then make one manual change: repoint that namespace's base controller to extend the branch's `UnauthedController` instead of its `AuthedController`, and implement token verification as a `@BeforeAction` on that namespace base controller. This keeps generator conventions and the one-base-controller-per-directory rule while preventing accidental inheritance of the normal session-auth `@BeforeAction`s. Example: a guest opening a booking from an emailed signed link — `V1/Public/Bookings/BaseController` extends `V1/Public/UnauthedController` and verifies a `Booking/AccessToken` in a `@BeforeAction`, loading `currentBooking` from the token rather than from a session user. The same re-parent-the-namespace-base move is how you exempt endpoints from a cross-cutting authorization gate — see [Cross-Cutting Authorization Gates](#cross-cutting-authorization-gates).
+5. **Generate every surface; reparent the namespace base once when it loosens auth.** Always scaffold with the generators — they wire the inheritance chain and base controllers. The generator defaults each new namespace base to the client `AuthedController`, so an *authed* surface needs nothing extra:
+   - `pnpm psy g:resource v1/host/places Place` → chains `V1/Host/PlacesController` → `V1/Host/BaseController` → `V1/BaseController` → `AuthedController`. No reparenting.
+   - `pnpm psy g:resource admin/cities SupportedCity` → extends `Admin/AuthedController` (the generator special-cases `Admin` / `Internal`, each authenticating its own user type). No reparenting.
+
+   A surface that *loosens* auth is reparented once, at its **top-level** namespace base (the nested version base inherits it — see #6):
+   - `pnpm psy g:resource api/v1/reservations Booking` (a partner channel-manager syncing reservations) → reparent `Api/BaseController` to `UnauthedController` and verify the API key in a `@BeforeAction` there. One API, one key scheme, so it lives on the shared base.
+   - `pnpm psy g:controller Webhooks/V1/Zoom create` → reparent `Webhooks/BaseController` to `UnauthedController` (auth level only). Verify the payload signature in a `@BeforeAction` on the *provider's* controller, not the shared base — a later `pnpm psy g:controller Webhooks/V1/Twilio create` reuses that base, and Twilio's signature scheme differs from Zoom's. Put on a shared base only what every endpoint under it shares.
+   - `pnpm psy g:controller Visitor/V1/Places index` → reparent `Visitor/BaseController` to `MaybeAuthedController` (public reads that vary when logged in; bootstrap endpoints like `SignUp` and `/me` self-guard on `currentUser`).
+
+   The same reparent-the-top-namespace-base move is how you exempt endpoints from a cross-cutting authorization gate — see [Cross-Cutting Authorization Gates](#cross-cutting-authorization-gates).
 
 6. **`g:controller` is structural, not just a file stub.** It creates a `BaseController.ts` for each namespace segment that doesn't already exist (reusing the existing namespace base otherwise), wires the leaf controller through that namespace base, and creates the unit spec. Because an existing base is reused, any re-parenting of a namespace base is a one-time edit — later controllers generated into that namespace inherit it with no further change. It does not add routes. Hand-writing a controller skips the namespace base chain, which is exactly where shared webhook/public/custom-token concerns should live.
 
 ### Cross-Cutting Authorization Gates
 
-The auth base controller is also where a cross-cutting *authorization* precondition lives — a check that must hold for every authenticated request, not just "is there a user." Accepted-current-terms-of-service, completed-onboarding, an active subscription, a verified email: any condition that gates the entire authenticated surface belongs in ONE `@BeforeAction` on the shared `AuthedController`, declared *after* `authenticate` so `currentUser` is populated when it runs.
+The auth base controller is also where a cross-cutting *authorization* precondition lives — a check that must hold for every authenticated request, not just "is there a user." Accepted-current-terms-of-service, completed-onboarding, an active subscription, a verified email: any condition that gates the entire authenticated surface belongs in ONE `@BeforeAction` on the `AuthedController` at the root of that authed surface — each surface has its own (the client `AuthedController`, `Admin/AuthedController`, `Internal/AuthedController`) — declared *after* `authenticate` so `currentUser` is populated when it runs. A precondition that must hold across surfaces is declared once on each surface's auth base.
 
 ```typescript
 export default class AuthedController extends ApplicationController {
@@ -94,11 +115,11 @@ export default class AuthedController extends ApplicationController {
 }
 ```
 
-Because hooks inherit ancestor-to-descendant and a descendant cannot skip or override an inherited `@BeforeAction` (see [`@BeforeAction` scoping](#beforeaction-scoping)), this one declaration is the single, authoritative place the precondition is enforced for the whole subtree. That is what makes the line-5 promise true: reading the base controller's `@BeforeAction`s tells you the subtree's rules, with no hidden looser override lower down. This is the architecture working as designed, not a limitation to route around.
+Because hooks inherit ancestor-to-descendant and a descendant cannot un-register or re-scope an inherited `@BeforeAction` (see [`@BeforeAction` scoping](#beforeaction-scoping)), this one declaration is the single, authoritative place the precondition is registered for the whole subtree. That is what makes the line-5 promise true: reading the base controller's `@BeforeAction`s tells you which preconditions run across the subtree. This is the architecture working as designed, not a limitation to route around.
 
 **Exempt bootstrap endpoints structurally.** A few endpoints cannot be subject to the gate, because they are how a user *clears* it or *discovers* they have not: the endpoint that records consent / completes onboarding, and the not-yet-cleared probe (typically `GET /me`). A blocked user must still reach these, or they are locked out with no way forward. Do not weaken the gate for them — exempt them by ancestry, at the namespace's base controller:
 
-- Put these endpoints in their own namespace and re-parent that namespace's **base controller** to a looser base — `MaybeAuthedController` for a surface that still wants optional auth (the `/me` probe, the consent-recording action that self-guards on `currentUser`), or `UnauthedController` for a surface with no app-user auth at all (e.g. webhooks). There is one base controller per directory, so this is a single edit that exempts the whole namespace; every controller in it inherits the looser base. For example, after `pnpm psy g:controller visitor/me show`, re-parent `Visitor/BaseController.ts` to extend `MaybeAuthedController`; for `pnpm psy g:controller webhooks/zoom`, re-parent `Webhooks/BaseController.ts` to extend `UnauthedController`. The change is visible in the directory tree, so the exemption is auditable, not hidden in a per-action skip. This is the same re-parent-the-namespace-base move used for custom-token surfaces (see [Key Principles](#key-principles)), and like all such re-parenting it is one-time — later controllers in the namespace reuse the existing base.
+- Put these endpoints in their own namespace and re-parent that namespace's **base controller** to a looser base — `MaybeAuthedController` for a surface that still wants optional auth (the `/me` probe, the consent-recording action that self-guards on `currentUser`), or `UnauthedController` for a surface with no app-user auth at all (e.g. webhooks). There is one base controller per directory, so this is a single edit that exempts the whole namespace; every controller in it inherits the looser base. For example, after `pnpm psy g:controller Visitor/V1/Me show`, re-parent `Visitor/BaseController.ts` to extend `MaybeAuthedController`; for `pnpm psy g:controller Webhooks/V1/Zoom create`, re-parent `Webhooks/BaseController.ts` to extend `UnauthedController`. The change is visible in the directory tree, so the exemption is auditable, not hidden in a per-action skip. This is the same reparent-the-namespace-base move used for every loosen-auth surface (see [Key Principle #5](#key-principles)), and like all such reparenting it is one-time — later controllers in the namespace reuse the existing base.
 - Self-guard inside the action where the looser base allows a null user:
 
   ```typescript
@@ -130,7 +151,7 @@ export default class AuthedController extends ApplicationController {
 }
 ```
 
-There is no `skipBeforeAction` and no per-subclass override. Descendants inherit the ancestor's hook, and redeclaring a `@BeforeAction` with the same method name in a descendant is a **no-op** — the ancestor's hook (including its `only`/`except`) is kept and the redeclaration is dropped. To vary auth for a subtree, re-parent it to a different base controller; the change is visible in the directory tree rather than hidden in an overriding subclass. This is what makes the base controller's `@BeforeAction`s authoritative for the whole subtree — there is no looser override lower down (see [Cross-Cutting Authorization Gates](#cross-cutting-authorization-gates)).
+There is no `skipBeforeAction`, and a descendant cannot un-register or re-scope an inherited hook: redeclaring a `@BeforeAction` with the same method name in a descendant is a **no-op** for the *registration* — the ancestor's hook (including its `only`/`except`) is kept and the redeclaration is dropped. The one thing a subclass can still change is the hook's *behavior*, by overriding the method body itself (a same-named method runs in place of the ancestor's, since the hook is invoked by name). Don't do that — it changes what the gate does while leaving the registration intact, which is exactly the hidden override the directory model is meant to rule out. To vary auth for a subtree, re-parent it to a different base controller; the change is visible in the directory tree. This is what makes the base controller's `@BeforeAction`s authoritative for the whole subtree (see [Cross-Cutting Authorization Gates](#cross-cutting-authorization-gates)).
 
 ### Verifying the Hierarchy
 
@@ -154,13 +175,13 @@ r.namespace('visitor', r => {
 })
 
 // GOOD — clean URL: /v1/places, controller explicitly specified
-import V1VisitorPlacesController from '@controllers/V1/Visitor/PlacesController.js'
-r.resources('places', { only: ['index', 'show'], controller: V1VisitorPlacesController })
+import VisitorV1PlacesController from '@controllers/Visitor/V1/PlacesController.js'
+r.resources('places', { only: ['index', 'show'], controller: VisitorV1PlacesController })
 ```
 
-The controller directory structure (`V1/Visitor/`) still enforces the auth inheritance chain, but the URL stays clean.
+The controller directory structure (`Visitor/V1/`) still enforces the auth inheritance chain, but the URL stays clean.
 
-Three concerns are independent and should not be collapsed into one tree: the **URL namespace** (an API-contract concern — e.g. version-first `/v1/...`), the **controller file namespace**, and the **auth inheritance chain**. A versioned URL does not require a matching controller ancestry: don't make `V1/Visitor/BaseController` extend a `V1/BaseController` merely because the URL starts with `/v1`. Versioning is a contract concern; authentication inheritance is a controller-hierarchy concern. Express auth boundaries through ancestry (a `Visitor/BaseController` extending `MaybeAuthedController` for optionally-authenticated public reads; `Guest/` and `Host/` bases staying authenticated), and let the route file map a versioned URL onto whatever controller has the correct ancestry via an explicit `controller` reference. Because `pnpm psy g:controller` generates the controller and spec but does not add routes, you're free to wire the route however the URL contract requires.
+Three concerns are independent and should not be collapsed into one tree: the **URL namespace** (an API-contract concern — e.g. version-first `/v1/...`), the **controller file namespace**, and the **auth inheritance chain**. A versioned URL does not require a matching controller ancestry: don't make `Visitor/V1/BaseController` extend `V1/BaseController` merely because the URL starts with `/v1`. Versioning is a contract concern; authentication inheritance is a controller-hierarchy concern. Express auth boundaries through ancestry (a `Visitor/BaseController` extending `MaybeAuthedController` for optionally-authenticated public reads; `Guest/` and `Host/` bases staying authenticated), and let the route file map a versioned URL onto whatever controller has the correct ancestry via an explicit `controller` reference. Because `pnpm psy g:controller` generates the controller and spec but does not add routes, you're free to wire the route however the URL contract requires.
 
 ## ApplicationController
 
