@@ -401,6 +401,20 @@ For OpenAPI-visible nested computed/view-model response shapes, export every Obj
 
 Runtime serializer global names include the serializer path, so the same exported function name in different directories does not by itself cause `SerializerNameConflict`. OpenAPI component names for named exports are based on the export name, though, so two OpenAPI-visible serializers with the same exported function name can still collide in the generated schema. Give computed/view-model serializers distinct export names, such as a `ViewSerializer` suffix, when the domain noun overlaps a Dream model serializer.
 
+### A compound response is still one serializer
+
+When an action returns a hand-shaped envelope — say a record plus a related collection, `{ place, nearby }`, or a computed array alongside serialized models — model the whole envelope as one composing `ObjectSerializer` that renders each part, and pass it to `@OpenAPI(SerializerFn)`. Don't reach for a hand-written `responses` block. `rendersOne` / `rendersMany` take a serializer function via `{ serializer }`, or render a Dream-model field by key via `{ dreamClass, serializerKey }`:
+
+```typescript
+// Action returns { place: Place; nearby: Place[] }
+export const PlaceWithNearbySerializer = (place: Place, nearby: Place[]) =>
+  ObjectSerializer({ place, nearby })
+    .rendersOne('place', { serializer: PlaceSummarySerializer })
+    .rendersMany('nearby', { serializer: PlaceSummarySerializer })
+```
+
+The action is then `@OpenAPI(PlaceWithNearbySerializer, { status: 200 })` over `this.ok(PlaceWithNearbySerializer(place, nearby))`. The schema is derived and validated under test, with no hand-maintained JSON Schema to drift. Even a one-off envelope is worth this — a composing serializer stays the single source of truth where a hand-written `responses` block does not.
+
 ## STI Serializers
 
 For Single Table Inheritance, use generic type parameter:

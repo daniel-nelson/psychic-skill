@@ -196,46 +196,6 @@ Defaults fill a status only when nothing above already set it, and the conf merg
 
 Run `pnpm psy sync` after any of these so the spec files and generated clients update.
 
-## Referencing a serializer in a hand-written responses block
-
-When you do hand-write a `responses` block, you don't have to spell out the schema by hand — point an entry at a serializer and Psychic emits the `$ref` for you. Two sentinels do this:
-
-- `{ $serializable: Place, $serializableSerializerKey: 'summary' }` resolves through the class's `serializers` getter; the key picks which serializer (defaults to `'default'`).
-- `{ $serializer: PlaceSummarySerializer }` references a serializer function directly.
-
-Both expand to `{ $ref: '#/components/schemas/<Name>' }`. There is no `many:` option; for an array, wrap the sentinel explicitly:
-
-```typescript
-responses: {
-  200: {
-    content: {
-      'application/json': { schema: { type: 'array', items: { $serializer: PlaceSummarySerializer } } },
-    },
-  },
-}
-```
-
-`$serializable` accepts a Dream model class **or** a ViewModel — a non-DB-backed plain class that exposes a `serializers` getter (`type ViewModel = { serializers: Record<string, SerializerRef> }`). Both resolve the same way, so a computed/view-model response references its serializer exactly as a model response does.
-
-### A fixed-key enum map
-
-When a response carries a fixed-key map — a `Record<Enum, number | null>`, say per-`RoomType` counts on a `Place` summary — build a nested ObjectSerializer by folding the enum values into `.attribute` calls, then attach it with `.rendersOne`:
-
-```typescript
-export const RoomTypeCountsViewSerializer = (counts: Record<RoomTypesEnum, number | null>) =>
-  RoomTypesEnumValues.reduce(
-    (serializer, roomType) => serializer.attribute(roomType, { openapi: ['integer', 'null'] }),
-    ObjectSerializer(counts),
-  )
-
-export const PlaceSummaryViewSerializer = (place: PlaceSummaryView) =>
-  ObjectSerializer(place)
-    .attribute('id', { openapi: 'string' })
-    .rendersOne('roomTypeCounts', { serializer: RoomTypeCountsViewSerializer })
-```
-
-`.attribute` returns `this`, so the reduce accumulator type stays stable across the fold. Export the nested serializer so it registers as a named component instead of collapsing into an anonymous schema — see [ObjectSerializer in serializers.md](serializers.md#objectserializer-for-non-dream-objects).
-
 ## Relocating or renaming a controller is spec-neutral
 
 The spec is keyed by URL path plus HTTP method. No controller class name and no `operationId` is emitted. So moving a controller between auth bases — or renaming the class — while keeping its route produces zero diff in `openapi.json`, and the downstream-generated SDK function names track the path, not the class.
