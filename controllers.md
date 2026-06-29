@@ -96,10 +96,10 @@ export default class AuthedController extends ApplicationController {
 
 Because hooks inherit ancestor-to-descendant and a descendant cannot skip or override an inherited `@BeforeAction` (see [`@BeforeAction` scoping](#beforeaction-scoping)), this one declaration is the single, authoritative place the precondition is enforced for the whole subtree. That is what makes the line-5 promise true: reading the base controller's `@BeforeAction`s tells you the subtree's rules, with no hidden looser override lower down. This is the architecture working as designed, not a limitation to route around.
 
-**Exempt bootstrap endpoints structurally.** A few endpoints cannot be subject to the gate, because they are how a user *clears* it or *discovers* they have not: the endpoint that records consent / completes onboarding, and the not-yet-cleared probe (typically `GET /me`). A blocked user must still reach these, or they are locked out with no way forward. Do not weaken the gate for them — exempt them by ancestry:
+**Exempt bootstrap endpoints structurally.** A few endpoints cannot be subject to the gate, because they are how a user *clears* it or *discovers* they have not: the endpoint that records consent / completes onboarding, and the not-yet-cleared probe (typically `GET /me`). A blocked user must still reach these, or they are locked out with no way forward. Do not weaken the gate for them — exempt them by ancestry, at the namespace's base controller:
 
-- Re-parent the controller to `MaybeAuthedController` so it never inherits the `AuthedController` gate. The re-parenting is visible in the directory tree, so the exemption is auditable rather than hidden in a per-action skip.
-- Self-guard inside the action, since `MaybeAuthedController` allows a null user:
+- Put these endpoints in their own namespace and re-parent that namespace's **base controller** to a looser base — `MaybeAuthedController` for a surface that still wants optional auth (the `/me` probe, the consent-recording action that self-guards on `currentUser`), or `UnauthedController` for a surface with no app-user auth at all (e.g. webhooks). There is one base controller per directory, so this is a single edit that exempts the whole namespace; every controller in it inherits the looser base. For example, after `pnpm psy g:controller visitor/me show`, re-parent `Visitor/BaseController.ts` to extend `MaybeAuthedController`; for `pnpm psy g:controller webhooks/zoom`, re-parent `Webhooks/BaseController.ts` to extend `UnauthedController`. The change is visible in the directory tree, so the exemption is auditable, not hidden in a per-action skip.
+- Self-guard inside the action where the looser base allows a null user:
 
   ```typescript
   public async update() {
