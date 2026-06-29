@@ -12,7 +12,7 @@
 
 ### Fixed
 
-- **`openapi.md`** — corrected the stale claim that Psychic supplies a default `422` response. The default set is `400/401/403/404/409/500`; Psychic never auto-emits a `422` (the `ValidationErrors` component exists but no operation references it by default, and `validate.*` does not add one). A `422` produced by older tooling disappears on a fresh regen as a correction, not a regression.
+- **`openapi.md`** — corrected the stale claim that the default response set includes `422`. The default set is `400/401/403/404/409/500`; Psychic does not auto-emit a `422` (the `ValidationErrors` component exists but no operation references it by default, and `validate.*` does not add one). To document a validation response, declare it yourself.
 
 ## 0.51.0 — 2026-06-28
 

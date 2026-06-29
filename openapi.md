@@ -142,8 +142,6 @@ There is no automatic `422`. The `ValidationErrors` (422) component exists in `c
 responses: { 422: { $ref: '#/components/responses/ValidationErrors' } }
 ```
 
-An older toolchain emitted a spurious `422 ValidationErrors` ref on request-body operations; current tooling does not. If a `422` disappears from `openapi.json` on regen, that is the correction landing, not a lost contract.
-
 ### Precedence
 
 For any status, the value comes from the first source that defines it:
