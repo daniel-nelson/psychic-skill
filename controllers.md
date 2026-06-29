@@ -113,6 +113,25 @@ Because hooks inherit ancestor-to-descendant and a descendant cannot skip or ove
 
 The result: the gate is universal and knowable in one place, and the handful of endpoints that bootstrap out of it are exempt by their position in the tree, not by an override that erodes the guarantee.
 
+### `@BeforeAction` scoping
+
+`@BeforeAction({ only, except })` filters by action method **name**, not by controller. The hook still runs on every controller that inherits it; `only`/`except` only decide which action methods it fires for, matched by name. So `except: ['create']` suppresses the hook for *every* descendant action named `create`, not for one controller:
+
+```typescript
+export default class AuthedController extends ApplicationController {
+  // Skips the gate for any inherited action named `create`, in Guest/, Host/,
+  // and every nested base below — not just one controller's create.
+  @BeforeAction({ except: ['create'] })
+  protected async requireCurrentTermsOfService() {
+    if (!this.currentUser.hasAcceptedCurrentTermsOfService) {
+      return this.forbidden('terms_of_service_required')
+    }
+  }
+}
+```
+
+There is no `skipBeforeAction` and no per-subclass override. Descendants inherit the ancestor's hook, and redeclaring a `@BeforeAction` with the same method name in a descendant is a **no-op** — the ancestor's hook (including its `only`/`except`) is kept and the redeclaration is dropped. To vary auth for a subtree, re-parent it to a different base controller; the change is visible in the directory tree rather than hidden in an overriding subclass. This is what makes the base controller's `@BeforeAction`s authoritative for the whole subtree — there is no looser override lower down (see [Cross-Cutting Authorization Gates](#cross-cutting-authorization-gates)).
+
 ### Verifying the Hierarchy
 
 ```bash
