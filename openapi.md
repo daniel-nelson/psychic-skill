@@ -78,7 +78,8 @@ psy.set('openapi', {
     headers: {
       locale: { type: 'string', enum: LocalesEnumValues },
     },
-    // Psychic already supplies 400/401/403/404/409/422 — only override to change or add
+    // Psychic already supplies 400/401/403/404/409/500 — only override to change or add.
+    // See "Customizing default error responses" below for the full mechanism.
     responses: {
       429: { description: 'Too many requests' },
     },
@@ -130,6 +131,78 @@ it('returns posts', async () => {
 ### The long tail
 
 `info` (version/title/description), `servers`, and `checkDiffs` are configured in the same block. For their full shapes see the TSDoc on `PsychicOpenapiBaseOptions` in `@rvoh/psychic`.
+
+## Customizing default error responses
+
+Every operation gets the same default error-response set — `400`, `401`, `403`, `404`, `409`, `500` — and it is merged in uniformly regardless of the controller's auth base. The auth base never adds or tightens responses. So an operation that genuinely can't return one of those (a truly public `GET` that never `401`s or `403`s) still advertises it in the spec unless you intervene.
+
+There is no automatic `422`. The `ValidationErrors` (422) component exists in `components.responses`, but no operation references it by default, and `validate.requestBody` / `validate.*` do not add one. To document a validation response, add it yourself — a per-action `responses` entry or conf `defaults.responses`, e.g. `$ref` the `ValidationErrors` component:
+
+```typescript
+responses: { 422: { $ref: '#/components/responses/ValidationErrors' } }
+```
+
+### Precedence
+
+For any status, the value comes from the first source that defines it:
+
+1. per-action `@OpenAPI` `responses[status]`
+2. conf `defaults.responses[status]`
+3. framework `DEFAULT_OPENAPI_RESPONSES[status]`
+
+Defaults fill a status only when nothing above already set it, and the conf merge is a shallow per-status spread (`{ ...DEFAULT_OPENAPI_RESPONSES, ...defaults.responses }`). Declaring a status replaces that whole status entry; there is no deep merge within a status.
+
+### The levers
+
+- **Override one status, keep the rest.** Declare the status in a per-action `responses` block or in conf `defaults.responses` (spec-wide). Your value wins for that status; every other default stays. No omit needed.
+
+- **Reshape a shared response once.** When a response shape is cross-cutting — every authed endpoint can return it — redefine the component the default `$ref` points at instead of repeating it per action. Set `defaults.components.responses.Forbidden` (or `.Unauthorized`, etc.) at conf level. The assembler emits `{ ...DEFAULT_OPENAPI_COMPONENT_RESPONSES, ...defaults.components.responses }`, so your key replaces the whole component and every defaulted `403`'s `$ref: '#/components/responses/Forbidden'` resolves to your redefined body across the spec:
+
+  ```typescript
+  // conf/app.ts — give the shared 403 a typed marker body once
+  psy.set('openapi', {
+    outputFilepath: path.join('src', 'openapi', 'openapi.json'),
+    defaults: {
+      components: {
+        responses: {
+          Forbidden: {
+            description: 'Forbidden',
+            content: {
+              'application/json': {
+                schema: { type: 'string', enum: ['terms_of_service_required'] },
+              },
+            },
+          },
+        },
+      },
+    },
+  })
+  ```
+
+  Conf `defaults` apply to the whole spec, not "authed endpoints only." To scope a marker to the authed surface, give those controllers their own named spec via `openapiNames` (see [outputFilepath and namespaces](#outputfilepath-and-namespaces)) and redefine `Forbidden` only there; otherwise public endpoints that default a `403` advertise the marker body too.
+
+- **Remove one status, keep the rest.** No direct mechanism. `omitDefaultResponses: true` is a boolean, all-or-nothing — it drops every default — so re-list the keepers yourself. Use it on a public action that can't `401`/`403`:
+
+  ```typescript
+  // a truly public GET — drop the auth defaults, re-add the ones it can still return
+  @OpenAPI(Listing, {
+    omitDefaultResponses: true,
+    responses: {
+      404: { $ref: '#/components/responses/NotFound' },
+      500: { $ref: '#/components/responses/InternalServerError' },
+    },
+  })
+  ```
+
+`omitDefaultResponses` (and `omitDefaultHeaders`) are **not** conf-level (`psy.set('openapi', ...)`) options. They live only on the per-action `@OpenAPI` decorator and on a controller's static `openapiConfig` getter. The spec-wide way to omit defaults is a per-controller `openapiConfig`, not conf.
+
+Run `pnpm psy sync` after any of these so the spec files and generated clients update.
+
+## Relocating or renaming a controller is spec-neutral
+
+The spec is keyed by URL path plus HTTP method. No controller class name and no `operationId` is emitted. So moving a controller between auth bases — or renaming the class — while keeping its route produces zero diff in `openapi.json`, and the downstream-generated SDK function names track the path, not the class.
+
+The practical payoff: the structural exemption move in [controllers.md Cross-Cutting Authorization Gates](controllers.md#cross-cutting-authorization-gates) — re-parenting a bootstrap controller to a different auth base to escape a shared `@BeforeAction` — is safe to make without regenerating the client, as long as the route stays the same.
 
 ## Declaring a security scheme
 

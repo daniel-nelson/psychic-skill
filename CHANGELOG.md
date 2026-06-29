@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.52.0 — 2026-06-29
+
+### Added
+
+- **`controllers.md`** — new "Cross-Cutting Authorization Gates" subsection: a cross-cutting authorization precondition (accepted-current-ToS, completed-onboarding, active-subscription, verified-email) belongs in one `@BeforeAction` on the authed surface's `AuthedController` (each surface — client, `Admin/`, `Internal/` — has its own), declared after `authenticate`; endpoints that clear the precondition or must answer for a not-yet-cleared user are exempted structurally by re-parenting the namespace's base controller to a looser base (`MaybeAuthedController`, or `UnauthedController` for a no-app-user surface) and self-guarding. Framed as the intentional guarantee that a base controller's hooks are authoritative for its whole subtree.
+- **`controllers.md`** — new "`@BeforeAction` scoping" subsection: `{ only, except }` filter by action method name (not by controller), and there is no `skipBeforeAction` / per-subclass override — descendants inherit, redeclaring a same-named hook is a no-op, so vary auth by re-parenting.
+- **`controllers.md`** — new "Error markers" subsection: `forbidden(msg)` / `unauthorized(msg)` JSON-stringify the message as the response body, and default error response components are schema-less, so a marker string is a spec-invisible, untyped runtime discriminator for two same-status causes. Plus the typed-enum upgrade (declare the status body as a string `enum`) with the caveat that it only types the spec and the thrown value must be hand-synced, and a scope rule: action-specific cause → per-action `responses`; cross-cutting cause from a shared base → redefine the shared component once at conf level. Includes a security caveat that the marker is always sent to the client at runtime, so it must stay a coarse cause code with no sensitive detail.
+- **`openapi.md`** — new "Customizing default error responses" section: the default error set is uniform across auth levels; how to override one status, reshape a shared response once via conf `defaults.components.responses.*`, drop the set with `omitDefaultResponses` (all-or-nothing, then re-add), the per-status precedence order, and the note that `omitDefaultResponses` / `omitDefaultHeaders` are per-action or per-controller (`openapiConfig`) only, never conf-level.
+- **`openapi.md`** — new "Relocating or renaming a controller is spec-neutral" section: the spec is keyed by path + HTTP method with no controller class name or `operationId`, so relocating a controller while keeping its route is a zero-diff, no-regen change.
+
+### Changed
+
+- **`controllers.md`** — reworked the controller-hierarchy guidance so any surface that loosens auth is a top-level namespace with the version nested inside (`Visitor/V1/`, `Webhooks/V1/`, `Api/V1/`), never `V1/Visitor/`; `V1/` is authed-only. Rewrote the Directory Structure example, Key Principle #3 (the namespace rule), and Key Principle #5 (generate every surface; reparent the top-level namespace base once when it loosens auth — `Api`/`Webhooks` → `UnauthedController`, `Visitor` → `MaybeAuthedController`), including that a shared base carries only shared auth: one API key on `Api/BaseController`, but each webhook provider verifies its own signature on its own controller. Updated the clean-URL routing example to `Visitor/V1/`.
+- **`controllers.md`** — narrowed the `@BeforeAction` guarantee to what is actually enforced: a descendant cannot un-register or re-scope an inherited hook, but overriding the hook *method body* in a subclass still changes its behavior, so vary auth by re-parenting. Clarified that a cross-cutting gate is declared per authed surface, since `Admin/` and `Internal/` have their own `AuthedController`.
+- **`SKILL.md`** — surfaced the controller-hierarchy opinion at the points an agent decides structure, not only in `controllers.md`: new Critical Rule #22 (the directory tree IS the auth architecture; loosen-auth surfaces are top-level namespaces, version nested, never `V1/Visitor/`); a matching bullet in the Controllers decision map; and the Routing example now shows top-level `webhooks/`/`api/` surfaces (version nested) instead of modeling only version-first nesting under `v1/`.
+- **`generators.md`** — the `g:resource`/`g:controller` route-path argument now flags that its top-level segment is an auth decision: loosen-auth surfaces are their own top-level namespace (`visitor/v1/...`, `webhooks/v1/...`, `api/v1/...`), never `v1/visitor/...`, with a link to the controller hierarchy.
+- **`controllers.md`** — added cross-references: to `generators.md` for the scaffolding/reparent workflow, and to `models.md` clarifying that the controller auth tree is not model namespacing (don't mirror it into model names).
+
+### Fixed
+
+- **`openapi.md`** — corrected the stale claim that the default response set includes `422`. The default set is `400/401/403/404/409/500`; Psychic does not auto-emit a `422` (the `ValidationErrors` component exists but no operation references it by default, and `validate.*` does not add one). To document a validation response, declare it yourself.
+
 ## 0.51.0 — 2026-06-28
 
 ### Added
