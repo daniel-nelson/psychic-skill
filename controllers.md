@@ -652,6 +652,43 @@ this.unprocessableEntity() // 422
 this.serverError()         // 500
 ```
 
+### Error markers: distinguishing two same-status causes
+
+When one endpoint can return the same status for two different reasons, the message you pass to a response helper becomes a runtime discriminator the frontend can switch on.
+
+**Layer 1 — the marker (untyped, zero-config).** `this.forbidden(msg)` / `this.unauthorized(msg)` (and the rest) throw an `HttpError` whose argument is JSON-stringified as the response body. So `this.forbidden('not_your_place')` produces the body `"not_your_place"`. The default `Forbidden` / `Unauthorized` / etc. response components are description-only — no `content`, no schema — so the marker never appears in the generated spec or client. It is a runtime-only discriminator: two same-status causes on one endpoint, with no schema change and no regen. The frontend switches on it as an untyped string:
+
+```typescript
+// BearBnB: a Host editing a Place they don't own
+if (!place.hostedBy(this.currentUser)) this.forbidden('not_your_place')
+```
+
+```typescript
+// frontend
+if (err.response.status === 403 && err.response.data === 'not_your_place') { /* ... */ }
+```
+
+**Layer 2 — the typed-enum upgrade.** The body stays a string; attaching an `enum` makes the generated client type it as a literal union instead of bare `string`. Declare it as a runtime OpenAPI schema shorthand (not a TS type) in the action's `@OpenAPI` `responses`:
+
+```typescript
+@OpenAPI(Place, {
+  status: 204,
+  responses: {
+    403: { type: 'string', enum: ['not_your_place'], description: 'The current Host does not own this Place' },
+  },
+})
+public async update() { /* ... this.forbidden('not_your_place') ... */ }
+```
+
+Caveat, stated plainly: declaring the response only changes the spec and the generated types. It does not change runtime behavior and does not enforce the enum. You still write the `forbidden('not_your_place')` throw yourself and keep the thrown value in sync with the declared `enum` by hand — Psychic will not flag drift between them. A declared status replaces the default `$ref` for that one operation; the other default responses remain.
+
+**Scope rule — where the typed response lives depends on where the cause is raised:**
+
+- An *action-specific* cause (e.g. `not_your_place`, raised only inside that one Place action) → put the typed `responses` override on that action's `@OpenAPI`, as above. It applies to that operation alone, which is correct.
+- A *cross-cutting* cause raised on a shared base `@BeforeAction` (e.g. `terms_of_service_required` thrown by the `AuthedController` ToS gate, returnable by *every* authed endpoint) → do **not** repeat it per action. Document it once by redefining the shared response component at conf level (`defaults.components.responses.Forbidden`), so the default 403 `$ref` resolves to the typed body across the spec. See [openapi.md — conf-level `defaults`](openapi.md#defaults) for the mechanism. A per-action override here would falsely imply only that one operation returns the marker, and force the same declaration onto every gated endpoint.
+
+Honesty caveat for the cross-cutting case: conf `defaults` (including a redefined component) span the *whole* spec, not just the authed surface. If public endpoints also default a 403, they would advertise the marker body too. To scope the marker to authed controllers, give them their own named spec via `openapiNames` and redefine `Forbidden` only there (see [openapi.md](openapi.md#outputfilepath-and-namespaces)).
+
 ## Serializer Passthrough
 
 Pass context data to serializers (e.g., locale, current user):
