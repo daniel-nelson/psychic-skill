@@ -108,8 +108,6 @@ psy.set('openapi', {
 
 Gating `responseBody` on `AppEnv.isTest` validates responses under test without paying the cost in production.
 
-A `validate: { responseBody: false }` opt-out paired with a hand-written `responses` block usually means the response schema was never trustworthy to begin with. Once the response is serializer-derived (`$serializer` / `$serializable`, see [Referencing a serializer in a hand-written responses block](#referencing-a-serializer-in-a-hand-written-responses-block)), drop the opt-out and let the test env validate it. Removing this opt-out is runtime-only: it changes nothing in the emitted spec, so `pnpm psy sync` produces no spec or client diff (unlike removing `omitDefaultResponses`, which grows the spec).
-
 ### syncTypes
 
 When `syncTypes` is true, Psychic reads the spec with `openapi-typescript` and generates TypeScript interfaces from it. Use those to type response bodies in tests via the `OpenapiResponseBody` utility.
@@ -138,26 +136,7 @@ it('returns posts', async () => {
 
 Every operation gets the same default error-response set — `400`, `401`, `403`, `404`, `409`, `500` — and it is merged in uniformly regardless of the controller's auth base. The auth base never adds or tightens responses. So an operation that genuinely can't return one of those (a truly public `GET` that never `401`s or `403`s) still advertises it in the spec unless you intervene.
 
-Psychic converts validation failures — param, request-body, and model validation — to a `400`, and every operation already documents the default `BadRequest` (400) response, so you usually don't add anything to document a validation error. To document a `{ errors }` body for a validation `400`, inline a `400` `responses` entry whose schema gives `errors` an object whose `additionalProperties` is an array of strings:
-
-```typescript
-responses: {
-  400: {
-    content: {
-      'application/json': {
-        schema: {
-          type: 'object',
-          properties: {
-            errors: { type: 'object', additionalProperties: { type: 'array', items: { type: 'string' } } },
-          },
-        },
-      },
-    },
-  },
-}
-```
-
-Or reshape the shared `BadRequest` component once at conf level (`defaults.components.responses.BadRequest`) so every defaulted `400` carries the shape — the same lever shown under [Reshape a shared response once](#the-levers) below.
+Psychic converts validation failures — param, request-body, and model validation — to a `400`, and every operation already documents the default `BadRequest` (400) response, so you don't add anything per-action to document a validation error. If you also want the `{ errors }` body in the spec, reshape the shared `BadRequest` component once at conf level (`defaults.components.responses.BadRequest`) so every `400` carries it — the [Reshape a shared response once](#the-levers) lever below — rather than repeating a schema per action.
 
 ### Precedence
 
