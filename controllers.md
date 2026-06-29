@@ -1007,7 +1007,17 @@ Psychic automatically converts certain errors to HTTP responses:
 | `findOrFail` no match | 404 | Record not found |
 | `firstOrFail` no match | 404 | Record not found |
 
-All validation-layer errors return 400 by design — this prevents attackers from distinguishing which layer rejected a request. To explicitly return 422 with field-level validation errors intended for the end user, call `this.unprocessableContent({ errors: { fieldName: ['message'] } })`.
+All validation-layer errors return 400 by design — this prevents attackers from distinguishing which layer rejected a request. Psychic's automatic conversions return a bare 400 with no body for param, requestBody, and model validation failures, so the response is opaque about which layer rejected.
+
+To deliberately surface field-level validation errors to the end user, return a 400 that carries the error shape — call `this.badRequest({ errors: { ... } })`. The natural source of that shape is a Dream model's `.errors` getter, which is keyed `{ field: ['message'], ... }`:
+
+```ts
+const place = Place.new(this.extractParams(Place, ['name', 'style', 'sleeps']))
+if (place.isInvalid) this.badRequest({ errors: place.errors })   // place.errors → { name: ['must be present'], ... }
+await place.save()
+```
+
+Without the explicit check, an invalid `save()` / `create()` still returns 400, but with no body — the framework logs the errors rather than sending them. Conveying the error shape to the client is therefore an explicit, deliberate act.
 
 ## Rate Limiting
 

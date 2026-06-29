@@ -575,7 +575,7 @@ User:belongs_to                # user_id FK
 User:belongs_to:optional       # nullable FK
 User@created_by:belongs_to     # created_by_id FK, createdBy assoc (aliased)
 Messaging/Template@template:belongs_to   # template_id FK (namespace stripped)
-encrypted_phone:encrypted      # encrypted text column
+phone:encrypted                # encrypted text column → DB column `encrypted_phone`
 ```
 
 ### Aliased BelongsTo shorthand (`Model@alias:belongs_to`)

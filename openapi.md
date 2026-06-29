@@ -108,6 +108,8 @@ psy.set('openapi', {
 
 Gating `responseBody` on `AppEnv.isTest` validates responses under test without paying the cost in production.
 
+A `validate: { responseBody: false }` opt-out paired with a hand-written `responses` block usually means the response schema was never trustworthy to begin with. Once the response is serializer-derived (`$serializer` / `$serializable`, see [Referencing a serializer in a hand-written responses block](#referencing-a-serializer-in-a-hand-written-responses-block)), drop the opt-out and let the test env validate it. Removing this opt-out is runtime-only: it changes nothing in the emitted spec, so `pnpm psy sync` produces no spec or client diff (unlike removing `omitDefaultResponses`, which grows the spec).
+
 ### syncTypes
 
 When `syncTypes` is true, Psychic reads the spec with `openapi-typescript` and generates TypeScript interfaces from it. Use those to type response bodies in tests via the `OpenapiResponseBody` utility.
@@ -136,11 +138,26 @@ it('returns posts', async () => {
 
 Every operation gets the same default error-response set — `400`, `401`, `403`, `404`, `409`, `500` — and it is merged in uniformly regardless of the controller's auth base. The auth base never adds or tightens responses. So an operation that genuinely can't return one of those (a truly public `GET` that never `401`s or `403`s) still advertises it in the spec unless you intervene.
 
-There is no automatic `422`. The `ValidationErrors` (422) component exists in `components.responses`, but no operation references it by default, and `validate.requestBody` / `validate.*` do not add one. To document a validation response, add it yourself — a per-action `responses` entry or conf `defaults.responses`, e.g. `$ref` the `ValidationErrors` component:
+Psychic converts validation failures — param, request-body, and model validation — to a `400`, and every operation already documents the default `BadRequest` (400) response, so you usually don't add anything to document a validation error. To document a `{ errors }` body for a validation `400`, inline a `400` `responses` entry whose schema gives `errors` an object whose `additionalProperties` is an array of strings:
 
 ```typescript
-responses: { 422: { $ref: '#/components/responses/ValidationErrors' } }
+responses: {
+  400: {
+    content: {
+      'application/json': {
+        schema: {
+          type: 'object',
+          properties: {
+            errors: { type: 'object', additionalProperties: { type: 'array', items: { type: 'string' } } },
+          },
+        },
+      },
+    },
+  },
+}
 ```
+
+Or reshape the shared `BadRequest` component once at conf level (`defaults.components.responses.BadRequest`) so every defaulted `400` carries the shape — the same lever shown under [Reshape a shared response once](#the-levers) below.
 
 ### Precedence
 
@@ -196,7 +213,49 @@ Defaults fill a status only when nothing above already set it, and the conf merg
 
 `omitDefaultResponses` (and `omitDefaultHeaders`) are **not** conf-level (`psy.set('openapi', ...)`) options. They live only on the per-action `@OpenAPI` decorator and on a controller's static `openapiConfig` getter. The spec-wide way to omit defaults is a per-controller `openapiConfig`, not conf.
 
+`openapiConfig` only toggles `{ omitDefaultHeaders, omitDefaultResponses, tags }` (its type is `PsychicOpenapiControllerConfig`); it is not a place to add `responses`. There is no per-controller "add a response to every action" knob, so a controller-wide response — say a `403` that a controller-wide auth `@BeforeAction` can return — is declared per-action or spec-wide via conf `defaults.responses`.
+
 Run `pnpm psy sync` after any of these so the spec files and generated clients update.
+
+## Referencing a serializer in a hand-written responses block
+
+When you do hand-write a `responses` block, you don't have to spell out the schema by hand — point an entry at a serializer and Psychic emits the `$ref` for you. Two sentinels do this:
+
+- `{ $serializable: Place, $serializableSerializerKey: 'summary' }` resolves through the class's `serializers` getter; the key picks which serializer (defaults to `'default'`).
+- `{ $serializer: PlaceSummarySerializer }` references a serializer function directly.
+
+Both expand to `{ $ref: '#/components/schemas/<Name>' }`. There is no `many:` option; for an array, wrap the sentinel explicitly:
+
+```typescript
+responses: {
+  200: {
+    content: {
+      'application/json': { schema: { type: 'array', items: { $serializer: PlaceSummarySerializer } } },
+    },
+  },
+}
+```
+
+`$serializable` accepts a Dream model class **or** a ViewModel — a non-DB-backed plain class that exposes a `serializers` getter (`type ViewModel = { serializers: Record<string, SerializerRef> }`). Both resolve the same way, so a computed/view-model response references its serializer exactly as a model response does.
+
+### A fixed-key enum map
+
+When a response carries a fixed-key map — a `Record<Enum, number | null>`, say per-`RoomType` counts on a `Place` summary — build a nested ObjectSerializer by folding the enum values into `.attribute` calls, then attach it with `.rendersOne`:
+
+```typescript
+export const RoomTypeCountsViewSerializer = (counts: Record<RoomTypesEnum, number | null>) =>
+  RoomTypesEnumValues.reduce(
+    (serializer, roomType) => serializer.attribute(roomType, { openapi: ['integer', 'null'] }),
+    ObjectSerializer(counts),
+  )
+
+export const PlaceSummaryViewSerializer = (place: PlaceSummaryView) =>
+  ObjectSerializer(place)
+    .attribute('id', { openapi: 'string' })
+    .rendersOne('roomTypeCounts', { serializer: RoomTypeCountsViewSerializer })
+```
+
+`.attribute` returns `this`, so the reduce accumulator type stays stable across the fold. Export the nested serializer so it registers as a named component instead of collapsing into an anonymous schema — see [ObjectSerializer in serializers.md](serializers.md#objectserializer-for-non-dream-objects).
 
 ## Relocating or renaming a controller is spec-neutral
 

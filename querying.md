@@ -13,7 +13,15 @@ Only drop to Kysely when:
 - the needed SQL is not covered by Dream's public API
 - or Dream can express most of the query but needs a final low-level Kysely step via `toKysely(...)`
 
+Strongly prefer keeping everything in Dream. Hand-roll raw Kysely (or typed `db()`) only in migrations, or as a true last resort when the requirement genuinely cannot be expressed through Dream's query and association APIs.
+
 Do not jump straight to Kysely for routine filtering, joining, eager loading, aggregation, pagination, or association traversal.
+
+### Eject late, never early: associations carry scopes that `toKysely` does not
+
+`Model.query().toKysely()` does carry the base model's default scopes, including `dream:SoftDelete`. The danger is associations. Association `and` clauses (`HasOne`/`HasMany` `and: {...}`) and the default scopes of associated tables (soft-delete, STI) are applied by Dream's association traversal, not by `toKysely` on the base query. So if you eject early and hand-join an associated table in Kysely — or hand-roll the whole query from typed `db()`, which drops even the base scope — those tables get no soft-delete filter and no `and` clause, and soft-deleted or otherwise excluded rows silently reappear.
+
+The rule: if you must use `toKysely`, build the full Dream query and traverse every association first, then call `toKysely` as the final step for the one thing Dream cannot express.
 
 ## Required Agent Workflow
 
@@ -551,6 +559,20 @@ Supported forms:
 - `Model.toKysely('update')`
 - `Model.toKysely('delete')`
 - `query.toKysely('select' | 'update' | 'delete')`
+
+### Scope-preserving subqueries: `nestedSelect(...)`
+
+Before reaching for a raw Kysely subquery, check whether `nestedSelect(...)` covers it. It lets a Dream query stand in as a subquery while keeping that query's default scopes, so it is the in-Dream alternative to a hand-rolled Kysely subquery over the raw table.
+
+```typescript
+// Places that have at least one booking. The subquery is a Dream query, so
+// Booking's default scopes still apply — a soft-deleted Booking won't surface
+// its Place. A hand-rolled Kysely subquery over the bookings table has no such
+// filter and would resurface Places whose only booking was soft-deleted.
+const bookedPlaces = await Place.where({
+  id: Booking.query().nestedSelect('placeId'),
+}).all()
+```
 
 ## Starting From Scratch With Typed `db()`
 

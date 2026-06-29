@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.53.0 — 2026-06-29
+
+### Added
+
+- **`models.md`** — the `@deco.Encrypted` sync note now covers virtual-writability: the plaintext property isn't assignable in `.create()` / `UpdateableProperties` until `pnpm psy sync` lists it under the model's `virtualColumns` (until then `tsc` reports `TS2353 … does not exist`). Separately, at the `ifChanged` hook examples, a caveat to gate on the persisted `encrypted<Name>` column, not the plaintext virtual.
+- **`serializers.md`** — caveat that a `customAttribute` whose body reads an association is invisible to `preloadFor` (which only walks `rendersOne`/`rendersMany`/`delegatedAttribute`), so the association must be `.preload(...)`-ed explicitly at each call site or it throws `NonLoadedAssociation` at render; cross-referenced from the `customAttribute` docs.
+- **`sti.md`** — how to scope a parent-declared association to specific STI child type(s) with an `and` clause on `type` (`@deco.HasMany('Room', { and: { type: 'Bedroom' } })`, or an array for several), without contradicting the rule that children can't declare their own associations.
+- **`openapi.md`** — new section documenting the `$serializable` / `$serializer` sentinels for referencing a serializer inside a hand-written `responses` block (`$serializable` accepts a Dream model or a ViewModel; `$serializer` a serializer function; array-wrapping; no `many:` option), plus a compact fixed-key-enum-map ObjectSerializer example built by folding the enum.
+- **`openapi.md`** — note that a `validate: { responseBody: false }` opt-out paired with a hand-written `responses` block is a smell that the schema was never trustworthy; once the response is serializer-derived, drop the opt-out (removing it is runtime-only — no `pnpm psy sync` spec/client diff).
+- **`querying.md`** — sharpened the drop-to-Kysely guidance: hand-roll Kysely only in migrations or as a true last resort, and eject via `toKysely` last (after traversing associations), because association `and` clauses and associated-table default scopes (soft-delete, STI) come from association traversal, not from `toKysely` on the base query — ejecting early or hand-rolling from `db()` resurfaces soft-deleted/excluded rows. Added a `nestedSelect` example showing a scope-preserving subquery as the in-Dream alternative.
+- **`testing.md`** — caveat that `toHavePath` compares pathname only, so it is not a barrier when only query params change; after a redirecting mutation, assert eventual state with `expect.poll` or wait on a UI signal tied to the mutation.
+- **`SKILL.md`** — member-scoped custom-action routing: a custom action declared directly in a `resources` callback is automatically member-scoped (Psychic prepends `:id`, e.g. `POST /bookings/:id/cancel`); the action reads the id via `this.castParam('id', 'string')`.
+
+### Changed
+
+- **`openapi.md`** / **`controllers.md`** / **`testing.md`** — validation errors are documented and tested as **400** throughout. The framework converts param, request-body, and model-validation failures to 400; to surface field-level errors deliberately, return a 400 carrying the model's `.errors` (`if (place.isInvalid) this.badRequest({ errors: place.errors })`). Removed the prior guidance to return 422 / call `unprocessableContent` for user-facing validation.
+- **`openapi.md`** — clarified that `openapiConfig` only toggles `{ omitDefaultHeaders, omitDefaultResponses, tags }` and is not a place to add `responses`; a controller-wide response is declared per-action or via conf `defaults.responses`.
+
+### Fixed
+
+- **`migrations.md`** — corrected the `:encrypted` generator example to use the bare field name (`phone:encrypted`, which yields the `encrypted_phone` column); the generator prepends `encrypted_`, so the prior `encrypted_phone:encrypted` example would have produced `encrypted_encrypted_phone`.
+
 ## 0.52.0 — 2026-06-29
 
 ### Added

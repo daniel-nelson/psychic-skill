@@ -626,7 +626,7 @@ describe('V1/Host/PlacesController', () => {
 })
 ```
 
-OpenAPI request validation may reject invalid model params before model validations run. In controller specs that use OpenAPI spec helpers, out-of-range or missing fields derived from model validators can correctly expect 400. Reserve 422 expectations for controller actions that intentionally call `unprocessableContent` / `unprocessableEntity`.
+OpenAPI request validation may reject invalid model params before model validations run. In controller specs that use OpenAPI spec helpers, out-of-range or missing fields derived from model validators expect 400 — the same status the framework returns for param, request-body, and model-validation failures alike.
 
 ## Testing Principles
 
@@ -796,3 +796,16 @@ await clickButton(page, 'Create Place')
 await expect(page).toHavePath('/places')        // proves the response completed
 const place = await Place.firstOrFail()          // safe to query now
 ```
+
+`toHavePath` compares the pathname only — internally `new URL(href).pathname` — so it ignores the query string. That makes it a completion signal only when the path actually changes. If the route stays the same except for query params, the assertion can pass instantly without waiting for the mutation. A spec that starts on `/places?placeId=123`, triggers a delete, and asserts `await expect(page).toHavePath('/places')` passes the moment it runs: the pathname was already `/places` before the mutation, so nothing was waited for and the row may still exist.
+
+When the path doesn't change, wait on the eventual state instead. Poll the database for the actual outcome:
+
+```typescript
+await clickButton(page, 'Delete')
+await expect
+  .poll(async () => await Place.find(place.id))
+  .toBeNull()                                   // waits for the delete to land
+```
+
+Or wait on a UI signal genuinely tied to the mutation finishing (a removed row, a success banner) — not on a `toHavePath` that was already true.

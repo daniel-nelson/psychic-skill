@@ -481,6 +481,8 @@ public invalidateCache(this: Place) { ... }
 public removeFromSearchIndex(this: Place) { ... }
 ```
 
+**Gating on an encrypted field.** When the gated field is an `@deco.Encrypted` field, list the persisted column name `encrypted<Name>` in `ifChanged` (e.g. `ifChanged: ['encryptedPhone']`), not the plaintext virtual (`phone`). `ifChanged` is typed over the real persisted columns (`DreamColumnNames`); setting the virtual marks the underlying `encrypted<Name>` column dirty, which is what change detection sees.
+
 ## Validations
 
 ```typescript
@@ -662,7 +664,10 @@ public phone: DreamColumn<User, 'encryptedPhone'>
 // Add an optional `legacy` key beside `current` to rotate keys (current is tried
 // first, then legacy). Generate keys with `pnpm psy g:encryption-key`. Without this
 // config the getter/setter throw. After adding @deco.Encrypted() and its migration,
-// run `pnpm psy sync` so the `encrypted<Column>` column is in the generated types.
+// run `pnpm psy sync` so the `encrypted<Column>` column is in the generated types. The
+// plaintext property (e.g. `phone`) is not assignable in `.create()` / `UpdateableProperties`
+// until sync lists it under the model's `virtualColumns`; until then `tsc` reports
+// `TS2353 ... 'phone' does not exist` even though the model declares the field.
 
 // Virtual — accepted by create(), update(), and extractParams() but not stored directly in DB.
 // Use getter/setter pairs to transform between the virtual and the actual DB column.
