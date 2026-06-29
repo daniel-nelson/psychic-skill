@@ -70,6 +70,49 @@ controllers/
 
 6. **`g:controller` is structural, not just a file stub.** It creates a `BaseController.ts` for each namespace segment, wires the leaf controller through that namespace base, and creates the unit spec. It does not add routes. Hand-writing a controller skips the namespace base chain, which is exactly where shared webhook/public/custom-token concerns should live.
 
+### Cross-Cutting Authorization Gates
+
+The auth base controller is also where a cross-cutting *authorization* precondition lives — a check that must hold for every authenticated request, not just "is there a user." Accepted-current-terms-of-service, completed-onboarding, an active subscription, a verified email: any condition that gates the entire authenticated surface belongs in ONE `@BeforeAction` on the shared `AuthedController`, declared *after* `authenticate` so `currentUser` is populated when it runs.
+
+```typescript
+export default class AuthedController extends ApplicationController {
+  protected currentUser: User
+
+  @BeforeAction()
+  protected async authenticate() {
+    // ...resolves and sets this.currentUser, or this.unauthorized()
+  }
+
+  // Declared after authenticate, so currentUser is set. Inherited by every
+  // authed namespace (Guest/, Host/, and their nested bases) symmetrically.
+  @BeforeAction()
+  protected async requireCurrentTermsOfService() {
+    if (!this.currentUser.hasAcceptedCurrentTermsOfService) {
+      return this.forbidden('terms_of_service_required')
+    }
+  }
+}
+```
+
+Because hooks inherit ancestor-to-descendant and a descendant cannot skip or override an inherited `@BeforeAction` (see [`@BeforeAction` scoping](#beforeaction-scoping)), this one declaration is the single, authoritative place the precondition is enforced for the whole subtree. That is what makes the line-5 promise true: reading the base controller's `@BeforeAction`s tells you the subtree's rules, with no hidden looser override lower down. This is the architecture working as designed, not a limitation to route around.
+
+**Exempt bootstrap endpoints structurally.** A few endpoints cannot be subject to the gate, because they are how a user *clears* it or *discovers* they have not: the endpoint that records consent / completes onboarding, and the not-yet-cleared probe (typically `GET /me`). A blocked user must still reach these, or they are locked out with no way forward. Do not weaken the gate for them — exempt them by ancestry:
+
+- Re-parent the controller to `MaybeAuthedController` so it never inherits the `AuthedController` gate. The re-parenting is visible in the directory tree, so the exemption is auditable rather than hidden in a per-action skip.
+- Self-guard inside the action, since `MaybeAuthedController` allows a null user:
+
+  ```typescript
+  public async update() {
+    if (!this.currentUser) return this.unauthorized()
+    await this.currentUser.update({ acceptedTermsOfServiceVersion: CURRENT_TOS_VERSION })
+    this.noContent()
+  }
+  ```
+
+- Keep the URL clean by routing to the re-parented controller with an explicit `controller:` reference (the directory says `MaybeAuthed`, the URL should not) — see [Routing Controllers When Directory Names Don't Map to URLs](#routing-controllers-when-directory-names-dont-map-to-urls).
+
+The result: the gate is universal and knowable in one place, and the handful of endpoints that bootstrap out of it are exempt by their position in the tree, not by an override that erodes the guarantee.
+
 ### Verifying the Hierarchy
 
 ```bash
