@@ -689,13 +689,15 @@ if (!place.hostedBy(this.currentUser)) this.forbidden('not_your_place')
 if (err.response.status === 403 && err.response.data === 'not_your_place') { /* ... */ }
 ```
 
+Two caveats. Pass a non-empty string — `forbidden()` with a falsy argument sends no body, so the discriminator check fails. And the marker is always sent to the client verbatim at runtime (that is the point), independent of the spec, so keep it a coarse, stable cause code (`not_your_place`, `terms_of_service_required`) and never put sensitive detail in it.
+
 **Layer 2 — the typed-enum upgrade.** The body stays a string; attaching an `enum` makes the generated client type it as a literal union instead of bare `string`. Declare it as a runtime OpenAPI schema shorthand (not a TS type) in the action's `@OpenAPI` `responses`:
 
 ```typescript
 @OpenAPI(Place, {
   status: 204,
   responses: {
-    403: { type: 'string', enum: ['not_your_place'], description: 'The current Host does not own this Place' },
+    403: { type: 'string', enum: ['not_your_place'] },
   },
 })
 public async update() { /* ... this.forbidden('not_your_place') ... */ }
@@ -706,7 +708,7 @@ Caveat, stated plainly: declaring the response only changes the spec and the gen
 **Scope rule — where the typed response lives depends on where the cause is raised:**
 
 - An *action-specific* cause (e.g. `not_your_place`, raised only inside that one Place action) → put the typed `responses` override on that action's `@OpenAPI`, as above. It applies to that operation alone, which is correct.
-- A *cross-cutting* cause raised on a shared base `@BeforeAction` (e.g. `terms_of_service_required` thrown by the `AuthedController` ToS gate, returnable by *every* authed endpoint) → do **not** repeat it per action. Document it once by redefining the shared response component at conf level (`defaults.components.responses.Forbidden`), so the default 403 `$ref` resolves to the typed body across the spec. See [openapi.md — conf-level `defaults`](openapi.md#defaults) for the mechanism. A per-action override here would falsely imply only that one operation returns the marker, and force the same declaration onto every gated endpoint.
+- A *cross-cutting* cause raised on a shared base `@BeforeAction` (e.g. `terms_of_service_required` thrown by the `AuthedController` ToS gate, returnable by *every* authed endpoint) → do **not** repeat it per action. Document it once by redefining the shared response component at conf level (`defaults.components.responses.Forbidden`), so the default 403 `$ref` resolves to the typed body across the spec. See [openapi.md — Customizing default error responses](openapi.md#customizing-default-error-responses) for the mechanism. A per-action override here would falsely imply only that one operation returns the marker, and force the same declaration onto every gated endpoint.
 
 Honesty caveat for the cross-cutting case: conf `defaults` (including a redefined component) span the *whole* spec, not just the authed surface. If public endpoints also default a 403, they would advertise the marker body too. To scope the marker to authed controllers, give them their own named spec via `openapiNames` and redefine `Forbidden` only there (see [openapi.md](openapi.md#outputfilepath-and-namespaces)).
 
