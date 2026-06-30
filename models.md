@@ -90,10 +90,10 @@ public userId: DreamColumn<Post, 'userId'>
 public approver: User | null
 public approverId: DreamColumn<Post, 'approverId'>
 
-// Custom FK name
-@deco.BelongsTo('User', { on: 'authorId' })
-public author: User
-public authorId: DreamColumn<Post, 'authorId'>
+// Custom FK column on THIS model (override the conventional `host_id`)
+@deco.BelongsTo('Host', { on: 'ownerId' })
+public owner: Host
+public ownerId: DreamColumn<Place, 'ownerId'>
 
 // Polymorphic BelongsTo
 @deco.BelongsTo(['Host', 'Place', 'Room'], { polymorphic: true, on: 'localizableId' })
@@ -101,10 +101,11 @@ public localizable: Host | Place | Room
 public localizableType: DreamColumn<LocalizedText, 'localizableType'>
 public localizableId: DreamColumn<LocalizedText, 'localizableId'>
 
-// Override the primary key used for the join
-@deco.BelongsTo('User', { primaryKeyOverride: 'externalId' })
-public user: User
-public userId: DreamColumn<Post, 'userId'>
+// Override the primary-key side of the join (defaults to `id`); pair with `on` to
+// join on a natural key — see "Joining on a non-default key" below.
+@deco.BelongsTo('Host', { primaryKeyOverride: 'externalId' })
+public host: Host
+public hostId: DreamColumn<Place, 'hostId'>
 
 // Skip default scopes when loading
 @deco.BelongsTo('Place', { withoutDefaultScopes: ['dream:SoftDelete'] })
@@ -177,26 +178,19 @@ public visiblePosts: Post[]
 @deco.HasMany('Post', { andNot: { archived: true } })
 public activePosts: Post[]
 
-// selfAnd — join where a column on the associated model matches a column on THIS model.
-// Format: { associatedColumn: 'thisModelColumn' }
-// Here, UserChallengeProgress links to DailyChallenge by matching position values
-// instead of a direct FK, so DailyChallenges can be re-shuffled without affecting progress.
-@deco.HasOne('DailyChallenge', {
-  on: 'position',
-  selfAnd: { position: 'currentPosition' },
-})
-public currentChallenge: DailyChallenge
-// SQL: WHERE daily_challenges.position = user_challenge_progresses.current_position
+// selfAnd — ADDS a condition on top of the normal FK join: an associated column must
+// equal a column on THIS model. Format: { associatedColumn: 'thisModelColumn' }.
+// (`peakSeasonMonth` on Place and `checkInMonth` on Booking are illustrative columns.)
+@deco.HasMany('Booking', { selfAnd: { checkInMonth: 'peakSeasonMonth' } })
+public peakSeasonBookings: Booking[]
+// SQL: bookings.place_id = this.id  AND  bookings.check_in_month = this.peak_season_month
+//      └──── normal FK join (kept) ───┘    └──────── selfAnd condition (added) ────────┘
 
-// selfAndNot — exclude associated records where columns match.
-// Here, a TreeNode's siblings are its parent's children excluding itself.
-@deco.HasMany('TreeNode', {
-  through: 'parent',
-  source: 'children',
-  selfAndNot: { id: 'id' },
-})
-public siblings: TreeNode[]
-// SQL: WHERE tree_nodes.id != this.id
+// selfAndNot — excludes associated records where the columns match. A room's siblings
+// are the other rooms in its Place, excluding itself.
+@deco.HasMany('Room', { through: 'place', source: 'rooms', selfAndNot: { id: 'id' } })
+public siblingRooms: Room[]
+// SQL: ... AND rooms.id != this.id   (joined through the shared Place)
 
 // Through (many-to-many)
 @deco.HasMany('Host', { through: 'hostPlaces' })
@@ -214,13 +208,15 @@ public localizedTexts: LocalizedText[]
 @deco.HasMany('Tag', { through: 'postTags', distinct: true })
 public uniqueTags: Tag[]
 
-// Override the primary key used for the join
-@deco.HasMany('Post', { primaryKeyOverride: 'externalId' })
-public posts: Post[]
+// Custom FK column on the associated table (override the conventional `host_id`)
+@deco.HasMany('Place', { on: 'ownerId' })
+public properties: Place[]
+// SQL: places.owner_id = this.id
+// (For `on` + `primaryKeyOverride` together — joining on a natural key — see below.)
 
 // Skip default scopes when loading
-@deco.HasMany('Post', { withoutDefaultScopes: ['dream:SoftDelete'] })
-public allPosts: Post[]  // includes soft-deleted posts
+@deco.HasMany('Booking', { withoutDefaultScopes: ['dream:SoftDelete'] })
+public allBookings: Booking[]  // includes soft-deleted bookings
 ```
 
 #### HasMany Options
@@ -236,7 +232,7 @@ public allPosts: Post[]  // includes soft-deleted posts
 | `order` | column name \| order object | Default ordering for the association |
 | `polymorphic` | boolean | Enables polymorphic association (requires `on`) |
 | `primaryKeyOverride` | column name \| null | Override the primary key column used for the join |
-| `selfAnd` | `{ associatedCol: 'thisCol' }` | Adds a join condition where a column on the associated model must equal a column on this model (e.g., `{ position: 'currentPosition' }` → `WHERE associated.position = this.currentPosition`) |
+| `selfAnd` | `{ associatedCol: 'thisCol' }` | Adds a join condition **on top of the normal FK join** — an associated column must equal a column on this model (e.g., `{ position: 'featuredRoomPosition' }` → `AND associated.position = this.featured_room_position`) |
 | `selfAndNot` | `{ associatedCol: 'thisCol' }` | Inverse of `selfAnd` — excludes associated records where the columns match (e.g., `{ id: 'id' }` → `WHERE associated.id != this.id`) |
 | `source` | association name | For through associations: the association name on the intermediate model |
 | `through` | association name | Load through an intermediate association (many-to-many) |
@@ -280,12 +276,12 @@ public primaryAddress: Address
 @deco.HasOne('Profile', { andNot: { deactivated: true } })
 public activeProfile: Profile
 
-// selfAnd — see HasMany section for detailed examples
-@deco.HasOne('DailyChallenge', {
-  on: 'position',
-  selfAnd: { position: 'currentPosition' },
-})
-public currentChallenge: DailyChallenge
+// selfAnd — adds a condition on top of the FK join (see HasMany for details).
+// A Place names its featured room by position (`featuredRoomPosition`), so rooms can be
+// reordered without touching a foreign key.
+@deco.HasOne('Room', { selfAnd: { position: 'featuredRoomPosition' } })
+public featuredRoom: Room
+// SQL: rooms.place_id = this.id  AND  rooms.position = this.featured_room_position
 
 // Through
 @deco.HasOne('CompositionAsset', { through: 'mainComposition' })
@@ -307,13 +303,40 @@ public profileIncludingDeleted: Profile
 | `on` | column name | Custom foreign key column name on the associated model |
 | `polymorphic` | boolean | Enables polymorphic association (requires `on`) |
 | `primaryKeyOverride` | column name \| null | Override the primary key column used for the join |
-| `selfAnd` | `{ associatedCol: 'thisCol' }` | Adds a join condition where a column on the associated model must equal a column on this model (e.g., `{ position: 'currentPosition' }` → `WHERE associated.position = this.currentPosition`) |
+| `selfAnd` | `{ associatedCol: 'thisCol' }` | Adds a join condition **on top of the normal FK join** — an associated column must equal a column on this model (e.g., `{ position: 'featuredRoomPosition' }` → `AND associated.position = this.featured_room_position`) |
 | `selfAndNot` | `{ associatedCol: 'thisCol' }` | Inverse of `selfAnd` — excludes associated records where the columns match (e.g., `{ id: 'id' }` → `WHERE associated.id != this.id`) |
 | `source` | association name | For through associations: the association name on the intermediate model |
 | `through` | association name | Load through an intermediate association |
 | `withoutDefaultScopes` | scope name[] | Default scopes to skip when loading this association |
 
 **Through associations** (`through` option) cannot use: `dependent`, `primaryKeyOverride`, `withoutDefaultScopes`, `on`, or `polymorphic`.
+
+### Joining on a non-default key (`on` + `primaryKeyOverride`)
+
+By default an association joins the conventional foreign key to the primary key — `associated.<model>_id = this.id`. Two options override the sides of that join, and used **together** they let you associate on any column pair, such as a natural key (a `uuid`) rather than the id-based FK:
+
+- `on` — the column that **holds the reference**, on whichever side owns the FK. For `BelongsTo` it's a column on this model; for `HasMany` / `HasOne` it's a column on the associated model.
+- `primaryKeyOverride` — the column the reference **matches against** on the other side, instead of the default `id`.
+
+The join becomes `<fk-holder>.[on] = <other-side>.[primaryKeyOverride]`.
+
+```typescript
+// Associate Booking and Guest by a public `uuid` instead of the numeric `guest_id` → `id`.
+// (`Guest.uuid` and `Booking.guestUuid` are illustrative columns.)
+
+// Booking owns the reference:
+@deco.BelongsTo('Guest', { on: 'guestUuid', primaryKeyOverride: 'uuid' })
+public guest: Guest
+public guestUuid: string
+
+// Guest's inverse:
+@deco.HasMany('Booking', { on: 'guestUuid', primaryKeyOverride: 'uuid' })
+public bookings: Booking[]
+
+// Both resolve to:  bookings.guest_uuid = guests.uuid
+```
+
+This is distinct from `selfAnd`: `on` / `primaryKeyOverride` change **which columns the join uses**, while `selfAnd` keeps the FK join and **adds** a second condition on top of it. And unlike `and` — which filters the associated row against a literal value — all three name real join columns.
 
 ### DreamConst in Association Conditions
 

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.56.0 — 2026-06-30
+
+### Added
+
+- **`models.md`** — new "Joining on a non-default key (`on` + `primaryKeyOverride`)" section. Documents the previously-undocumented capability of associating on an arbitrary column pair (e.g. a `uuid` natural key) rather than the conventional id-based FK, by combining `on` (the column that holds the reference) with `primaryKeyOverride` (the column it matches on the other side): the join is `<fk-holder>.[on] = <other-side>.[primaryKeyOverride]`. Includes a paired `BelongsTo` / `HasMany` BearBnB example and a contrast clarifying that `on` / `primaryKeyOverride` change which columns the join uses, `selfAnd` adds a condition on top of the FK join, and `and` filters against a literal.
+
+### Changed
+
+- **`models.md`** — rewrote the `selfAnd` / `selfAndNot` association examples in the BearBnB domain (`featuredRoom`, `siblingRooms`, `peakSeasonBookings`) — they previously used off-domain `DailyChallenge` / `UserChallengeProgress` / `TreeNode` nouns. Clarified in the examples and the options tables that `selfAnd` **adds** its condition on top of the normal FK join (the FK join is kept), rather than replacing it. Added a plain `on` FK-rename example for `HasMany`, and brought the `BelongsTo` `on` / `primaryKeyOverride` examples into the BearBnB domain as proper inverses.
+
 ## 0.55.0 — 2026-06-30
 
 ### Changed
