@@ -363,6 +363,7 @@ export default class V1HostPlacesController extends V1HostBaseController {
     status: 201,
     tags: ['places'],
     fastJsonStringify: true,
+    requestBody: { params: ['name', 'style', 'sleeps'] },
   })
   public async create() {
     let place = await ApplicationModel.transaction(async txn => {
@@ -375,7 +376,11 @@ export default class V1HostPlacesController extends V1HostBaseController {
   }
 
   // UPDATE
-  @OpenAPI(Place, { status: 204, tags: ['places'] })
+  @OpenAPI(Place, {
+    status: 204,
+    tags: ['places'],
+    requestBody: { params: ['name', 'style', 'sleeps'] },
+  })
   public async update() {
     const place = await this.place()
     await place.update(this.extractParams(Place, ['name', 'style', 'sleeps']))
@@ -442,7 +447,12 @@ public async index() {
 When creating STI child records, you MUST switch on the type:
 
 ```typescript
-@OpenAPI(Room, { status: 201, tags: ['rooms'], fastJsonStringify: true })
+@OpenAPI(Room, {
+  status: 201,
+  tags: ['rooms'],
+  fastJsonStringify: true,
+  requestBody: { params: ['name', 'sleeps'], including: ['type'] },
+})
 public async create() {
   const roomType = this.castParam('type', 'string', { enum: RoomTypesEnumValues })
   const roomParams = this.extractParams(Room, ['name', 'sleeps'])
@@ -580,7 +590,7 @@ Some columns are always stripped, regardless of `paramSafeColumns` or the positi
 - Foreign keys of BelongsTo associations
 - The polymorphic type field of polymorphic BelongsTo associations
 
-These same columns are excluded from the auto-derived OpenAPI request body. The `requestBody.including` shorthand on `@OpenAPI` exists to re-add them — read it as "re-add what extraction excluded" rather than as a generic "add fields" knob. The exclusions exist to prevent mass-assignment on FK references and STI/polymorphic type discriminators. Re-add via `including` for the spec, and pull the value explicitly via `castParam` (or via the request-body shape for bulk operations) inside the action.
+These same columns are excluded from a model-derived OpenAPI request body — listing one in `params` won't surface it. The `requestBody.including` shorthand on `@OpenAPI` exists to re-add them — read it as "re-add what extraction excluded" rather than as a generic "add fields" knob. The exclusions exist to prevent mass-assignment on FK references and STI/polymorphic type discriminators. Re-add via `including` for the spec, and pull the value explicitly via `castParam` (or via the request-body shape for bulk operations) inside the action.
 
 #### Declaring `paramSafeColumns` on the model
 
@@ -654,7 +664,7 @@ export default class PostsController extends AuthedController {
 
 The const is typed `DreamParamSafeColumnNames<Model>[]`, which gives autocomplete of valid columns and a compile error on anything not param-safe right at the assignment. It is emitted only when the controller has a `create` and/or `update` action and the model is known (index/show/destroy-only controllers don't get it), and when no columns survive the param-safe filter it is still emitted, typed and empty: `const paramSafeColumns: DreamParamSafeColumnNames<Post>[] = []`. The real scaffold emits the action bodies commented-out as hints; they're shown uncommented here for readability. Admin and non-admin scaffolds emit the same shape.
 
-**Single edit point:** narrowing `paramSafeColumns` updates both the runtime `extractParams` allowlist *and* the documented `@OpenAPI` request body in one place — the documented request shape and the runtime extraction can't silently diverge. Note this is `requestBody`, not the response: `create`'s 201 still returns the full serializer and `update` is 204 (no body) — the allowlist constrains *input*. The `requestBody: { params }` here is the generator pre-wiring the auto-derived request body for scaffolded CRUD; the [`requestBody.including`](#always-excluded-columns) escape hatch ("re-add what extraction excluded") still applies on top of it unchanged.
+**Single edit point:** narrowing `paramSafeColumns` updates both the runtime `extractParams` allowlist *and* the documented `@OpenAPI` request body in one place — the documented request shape and the runtime extraction can't silently diverge. Note this is `requestBody`, not the response: `create`'s 201 still returns the full serializer and `update` is 204 (no body) — the allowlist constrains *input*. The `requestBody: { params }` here is the generator pre-wiring the request body for scaffolded CRUD; the [`requestBody.including`](#always-excluded-columns) escape hatch ("re-add what extraction excluded") still applies on top of it unchanged.
 
 ## Response Methods
 
@@ -787,14 +797,13 @@ this.ok(places)
 
 ### `requestBody` shorthand — what each option is for
 
-The auto-derived request body shape is the model's `paramSafeColumns`. Reach for `requestBody` only when you need to override that default. **If your action only takes `paramSafeColumns`, omit `requestBody` entirely.**
+**Always declare `requestBody: { params: [...] }` on a model-derived create/update.** List the model columns the action accepts, mirroring the `extractParams` allowlist — the documented request shape stays visible at the call site instead of being inferred. Reach for the other options below to layer onto that `params` list.
 
 **Derive before hand-writing.** If any body field is a Dream model column, use `params` / `including` / `combining` / `OpenAPI.forDream(...)` so types, nullability, and enum constraints come from the model. This still applies when the action cannot use `extractParams` directly, such as an STI create action that reads a `type` discriminator with `castParam` and then dispatches through an exhaustive `switch`. The runtime extraction can be custom; the OpenAPI request body should still be model-derived.
 
 | Use | When |
 |---|---|
-| omit `requestBody` | Action only takes `paramSafeColumns`. |
-| `params: [...]` | Narrow the auto-derived shape to a subset of the model's real columns, Encrypted columns, and Virtual columns. |
+| `params: [...]` | List the model columns the body accepts — its real columns, Encrypted columns, and Virtual columns. The default form on every model-derived create/update. |
 | `including: [...]` | Re-add columns that ARE on the model but auto-excluded — FKs, STI `type`, polymorphic type. **Most common legitimate use.** Use this even when the FK is nullable; column nullability is inferred from the model. |
 | `combining: { … }` | Add fields that are NOT columns on the model — join-table arrays (`cityIds`), one-shot tokens, upload metadata, workflow flags. |
 | `required: [...]` | Mark fields required. **Typed to the model's column names**, so it cannot reference `combining` keys. |
@@ -813,7 +822,7 @@ The most-mistaken case: an `update` action whose body needs to express "the FK c
 @OpenAPI(Venue, {
   status: 204,
   tags: ['venues'],
-  requestBody: { including: ['zipCodeId'] },
+  requestBody: { params: ['name'], including: ['zipCodeId'] },
 })
 public async update() {
   await (await this.venue()).update(this.extractParams(Venue, ['name', 'zipCodeId']))
@@ -838,7 +847,7 @@ import { OpenAPI } from '@rvoh/psychic'
   tags: ['places'],
   fastJsonStringify: true,
   requestBody: {
-    including: ['name', 'style', 'sleeps'],
+    params: ['name', 'style', 'sleeps'],
     combining: {
       // Nested array of Room shapes, each derived from Room's paramSafeColumns.
       // OpenAPI.forDream's generic narrows `required` to Room column names —
@@ -872,7 +881,7 @@ The OpenAPI shape and the `extractParams` calls stay aligned: the spec advertise
 
 #### Anti-patterns
 
-- **Don't list model columns inside `combining`.** `combining` adds fields that are *not* on the model. Listing real columns there either silently duplicates the auto-derived shape or shadows it with a hand-typed copy that drifts (e.g., a `{ enum: [...] }` redeclaration that goes stale when the DB enum changes). Use `OpenAPI.forDream(Model, ...)` (or the nested `for:` sentinel) when the value is itself a Dream-model shape.
+- **Don't list model columns inside `combining`.** `combining` adds fields that are *not* on the model. Listing real columns there either silently duplicates the model-derived shape or shadows it with a hand-typed copy that drifts (e.g., a `{ enum: [...] }` redeclaration that goes stale when the DB enum changes). Use `OpenAPI.forDream(Model, ...)` (or the nested `for:` sentinel) when the value is itself a Dream-model shape.
 - **Don't write `properties:` inside `requestBody` for model fields.** It is not one of the shorthand options, and it duplicates model-owned type information. Only use explicit `type: 'object'` / `properties` / `required` when the body has no model fields at all (next subsection).
 
 #### When the body has no model fields

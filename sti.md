@@ -446,7 +446,12 @@ export default class V1HostPlacesRoomsController extends V1HostPlacesBaseControl
     this.ok(rooms)
   }
 
-  @OpenAPI(Room, { status: 201, tags: ['rooms'], fastJsonStringify: true })
+  @OpenAPI(Room, {
+    status: 201,
+    tags: ['rooms'],
+    fastJsonStringify: true,
+    requestBody: { params: ['name', 'position', 'bedTypes'], including: ['type'] },
+  })
   public async create() {
     const roomType = this.castParam('type', 'string', { enum: RoomTypesEnumValues })
     const roomParams = this.extractParams(Room, ['name', 'position', 'bedTypes'])
@@ -479,7 +484,11 @@ export default class V1HostPlacesRoomsController extends V1HostPlacesBaseControl
     this.created(room)
   }
 
-  @OpenAPI(Room, { status: 204, tags: ['rooms'] })
+  @OpenAPI(Room, {
+    status: 204,
+    tags: ['rooms'],
+    requestBody: { params: ['name', 'position', 'bedTypes'] },
+  })
   public async update() {
     const room = await this.room()
     await room.update(this.extractParams(Room, ['name', 'position', 'bedTypes']))
