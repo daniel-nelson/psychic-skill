@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.55.0 — 2026-06-30
+
+### Changed
+
+- **`controllers.md`** — corrected the STI `requestBody` note: `@OpenAPI(BaseModel, ...)` derives its request body from the base model's shared physical table, not from the TypeScript properties on the base class. A column declared (as a `DreamColumn`) only on a child class is still a real column on the shared table, so it is part of the base model's derived request-body surface — re-add an auto-excluded one (FK or `type` discriminator) with `including`, the OpenAPI mirror of `extractParams(BaseModel, [...])`. Check generated table metadata (`src/types/db.ts` / `src/types/dream.ts`) before deciding a field is unavailable. `combining` is reserved for genuine non-column inputs (one-shot tokens, upload metadata, join-table arrays); a model's declared columns and its own virtual attributes both belong to the model-derived surface (`params` / `including`), not `combining`.
+
 ## 0.54.0 — 2026-06-30
 
 ### Removed
