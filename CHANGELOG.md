@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.57.0 — 2026-06-30
+
+### Added
+
+- **`controllers.md`** / **`SKILL.md`** — strict rule that a model-derived `requestBody`'s `params` / `including` must be **literal arrays** mirroring the action's `extractParams` allowlist, and must **never** be backfilled by calling `Model.paramSafeColumnsOrFallback()`, `Model.paramSafeColumns`, or `Model.columns()` inside the `@OpenAPI` decorator. Those return the model's entire writable column surface (every table column, names and types, for a model with no declared `paramSafeColumns`), which re-creates the implicit include-all default the explicit-`params` convention exists to remove, advertises fields the action doesn't accept, and exposes the full column surface in the public spec. Added as a clause on SKILL.md Critical Rule 21 and a strict rule in the controllers.md `requestBody` shorthand section.
+
 ## 0.56.0 — 2026-06-30
 
 ### Added
