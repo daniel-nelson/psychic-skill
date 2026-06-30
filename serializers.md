@@ -474,17 +474,7 @@ export const RoomBathroomForGuestsSerializer = (bathroom: Bathroom, passthrough:
 
 **Prefer `preloadFor` or `loadFor`** over manual `preload(...)` chains. These methods automatically load everything the serializer needs, including nested `rendersOne`, `rendersMany`, and `delegatedAttribute` associations. Manual preload is fragile — it misses nested dependencies, causing `NonLoadedAssociation` errors at serialization time. Don't switch to manual preload to avoid an extra DB query without data showing it's a real problem. `preloadFor` automatically adapts as serializers evolve — if you add a `rendersMany` to a serializer, every controller using `preloadFor` picks it up automatically. Manual preload chains don't, leading to production `NonLoadedAssociation` errors and harder-to-understand code. Let data lead optimization decisions, not intuition about query counts. Manual `preload(...)` and `load(...)` are still useful outside of serialization contexts (e.g., loading associations for business logic in a service).
 
-**`customAttribute` associations are not discovered.** `preloadFor` only walks `rendersOne`, `rendersMany`, and `delegatedAttribute` to build its preload tree. A `customAttribute` whose function body reads an association is invisible to it, so that association is never auto-preloaded and throws `NonLoadedAssociation` at render time. For example, a `Place` summary serializer with a `customAttribute('bookingCount', () => place.bookings.length)` reads `bookings`, but `preloadFor('summary')` won't load it. The fix is to `.preload('bookings')` explicitly at every call site that serializes through that key:
-
-```typescript
-const places = await host
-  .associationQuery('places')
-  .preloadFor('summary')
-  .preload('bookings') // customAttribute reads place.bookings; preloadFor can't see it
-  .cursorPaginate({ cursor })
-```
-
-Switching the attribute to a `rendersMany('bookings', ...)` would make `preloadFor` auto-load it, but `rendersMany` also renders the full child objects — not what a count-only `customAttribute` wants.
+To put a value from an associated record on a serializer, use `delegatedAttribute` or `rendersOne(name, { flatten: true })` — both are discovered by `preloadFor`, so the association is auto-preloaded. (`customAttribute` is for values computed from the model's own columns and passthrough, like localized labels; it's the right tool there.) `preloadFor` does not inspect `customAttribute` bodies, so reading an association inside one leaves it unloaded and rendering throws `NonLoadedAssociation` — read that error as the signal to switch to a delegate or a flattened `rendersOne`, not to hand-`.preload()` the association.
 
 **STI-aware preloading:** `preloadFor` on an STI base class discovers associations from every STI child's serializer, not just the base. If different children declare different `rendersOne`, `rendersMany`, or `delegatedAttribute` associations, `preloadFor` loads them all. At query time, Dream partitions the loaded records by actual STI child class and preloads each group using that child's own association definitions (including any `and` clauses or overrides). This means a single `preloadFor` call on the base class correctly handles mixed result sets of different STI children.
 
