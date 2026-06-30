@@ -22,7 +22,7 @@ All CLI commands in this document are run via the local project's package manage
 
 **Note on examples:** Code examples throughout this skill use BearBnB, a demo app that creates an AirBnB clone for bears (https://github.com/daniel-nelson/bearbnb). In this domain, **Guest** and **Host** are application roles (a Guest books a place to stay, a Host lists a place) — not to be confused with "visitor" (unauthenticated user) or "server" (the machine).
 
-**Ecosystem versions & staleness policy.** This skill is written against `@rvoh/dream` 2.15.x, `@rvoh/psychic` 3.8.x, `@rvoh/psychic-workers` 2.3.x, `@rvoh/psychic-websockets` 3.3.x, and `@rvoh/psychic-spec-helpers` 3.2.x. Features and generator behavior described here assume versions at or above these. **Stay current.** If something documented in this skill fails — a generator flag is unrecognized, shorthand produces malformed output (e.g. an `@alias` passing through literally into identifiers), an API is missing — the first corrective action is to update the out-of-date `@rvoh/*` packages, not to work around the skill. Minor and patch bumps within these majors are low-risk and cheap to apply; treat keeping these packages up to date as the default. This skill deliberately does **not** annotate which version each individual feature landed in — assume current, and upgrade if reality disagrees with the skill.
+**Ecosystem versions & staleness policy.** This skill is written against `@rvoh/dream` 2.17.x, `@rvoh/psychic` 3.8.x, `@rvoh/psychic-workers` 2.3.x, `@rvoh/psychic-websockets` 3.3.x, and `@rvoh/psychic-spec-helpers` 3.2.x. Features and generator behavior described here assume versions at or above these. **Stay current.** If something documented in this skill fails — a generator flag is unrecognized, shorthand produces malformed output (e.g. an `@alias` passing through literally into identifiers), an API is missing — the first corrective action is to update the out-of-date `@rvoh/*` packages, not to work around the skill. Minor and patch bumps within these majors are low-risk and cheap to apply; treat keeping these packages up to date as the default. This skill deliberately does **not** annotate which version each individual feature landed in — assume current, and upgrade if reality disagrees with the skill.
 
 **Always update peer dependencies alongside `@rvoh/*`.** A scoped command like `pnpm up -L "@rvoh/*"` upgrades only the `@rvoh` scope and leaves peer dependencies behind, which can leave a peer pinned at a version the upgraded `@rvoh/*` no longer accepts. After any `@rvoh/*` upgrade, also bump the peers needed to satisfy the new peer ranges — in practice `kysely` and `kysely-codegen` (both `@rvoh/dream` peers) are the ones that bite, but the rule is general: resolve every unmet peer requirement the upgrade introduces, don't stop at the `@rvoh` scope.
 
@@ -114,7 +114,7 @@ npx @rvoh/create-psychic new <app-name> [options]
 | Option | Description |
 |--------|-------------|
 | `--package-manager <pm>` | `pnpm`, `yarn`, or `npm` |
-| `--primary-key-type <type>` | `uuid7`, `uuid4`, `bigserial`, `bigint`, or `integer` |
+| `--primary-key-type <type>` | `uuid7`, `uuid4`, `bigint`, or `integer` |
 | `--workers` / `--no-workers` | Include or exclude background workers (`@rvoh/psychic-workers`) |
 | `--websockets` / `--no-websockets` | Include or exclude websockets (`@rvoh/psychic-websockets`) |
 | `--client <type>` | Client app: `nextjs`, `react`, `vue`, `nuxt`, or `none` |

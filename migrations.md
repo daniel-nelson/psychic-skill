@@ -114,8 +114,8 @@ Step 3 must happen before step 4. `db:migrate` runs migrations then sync. The sy
 // UUID with uuidv7 (recommended)
 .addColumn('id', 'uuid', col => col.primaryKey().defaultTo(sql`uuidv7()`))
 
-// bigserial (auto-incrementing)
-.addColumn('id', 'bigserial', col => col.primaryKey())
+// bigint identity (auto-incrementing)
+.addColumn('id', 'bigint', col => col.primaryKey().generatedByDefaultAsIdentity())
 ```
 
 ## Column Types
