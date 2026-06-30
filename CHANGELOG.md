@@ -5,6 +5,7 @@
 ### Added
 
 - **`controllers.md`** / **`SKILL.md`** — strict rule that a model-derived `requestBody`'s `params` / `including` must be **literal arrays** mirroring the action's `extractParams` allowlist, and must **never** be backfilled by calling `Model.paramSafeColumnsOrFallback()`, `Model.paramSafeColumns`, or `Model.columns()` inside the `@OpenAPI` decorator. Those return the model's entire writable column surface (every table column, names and types, for a model with no declared `paramSafeColumns`), which re-creates the implicit include-all default the explicit-`params` convention exists to remove, advertises fields the action doesn't accept, and exposes the full column surface in the public spec. Added as a clause on SKILL.md Critical Rule 21 and a strict rule in the controllers.md `requestBody` shorthand section.
+- **`soft-delete.md`** — new "Natural-key unique indexes" subsection in Setup: when adding `@SoftDelete()` to a model with a natural-key unique index, migrate it to a **partial** unique index with `WHERE deleted_at IS NULL`. Soft-deleted rows stay in the table, so a plain unique index keeps reserving the natural key and blocks a live replacement that reuses it. BearBnB `places_slug_unique` example, cross-referenced to the migrations partial-index typing note, with the `undestroy()`-collision consequence called out.
 
 ## 0.56.0 — 2026-06-30
 

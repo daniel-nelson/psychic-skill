@@ -64,6 +64,27 @@ await db.schema
   .execute()
 ```
 
+### Natural-key unique indexes
+
+When you add `@SoftDelete()` to a model that has a **unique index on a natural key** — a slug, a code, a `(host_id, name)` pair, anything other than the primary key — migrate that index to a **partial** unique index with `WHERE deleted_at IS NULL`. Soft-deleted rows stay in the table, so a plain unique index keeps reserving the natural key after deletion, blocking a new live row that reuses it.
+
+```typescript
+import { sql, type SqlBool } from 'kysely'
+
+// Replace the full unique index with one that only constrains live rows.
+await db.schema.dropIndex('places_slug_unique').execute()
+
+await db.schema
+  .createIndex('places_slug_unique')
+  .unique()
+  .on('places')
+  .column('slug')
+  .where(sql<SqlBool>`deleted_at IS NULL`)
+  .execute()
+```
+
+Without the predicate, soft-deleting a Place with `slug: 'cozy-cabin'` and then creating a new one with the same slug fails on the unique constraint, even though no *live* row holds it. The `sql<SqlBool>` cast on the predicate is required (see [migrations.md](migrations.md#alter-table)). One consequence to expect: `undestroy()` can now fail if a live row claimed the natural key while the row was soft-deleted — restoring would create two live rows with the same key, which the partial index correctly rejects.
+
 ## Destroying and Restoring
 
 ### Soft delete (default)
