@@ -221,7 +221,18 @@ export default class Bedroom extends Room {
 - Children **cannot use `@ReplicaSafe()`** - must be on the parent
 - Children **cannot use `@Sortable()`** - must be on the parent. If you need position sorting scoped per STI type, declare `@Sortable` on the base model with `type` in the scope array (e.g., `scope: ['place', 'type']`)
 - Children can override `get serializers()` (and should)
-- Children can add child-specific columns
+- Children can add child-specific **physical** columns (they live on the shared parent table). **Virtual attributes behave differently** — a child's `@deco.Virtual` does not filter up to the base class; see [Virtual attributes don't filter up to the base class](#virtual-attributes-dont-filter-up-to-the-base-class).
+
+### Virtual attributes don't filter up to the base class
+
+Child-specific **physical** columns and child-specific **virtual** attributes behave differently when you reach for them through the STI base class. This rift matters most in `create` / `update`, where the appeal of STI is a single base-class call that covers every child.
+
+- **Physical columns are table-scoped.** Every STI child's columns live on the one shared table, so the base class sees them all: `Room.columns()` returns them, `extractParams(Room, [...])` can name any child's column, and `@OpenAPI(Room, { requestBody: { params } })` derives them. One base-class call covers every concrete subtype.
+- **Virtual attributes are class-scoped.** A `@deco.Virtual` declared on a child is registered on that child class only and inherits **base → child**, never **child → base**. `Bedroom`'s virtual attribute is not on `Room`'s virtual-attribute list — this is intentional, not a gap to work around.
+
+The sharp edge: naming a child's virtual attribute through the base class **type-checks but is silently dropped at runtime**. `extractParams(Room, ['childVirtual'])` compiles — the generated schema aggregates every child's virtual columns under the shared table, so the type sees it — but returns an object without that key, because the runtime filters the allowlist against `Room`'s own param-safe set, which excludes child-declared virtuals. The same asymmetry hits `@OpenAPI(Room, { requestBody: { params: ['childVirtual'] } })`: it type-checks but renders nothing into the spec.
+
+**What to do:** handle a child's virtual attribute on the **child** class, not the base. In the `create` switch, pull it inside that child's `case` — `extractParams(Bedroom, ['childVirtual'])` resolves because `Bedroom` owns the virtual — or read it with `castParam`, and document it on a child-specific `@OpenAPI(Bedroom, ...)` if it must appear in the spec. Reserve the single base-class `extractParams(Room, [...])` / `@OpenAPI(Room, ...)` call for physical columns, which it covers completely.
 
 ### Changing an STI Record's Type
 
@@ -446,7 +457,12 @@ export default class V1HostPlacesRoomsController extends V1HostPlacesBaseControl
     this.ok(rooms)
   }
 
-  @OpenAPI(Room, { status: 201, tags: ['rooms'], fastJsonStringify: true })
+  @OpenAPI(Room, {
+    status: 201,
+    tags: ['rooms'],
+    fastJsonStringify: true,
+    requestBody: { params: ['name', 'position', 'bedTypes'], including: ['type'] },
+  })
   public async create() {
     const roomType = this.castParam('type', 'string', { enum: RoomTypesEnumValues })
     const roomParams = this.extractParams(Room, ['name', 'position', 'bedTypes'])
@@ -479,7 +495,11 @@ export default class V1HostPlacesRoomsController extends V1HostPlacesBaseControl
     this.created(room)
   }
 
-  @OpenAPI(Room, { status: 204, tags: ['rooms'] })
+  @OpenAPI(Room, {
+    status: 204,
+    tags: ['rooms'],
+    requestBody: { params: ['name', 'position', 'bedTypes'] },
+  })
   public async update() {
     const room = await this.room()
     await room.update(this.extractParams(Room, ['name', 'position', 'bedTypes']))
@@ -504,7 +524,7 @@ export default class V1HostPlacesRoomsController extends V1HostPlacesBaseControl
 
 **Key points:**
 - `RoomTypesEnumValues` is auto-generated from the enum in `types/db.ts`
-- `this.extractParams(Room, [...])` uses the parent class — this works because extraction reads from the **database table**, not the model class. Since all STI children share the same table, the allowlist can name columns from any child (including child-specific ones like `bedTypes`) and a single extraction call covers every concrete subtype. This also means `update` doesn't need a switch statement — one `extractParams(Room, [...])` call handles every child's columns.
+- `this.extractParams(Room, [...])` uses the parent class — this works because extraction reads from the **database table**, not the model class. Since all STI children share the same table, the allowlist can name columns from any child (including child-specific ones like `bedTypes`) and a single extraction call covers every concrete subtype. This also means `update` doesn't need a switch statement — one `extractParams(Room, [...])` call handles every child's columns. This table-based reach covers **physical** columns only; a child's `@deco.Virtual` attribute does not filter up to the base and must be handled on the child class — see [Virtual attributes don't filter up to the base class](#virtual-attributes-dont-filter-up-to-the-base-class).
 - Each `case` creates via the **child** class (e.g., `Bedroom.create(...)`)
 - The `default` branch with `const _never: never = roomType` ensures compile-time exhaustiveness
 - `show`, `update`, `destroy` work on the parent `Room` type - Dream returns the correct child instance

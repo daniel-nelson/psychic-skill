@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.55.0 — 2026-06-30
+
+### Changed
+
+- **`controllers.md`** — corrected the STI `requestBody` note: `@OpenAPI(BaseModel, ...)` derives its request body from the base model's shared physical table, not from the TypeScript properties on the base class. A column declared (as a `DreamColumn`) only on a child class is still a real column on the shared table, so it is part of the base model's derived request-body surface — re-add an auto-excluded one (FK or `type` discriminator) with `including`, the OpenAPI mirror of `extractParams(BaseModel, [...])`. Check generated table metadata (`src/types/db.ts` / `src/types/dream.ts`) before deciding a field is unavailable. `combining` is reserved for genuine non-column inputs (one-shot tokens, upload metadata, join-table arrays); a model's declared columns and its own virtual attributes both belong to the model-derived surface (`params` / `including`), not `combining`.
+- **`controllers.md`, `sti.md`, `migrations.md`** — always show `requestBody: { params: [...] }` on a model-derived create/update, mirroring the `extractParams` allowlist, so the documented request shape is visible at the call site. Dropped the guidance to omit `requestBody` when an action "only takes `paramSafeColumns`" and the "auto-derived shape is `paramSafeColumns`" framing; the implicit include-all default is no longer referenced. Updated the worked examples accordingly (including fixing the nested multi-resource create and the nullable-FK update, which now list param-safe columns under `params` rather than `including`).
+
+### Added
+
+- **`sti.md`** — new "Virtual attributes don't filter up to the base class" section documenting the rift between physical and virtual columns on STI children: physical columns are table-scoped (the base class reaches them via `extractParams(Base, [...])` and `@OpenAPI(Base, ...)`), but a child's `@deco.Virtual` is class-scoped and inherits base → child only. Naming a child virtual through the base type-checks but is silently dropped at runtime; handle it on the child class instead. Cross-referenced from the STI limitations list, the STI controller key-points, and the `controllers.md` `requestBody` STI nuance.
+
 ## 0.54.0 — 2026-06-30
 
 ### Removed
