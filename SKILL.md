@@ -37,7 +37,7 @@ All CLI commands in this document are run via the local project's package manage
 5. **NEVER stub or mock Dream internals** in tests - use factories to create real model instances.
 6. **NEVER modify an existing migration file that has already been merged into main.**
 7. **A generator must always be used** when creating new models, controllers, or migrations.
-8. **Sources of truth** (priority order): TSDocs > `pnpm psy <command> --help` > psychic-skill > MCP server (dream-psychic-rag).
+8. **Sources of truth** (priority order): TSDocs > `pnpm psy <command> --help` > psychic-skill.
 9. **BDD approach**: Write failing spec first, then implement. Generated code is the only exception (generators create scaffolding for specs and implementation simultaneously).
 10. **Run `pnpm psy sync`** after changing associations, serializers, OpenAPI decorators, or routes.
 11. **Only use comments to explain "why", not "what"** - prefer expressive code over comments. TSDoc comments explaining "how" or "when" to use a function/method/class are welcome.

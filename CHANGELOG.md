@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.54.0 — 2026-06-30
+
+### Removed
+
+- **`SKILL.md`** — dropped the `dream-psychic-rag` MCP server from the Critical Rule #2 "Sources of truth" priority list. In an installed Psychic app the authoritative API reference is the packages' shipped TSDocs (version-matched to what's running), so the sources of truth are now TSDocs > `pnpm psy <command> --help` > psychic-skill.
+
 ## 0.53.0 — 2026-06-29
 
 ### Added
