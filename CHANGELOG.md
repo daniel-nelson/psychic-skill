@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.56.0 — 2026-06-30
+
+### Added
+
+- **`sti.md`** — clarified, in the STI limitations note on scoping a parent association with `and: { type: ... }`, that an association's `and` / `andNot` / `andAny` conditions are typechecked against the **associated (target) model's** columns, not the declaring model's. `and: { type: 'Bedroom' }` works only because the target `Room` is the STI table that owns `type`; you can't scope an association whose target is a different table by the declaring STI model's own discriminator (it's a compile error when the target has no `type` column).
+
 ## 0.55.0 — 2026-06-30
 
 ### Changed
