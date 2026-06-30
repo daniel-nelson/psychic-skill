@@ -8,6 +8,10 @@ Runnable command examples in the skill always use the `pnpm psy ...` form (e.g. 
 
 The agent-facing counterpart is Critical Rule #2 in `SKILL.md`, which tells a reader to detect the project's real package manager (from `package.json`'s `"packageManager"` field or the lockfile) and substitute — so writing `pnpm` here doesn't mislead a yarn/npm/bun project. Keep that rule and this note consistent; if either changes, update the other.
 
+## Example domain: BearBnB
+
+Every example in the skill — models, controllers, serializers, generators, migrations, routing — uses one shared domain: BearBnB, a bear-themed short-term-rental app (Airbnb for bears). The core nouns are `Place`, `Room` (an STI base with children `Bathroom`/`Bedroom`/`Den`), `Host`, `Guest`, `Booking`, `City`, and `LocalizedText`. Reusing these nouns keeps examples mutually consistent — an association in one file lines up with the model and serializer shown in another — so when adding or editing any example, draw from this domain rather than introducing a new one, and extend the noun set only when no existing noun fits.
+
 ## Release process (required on every PR)
 
 "Publishing" a version means merging into `main`. There is no separate publish step — whatever is on `main` is the released skill, and installs upgrade by pulling `main`.

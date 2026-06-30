@@ -112,6 +112,8 @@ Computed/virtual field with a callback:
 })
 ```
 
+Note: a `customAttribute` whose function body reads an association is invisible to `preloadFor` — see [preloadFor Integration](#preloadfor-integration).
+
 ### .delegatedAttribute(associationName, propertyName, options?)
 
 Access a property on a loaded association:
@@ -399,6 +401,20 @@ For OpenAPI-visible nested computed/view-model response shapes, export every Obj
 
 Runtime serializer global names include the serializer path, so the same exported function name in different directories does not by itself cause `SerializerNameConflict`. OpenAPI component names for named exports are based on the export name, though, so two OpenAPI-visible serializers with the same exported function name can still collide in the generated schema. Give computed/view-model serializers distinct export names, such as a `ViewSerializer` suffix, when the domain noun overlaps a Dream model serializer.
 
+### A compound response is still one serializer
+
+When an action returns a hand-shaped envelope — say a record plus a related collection, `{ place, nearby }`, or a computed array alongside serialized models — model the whole envelope as one composing `ObjectSerializer` that renders each part, and pass it to `@OpenAPI(SerializerFn)`. Don't reach for a hand-written `responses` block. `rendersOne` / `rendersMany` take a serializer function via `{ serializer }`, or render a Dream-model field by key via `{ dreamClass, serializerKey }`:
+
+```typescript
+// Action returns { place: Place; nearby: Place[] }
+export const PlaceWithNearbySerializer = (place: Place, nearby: Place[]) =>
+  ObjectSerializer({ place, nearby })
+    .rendersOne('place', { serializer: PlaceSummarySerializer })
+    .rendersMany('nearby', { serializer: PlaceSummarySerializer })
+```
+
+The action is then `@OpenAPI(PlaceWithNearbySerializer, { status: 200 })` over `this.ok(PlaceWithNearbySerializer(place, nearby))`. The schema is derived and validated under test, with no hand-maintained JSON Schema to drift. Even a one-off envelope is worth this — a composing serializer stays the single source of truth where a hand-written `responses` block does not.
+
 ## STI Serializers
 
 For Single Table Inheritance, use generic type parameter:
@@ -457,6 +473,8 @@ export const RoomBathroomForGuestsSerializer = (bathroom: Bathroom, passthrough:
 ## preloadFor Integration
 
 **Prefer `preloadFor` or `loadFor`** over manual `preload(...)` chains. These methods automatically load everything the serializer needs, including nested `rendersOne`, `rendersMany`, and `delegatedAttribute` associations. Manual preload is fragile — it misses nested dependencies, causing `NonLoadedAssociation` errors at serialization time. Don't switch to manual preload to avoid an extra DB query without data showing it's a real problem. `preloadFor` automatically adapts as serializers evolve — if you add a `rendersMany` to a serializer, every controller using `preloadFor` picks it up automatically. Manual preload chains don't, leading to production `NonLoadedAssociation` errors and harder-to-understand code. Let data lead optimization decisions, not intuition about query counts. Manual `preload(...)` and `load(...)` are still useful outside of serialization contexts (e.g., loading associations for business logic in a service).
+
+To put a value from an associated record on a serializer, use `delegatedAttribute` or `rendersOne(name, { flatten: true })` — both are discovered by `preloadFor`, so the association is auto-preloaded. (`customAttribute` is for values computed from the model's own columns and passthrough, like localized labels; it's the right tool there.) `preloadFor` does not inspect `customAttribute` bodies, so reading an association inside one leaves it unloaded and rendering throws `NonLoadedAssociation` — read that error as the signal to switch to a delegate or a flattened `rendersOne`, not to hand-`.preload()` the association.
 
 **STI-aware preloading:** `preloadFor` on an STI base class discovers associations from every STI child's serializer, not just the base. If different children declare different `rendersOne`, `rendersMany`, or `delegatedAttribute` associations, `preloadFor` loads them all. At query time, Dream partitions the loaded records by actual STI child class and preloads each group using that child's own association definitions (including any `and` clauses or overrides). This means a single `preloadFor` call on the base class correctly handles mixed result sets of different STI children.
 

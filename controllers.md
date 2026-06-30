@@ -318,7 +318,7 @@ export default class V1HostPlacesBaseController extends V1HostBaseController {
   protected async loadCurrentPlace() {
     this.currentPlace = await this.currentHost
       .associationQuery('places')
-      .findOrFail(this.castParam('placeId', 'string'))
+      .findOrFail(this.castParam('placeId', 'uuid'))
   }
 }
 ```
@@ -395,7 +395,7 @@ export default class V1HostPlacesController extends V1HostBaseController {
     return await this.currentHost
       .associationQuery('places')
       .preloadFor('default')
-      .findOrFail(this.castParam('id', 'string'))
+      .findOrFail(this.castParam('id', 'uuid'))
   }
 }
 ```
@@ -494,12 +494,17 @@ See the [koa-bodyparser README](https://github.com/koajs/bodyparser) for the ful
 ### castParam Types
 
 ```typescript
-// Basic types
+// Ids — cast to the column's primary-key type, never 'string'. Match your app's
+// configured primaryKeyType: uuid4/uuid7 → 'uuid', bigserial/bigint → 'bigint',
+// integer → 'integer'.
 this.castParam('id', 'uuid')
+this.castParam('id', 'bigint')
+this.castParam('id', 'integer')
+
+// Other scalars
 this.castParam('name', 'string')
 this.castParam('count', 'integer')
-this.castParam('id', 'bigint')
-this.castParam('price', 'number')
+this.castParam('price', 'number')   // 'number' allows decimals — for values, not ids
 this.castParam('birthday', 'date')
 this.castParam('startAt', 'datetime')
 
@@ -820,7 +825,7 @@ public async update() {
 
 When a request body bundles multiple Dream models — typically a parent plus a one-shot array of children — use the `for: Model` sentinel inside `combining` (or `combining.<key>.items` for arrays). It produces an inline object schema derived from the model's `paramSafeColumns`. Use `OpenAPI.forDream(Model, opts)` as the typed wrapper: `params` / `including` / `required` are constrained at compile time to that model's column names, so a misspelled column raises a TS error instead of silently dropping out of the OpenAPI shape.
 
-The nested `for:` sentinel is **request-only** — response shapes still use `$serializable` / `$serializer`.
+The nested `for:` sentinel is **request-only**; response shapes are modeled as a serializer and declared with `@OpenAPI(SerializerFn)`, not hand-written — see [Custom Response Envelopes](#custom-response-envelopes).
 
 **BearBnB worked example.** A single `POST /host/places` that creates a `Place` and an array of `Room`s atomically:
 
@@ -886,75 +891,9 @@ This is the correct tool when no model field participates in the body — not a 
 
 ### Custom Response Envelopes
 
-When an endpoint returns a stable custom object shape instead of a serialized model or pagination result, create an `ObjectSerializer`, pass that serializer function to `@OpenAPI(SerializerFn, { status })`, and return the serializer from the action. This keeps the response schema derived from serializer attributes instead of duplicating it in a hand-written `responses` block.
-
-Use a hand-written `responses` schema only for a genuinely one-off response shape that cannot sensibly be represented as an `ObjectSerializer`. Do not treat "the ObjectSerializer does not exist yet" as permission to hand-write JSON Schema; create the serializer. The serializer is the type-enforced boundary between the data being returned and the OpenAPI schema, while a plain object plus duplicated `responses` schema can drift silently.
-
-When hand-written `responses` is actually justified, Psychic uses a **shorthand format** — schema properties go directly on the status code object, not nested inside `content: { 'application/json': { schema: ... } }`:
+When an action returns a custom or compound shape — an envelope like `{ place, nearby }`, or a computed array alongside serialized models — model the whole shape as one composing `ObjectSerializer` and pass it to `@OpenAPI`; see [A compound response is still one serializer](serializers.md#a-compound-response-is-still-one-serializer) for how to build it. The action renders the plain data with `this.ok(...)`:
 
 ```typescript
-@OpenAPI({
-  status: 200,
-  fastJsonStringify: true,
-  responses: {
-    200: {
-      type: 'object',
-      required: ['place', 'nearby'],
-      properties: {
-        place: { $serializable: Place, $serializableSerializerKey: 'summary' },
-        nearby: { $serializable: Place, $serializableSerializerKey: 'summary', many: true },
-      },
-    },
-  },
-})
-```
-
-The `$serializable` shorthand references a Dream model's serializer within a custom schema, so you don't need to redeclare every field. Options: `$serializableSerializerKey` for a specific serializer key, `many: true` for arrays, `maybeNull: true` for nullable.
-
-**Pre-render nested models in custom envelopes.** Raw Dream model instances inside a custom object will not be automatically serialized. Explicitly render nested models before calling `this.ok(...)`:
-
-```typescript
-@OpenAPI({
-  status: 200,
-  fastJsonStringify: true,
-  responses: {
-    200: {
-      type: 'object',
-      required: ['place', 'nearby'],
-      properties: {
-        place: { $serializable: Place, $serializableSerializerKey: 'summary' },
-        nearby: { $serializable: Place, $serializableSerializerKey: 'summary', many: true },
-      },
-    },
-  },
-})
-public async show() {
-  const place = await this.place()
-  const nearby = await Place.preloadFor('summary').where({ city: place.city }).limit(5).all()
-
-  this.ok({
-    place: PlaceSummarySerializer(place).render(),
-    nearby: nearby.map(p => PlaceSummarySerializer(p).render()),
-  })
-}
-```
-
-Prefer formalizing the response with an `ObjectSerializer`. This generates the OpenAPI schema automatically via `attribute`, `customAttribute`, `rendersOne`, and `rendersMany`, avoiding the hand-written `responses` block:
-
-```typescript
-// PlaceWithNearbySerializer.ts
-import { ObjectSerializer } from '@rvoh/dream'
-import Place from '@models/Place.js'
-import { PlaceSummarySerializer } from '@serializers/PlaceSerializer.js'
-
-export const PlaceWithNearbySerializer = (place: Place, nearby: Place[]) =>
-  ObjectSerializer({ place, nearby })
-    .rendersOne('place', { serializer: PlaceSummarySerializer })
-    .rendersMany('nearby', { serializer: PlaceSummarySerializer })
-```
-
-```typescript
-// In the controller
 @OpenAPI(PlaceWithNearbySerializer, { status: 200 })
 public async show() {
   const place = await this.place()
@@ -964,7 +903,7 @@ public async show() {
 }
 ```
 
-For nested computed objects, create nested `ObjectSerializer`s rather than expanding nested `properties` by hand. Every leaf attribute on a non-Dream object must carry an explicit `openapi` type, which makes the schema local to the serializer that owns the value.
+The serializer is the single source of truth for the response schema, so don't hand-write a `responses` block to shape a success response. Even a one-off envelope is a composing serializer — it stays derived and validated where a hand-written schema drifts.
 
 ## Debugging Unexpected 400s (and OpenAPI-triggered 500s in Specs)
 
@@ -1007,7 +946,17 @@ Psychic automatically converts certain errors to HTTP responses:
 | `findOrFail` no match | 404 | Record not found |
 | `firstOrFail` no match | 404 | Record not found |
 
-All validation-layer errors return 400 by design — this prevents attackers from distinguishing which layer rejected a request. To explicitly return 422 with field-level validation errors intended for the end user, call `this.unprocessableContent({ errors: { fieldName: ['message'] } })`.
+All validation-layer errors return 400 by design — this prevents attackers from distinguishing which layer rejected a request. Psychic's automatic conversions return a bare 400 with no body for param, requestBody, and model validation failures, so the response is opaque about which layer rejected.
+
+To deliberately surface field-level validation errors to the end user, return a 400 that carries the error shape — call `this.badRequest({ errors: { ... } })`. The natural source of that shape is a Dream model's `.errors` getter, which is keyed `{ field: ['message'], ... }`:
+
+```ts
+const place = Place.new(this.extractParams(Place, ['name', 'style', 'sleeps']))
+if (place.isInvalid) this.badRequest({ errors: place.errors })   // place.errors → { name: ['must be present'], ... }
+await place.save()
+```
+
+Without the explicit check, an invalid `save()` / `create()` still returns 400, but with no body — the framework logs the errors rather than sending them. Conveying the error shape to the client is therefore an explicit, deliberate act.
 
 ## Rate Limiting
 

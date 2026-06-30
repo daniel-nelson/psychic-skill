@@ -136,11 +136,7 @@ it('returns posts', async () => {
 
 Every operation gets the same default error-response set — `400`, `401`, `403`, `404`, `409`, `500` — and it is merged in uniformly regardless of the controller's auth base. The auth base never adds or tightens responses. So an operation that genuinely can't return one of those (a truly public `GET` that never `401`s or `403`s) still advertises it in the spec unless you intervene.
 
-There is no automatic `422`. The `ValidationErrors` (422) component exists in `components.responses`, but no operation references it by default, and `validate.requestBody` / `validate.*` do not add one. To document a validation response, add it yourself — a per-action `responses` entry or conf `defaults.responses`, e.g. `$ref` the `ValidationErrors` component:
-
-```typescript
-responses: { 422: { $ref: '#/components/responses/ValidationErrors' } }
-```
+Psychic converts validation failures — param, request-body, and model validation — to a `400`, and every operation already documents the default `BadRequest` (400) response, so you don't add anything per-action to document a validation error. If you also want the `{ errors }` body in the spec, reshape the shared `BadRequest` component once at conf level (`defaults.components.responses.BadRequest`) so every `400` carries it — the [Reshape a shared response once](#the-levers) lever below — rather than repeating a schema per action.
 
 ### Precedence
 
@@ -195,6 +191,8 @@ Defaults fill a status only when nothing above already set it, and the conf merg
   ```
 
 `omitDefaultResponses` (and `omitDefaultHeaders`) are **not** conf-level (`psy.set('openapi', ...)`) options. They live only on the per-action `@OpenAPI` decorator and on a controller's static `openapiConfig` getter. The spec-wide way to omit defaults is a per-controller `openapiConfig`, not conf.
+
+`openapiConfig` only toggles `{ omitDefaultHeaders, omitDefaultResponses, tags }` (its type is `PsychicOpenapiControllerConfig`); it is not a place to add `responses`. There is no per-controller "add a response to every action" knob, so a controller-wide response — say a `403` that a controller-wide auth `@BeforeAction` can return — is declared per-action or spec-wide via conf `defaults.responses`.
 
 Run `pnpm psy sync` after any of these so the spec files and generated clients update.
 

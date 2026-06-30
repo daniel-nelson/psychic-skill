@@ -57,7 +57,7 @@ When using soft delete, use the default `restrict` foreign key constraint (not `
 ```typescript
 await db.schema
   .createTable('rooms')
-  .addColumn('id', 'bigserial', col => col.primaryKey())
+  .addColumn('id', 'bigint', col => col.primaryKey().generatedByDefaultAsIdentity())
   .addColumn('place_id', 'bigint', col =>
     col.references('places.id').onDelete('restrict').notNull()
   )
