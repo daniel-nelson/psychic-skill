@@ -318,7 +318,7 @@ export default class V1HostPlacesBaseController extends V1HostBaseController {
   protected async loadCurrentPlace() {
     this.currentPlace = await this.currentHost
       .associationQuery('places')
-      .findOrFail(this.castParam('placeId', 'string'))
+      .findOrFail(this.castParam('placeId', 'uuid'))
   }
 }
 ```
@@ -395,7 +395,7 @@ export default class V1HostPlacesController extends V1HostBaseController {
     return await this.currentHost
       .associationQuery('places')
       .preloadFor('default')
-      .findOrFail(this.castParam('id', 'string'))
+      .findOrFail(this.castParam('id', 'uuid'))
   }
 }
 ```
@@ -494,12 +494,17 @@ See the [koa-bodyparser README](https://github.com/koajs/bodyparser) for the ful
 ### castParam Types
 
 ```typescript
-// Basic types
+// Ids — cast to the column's primary-key type, never 'string'. Match your app's
+// configured primaryKeyType: uuid4/uuid7 → 'uuid', bigserial/bigint → 'bigint',
+// integer → 'integer'.
 this.castParam('id', 'uuid')
+this.castParam('id', 'bigint')
+this.castParam('id', 'integer')
+
+// Other scalars
 this.castParam('name', 'string')
 this.castParam('count', 'integer')
-this.castParam('id', 'bigint')
-this.castParam('price', 'number')
+this.castParam('price', 'number')   // 'number' allows decimals — for values, not ids
 this.castParam('birthday', 'date')
 this.castParam('startAt', 'datetime')
 

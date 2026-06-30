@@ -497,7 +497,7 @@ export default class V1HostPlacesRoomsController extends V1HostPlacesBaseControl
     return await this.currentPlace
       .associationQuery('rooms')
       .preloadFor('default')
-      .findOrFail(this.castParam('id', 'string'))
+      .findOrFail(this.castParam('id', 'uuid'))
   }
 }
 ```

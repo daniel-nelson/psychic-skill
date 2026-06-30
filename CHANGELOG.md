@@ -20,6 +20,7 @@
 
 ### Fixed
 
+- **`controllers.md`** / **`sti.md`** / **`SKILL.md`** — id params are now cast to their primary-key type (`uuid`, `bigint`, or `integer`), never `'string'`. The `castParam Types` reference groups the id-type options (match the app's `primaryKeyType`: `uuid4`/`uuid7` → `uuid`, `bigserial`/`bigint` → `bigint`, `integer` → `integer`) and notes `number` is for decimal values, not ids.
 - **`migrations.md`** — corrected the `:encrypted` generator example to use the bare field name (`phone:encrypted`, which yields the `encrypted_phone` column); the generator prepends `encrypted_`, so the prior `encrypted_phone:encrypted` example would have produced `encrypted_encrypted_phone`.
 
 ## 0.52.0 — 2026-06-29

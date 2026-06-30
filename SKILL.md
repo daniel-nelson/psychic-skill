@@ -292,7 +292,8 @@ export default function routes(r: PsychicRouter) {
   // Member route (custom action on a single record). A route declared directly in
   // the resources callback — outside `collection` — is member-scoped: Psychic
   // prepends `:id`. There is no `r.member`; use the existing verbs (r.get/r.post/…)
-  // and read the id in the action with `this.castParam('id', 'string')`.
+  // and read the id in the action with `this.castParam('id', 'uuid')` (cast the id to
+  // its primary-key type — `uuid`, `bigint`, or `integer` — never `string`).
   r.resources('bookings', r => {
     r.post('cancel', BookingsController, 'cancel')   // member-scoped: POST /bookings/:id/cancel
   })
