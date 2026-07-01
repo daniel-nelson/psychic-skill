@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.62.0 — 2026-07-01
+
+### Changed
+
+- **`models.md`** — corrected a fabricated Aurora PostgreSQL replica-lag figure in the "How stale is 'stale'?" note. AWS's Aurora replication docs never quantify lag under heavy write load (they only say it "increases"); the "~60 seconds" figure conflated a documented but unrelated legacy connectivity-loss auto-restart timeout with an actual lag measurement. Reworded to describe the lag mechanics for Aurora and RDS PostgreSQL without inventing a numeric ceiling, and points at the `ReplicaLag` CloudWatch metric for real workload numbers instead.
+
 ## 0.61.0 — 2026-07-01
 
 ### Added
