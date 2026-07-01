@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.58.0 — 2026-07-01
+
+### Added
+
+- **`SKILL.md`** — Critical Rule 16 now clarifies the distinct jobs of a generated enum's union type vs. its values array: type a variable/property/parameter holding one known enum value as the union type (e.g. `RoomTypesEnum`) and assign the literal directly; reach for the values array (e.g. `RoomTypesEnumValues`) only where a runtime array is actually needed. Prevents over-applying the "never hardcode DB enums" rule into inventing helpers that pluck a single member out of the values array.
+
 ## 0.57.0 — 2026-06-30
 
 ### Added
