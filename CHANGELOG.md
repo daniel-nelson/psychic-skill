@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.59.0 — 2026-07-01
+
+### Added
+
+- **`SKILL.md`** — Critical Rule 15 now calls out that exhaustive-switch case labels must be the literal string itself, never a named constant typed as the enum union (`const x: SomeEnum = 'dispatched'` widens `x` to the whole union, silently breaking the `_never` exhaustiveness check at `default`) — and explicitly rejects working around that by aliasing each literal with `satisfies` instead, which is the same mechanical-constant anti-pattern in different syntax. Verified the underlying widening behavior against `tsc --strict`.
+
 ## 0.58.0 — 2026-07-01
 
 ### Added
