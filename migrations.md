@@ -80,7 +80,6 @@ export async function up(db: Kysely<any>): Promise<void> {
 }
 
 export async function down(db: Kysely<any>): Promise<void> {
-  await db.schema.dropIndex('places_host_id').execute()
   await db.schema.dropTable('places').execute()
 }
 ```
@@ -610,4 +609,4 @@ public templateId: DreamColumn<MessageRequest, 'templateId'>
 
 **Secondary use case** — namespace strip: `Messaging/Template@template:belongs_to` produces `template: MessagingTemplate` rather than `messagingTemplate: MessagingTemplate`. Useful when the namespace is organizational rather than semantic.
 
-The legacy form (`Model:belongs_to[:optional]`) is unchanged: with no alias, the property/column derive from the model's last namespace segment. Works in every generator that accepts `belongs_to`: `g:model`, `g:sti-child`, `g:migration`, `g:resource`.
+The legacy form (`Model:belongs_to[:optional]`) is unchanged: with no alias, the property/column derive from the model's last namespace segment. Works in every generator that accepts `belongs_to`: `g:model`, `g:migration`, `g:resource`. `g:sti-child` does not accept `belongs_to` — STI children cannot declare associations (see [sti.md — STI Limitations](sti.md#sti-limitations)); declare the association on the STI parent instead.

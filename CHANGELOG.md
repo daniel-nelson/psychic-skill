@@ -1,10 +1,19 @@
 # Changelog
 
+## 0.60.0 — 2026-07-01
+
+### Changed
+
+- **`migrations.md`** — the aliased-`belongs_to` legacy-form note no longer lists `g:sti-child` among generators that accept `belongs_to`; it does not, since STI children cannot declare associations. Cross-referenced to the sti.md limitation.
+- **`sti.md`** — the "cannot define new associations" limitation now notes that `g:sti-child` enforces this at generation time by rejecting `belongs_to` columns.
+- **`migrations.md`** — dropped the redundant `dropIndex` call before `dropTable` in the Create Table `down` example; dropping a table in Postgres already drops its indexes.
+
 ## 0.59.0 — 2026-07-01
 
 ### Added
 
 - **`SKILL.md`** — Critical Rule 15 now calls out that exhaustive-switch case labels must be the literal string itself, never a named constant typed as the enum union (`const x: SomeEnum = 'dispatched'` widens `x` to the whole union, silently breaking the `_never` exhaustiveness check at `default`) — and explicitly rejects working around that by aliasing each literal with `satisfies` instead, which is the same mechanical-constant anti-pattern in different syntax. Verified the underlying widening behavior against `tsc --strict`.
+### Changed
 
 ## 0.58.0 — 2026-07-01
 
