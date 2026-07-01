@@ -661,6 +661,11 @@ Because the case-sensitivity of `ops.like` is invisible at the call site (it dep
 @SoftDelete()
 export default class Place extends ApplicationModel { ... }
 
+// ReplicaSafe - opts this model into reading from a read replica when one is
+// configured. See "Replica Safety" section below for routing rules and per-call overrides.
+@ReplicaSafe()
+export default class Place extends ApplicationModel { ... }
+
 // Sortable - maintains 1-based position within scope
 @deco.Sortable({ scope: 'place' })
 public position: DreamColumn<Room, 'position'>
@@ -1029,6 +1034,40 @@ await ApplicationModel.transaction(async txn => {
 ```
 
 If the I/O phase fails partway, nothing is in the database and the caller can safely retry. The transaction at the end is short, predictable, and never held open across network round-trips. If a later failure requires cleanup, orphaned S3 objects are cheaper to reconcile than orphaned DB rows pointing at nothing.
+
+## Replica Safety (`@ReplicaSafe`)
+
+`@ReplicaSafe()` is a class decorator that opts a model into reading from a read replica when one is configured (see [deploying.md — Read Replicas](deploying.md#read-replicas) for the connection config). Without it, every query against that model always hits the primary:
+
+```typescript
+@ReplicaSafe()
+export default class Place extends ApplicationModel { ... }
+```
+
+Mark a model `@ReplicaSafe()` only when it can tolerate reading slightly stale data (replica lag). Models backing anything read-immediately-after-write in the same request (e.g., checked right after a create) should stay off the replica.
+
+**Only `select` queries are ever eligible for the replica.** `create`, `update`, and `destroy` always run against the primary, regardless of `@ReplicaSafe()` — there is no such thing as a replica write. Being inside `ApplicationModel.transaction(...)` also forces every query to the primary, `@ReplicaSafe()` or not, since a transaction is inherently a primary-only construct.
+
+**Joining a non-`@ReplicaSafe()` model falls back to primary.** `innerJoin`, `leftJoin`, and `leftJoinPreload` (which is `leftJoin` under the hood) track every model class joined into the query, and the query only reaches the replica if the base model **and every joined model** are `@ReplicaSafe()`. One non-`@ReplicaSafe()` model anywhere in the join graph sends the whole query to primary:
+
+```typescript
+// Room is @ReplicaSafe(), Booking is not.
+await Room.innerJoin('bookings').all()   // primary — Booking isn't ReplicaSafe
+await Room.all()                          // replica — Room alone is ReplicaSafe
+```
+
+`preload` (and `preloadFor`) is different: it runs the base query and each preloaded association as **separate** queries, so each one is routed independently by its own model's `@ReplicaSafe()` status — a `@ReplicaSafe()` base model still reaches the replica even when a preloaded association isn't.
+
+**Override per call with `.connection('primary' | 'replica')`.** Use this when a specific call needs different routing than the model's default — e.g., a `@ReplicaSafe()` model read immediately after a write in the same action, where replica lag could return stale data:
+
+```typescript
+const place = await Place.create({ ... })
+// Force primary for a read that must see the write just made, even though
+// Place is @ReplicaSafe() and would otherwise be eligible for the replica.
+const fresh = await Place.connection('primary').findOrFail(place.id)
+```
+
+`.connection(...)` is available on `Model`, on any query object, and on `LoadBuilder` (`.load(...).connection(...)`). It has no effect inside a transaction — primary is forced regardless.
 
 ## Date/Time
 

@@ -101,6 +101,23 @@ const credential: SingleDbCredential = {
 
 Existing apps generated under the previous boilerplate may still set `useSsl: true`; that keeps working but is deprecated and will be removed in a future major. The migration is to switch the credential to an explicit `ssl` value chosen from the matrix above — new apps already opt into verified TLS by default, so this only affects apps scaffolded before this change.
 
+## Read Replicas
+
+`app.set('db', { primary, replica })` accepts an optional `replica` credential alongside `primary`, same shape (`host`, `port`, `user`, `password`, `name`, `ssl`) pointed at your read replica instance:
+
+```typescript
+app.set('db', {
+  primary: { host: AppEnv.string('DB_HOST'), /* port, user, password, database */ ssl: dbSsl },
+  replica: hasReplica
+    ? { host: AppEnv.string('DB_REPLICA_HOST'), /* port, user, password, database */ ssl: dbSsl }
+    : undefined,
+})
+```
+
+Configuring `replica` only makes the connection available — it doesn't route any traffic there by itself. A model only reads from the replica when it's decorated `@ReplicaSafe()`, and even then only for `select` queries outside a transaction. See [models.md — Replica Safety](models.md#replica-safety-replicasafe) for the full routing rules (join fallback to primary, `create`/`update`/`destroy` always primary, per-call `.connection(...)` override).
+
+Omit `replica` (or pass `undefined`) for environments with no replica — every model, `@ReplicaSafe()` or not, then reads from `primary`.
+
 ## Migrations in Production Deploys
 
 ### The migrate task is the boot smoke test

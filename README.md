@@ -8,7 +8,7 @@ This skill gives Claude Code and Codex deep knowledge of Dream and Psychic patte
 
 | Topic | Coverage |
 |-------|---------|
-| **Models** | Associations (BelongsTo, HasMany, HasOne, through, polymorphic), hooks, validations, scopes, query operators, soft deletes, encrypted columns, virtual attributes, dirty tracking, transactions |
+| **Models** | Associations (BelongsTo, HasMany, HasOne, through, polymorphic), hooks, validations, scopes, query operators, soft deletes, encrypted columns, virtual attributes, dirty tracking, transactions, replica safety |
 | **Controllers** | Controller hierarchy, authentication patterns, nested resource bases, CRUD patterns, `@OpenAPI` decorator, `@BeforeAction`, parameter handling (`castParam`, `extractParams`), response methods |
 | **Serializers** | `DreamSerializer` / `ObjectSerializer`, composition pattern, `.attribute` / `.customAttribute` / `.delegatedAttribute` / `.rendersOne` / `.rendersMany`, passthrough context, `preloadFor` integration |
 | **STI** | Full lifecycle: generating parent with `--sti-base-serializer`, generating children with `g:sti-child`, generic base serializers, type discrimination, controller switch pattern, migrations with check constraints |

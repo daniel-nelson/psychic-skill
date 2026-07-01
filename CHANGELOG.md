@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.61.0 — 2026-07-01
+
+### Added
+
+- **`models.md`** — new "Replica Safety (`@ReplicaSafe`)" section: what the decorator does, that only `select` queries are ever eligible for the replica (`create`/`update`/`destroy` and anything inside a transaction always hit primary), that `innerJoin`/`leftJoin`/`leftJoinPreload` fall back to primary if any joined model isn't `@ReplicaSafe()` while `preload`/`preloadFor` route each association's separate query independently, and the per-call `.connection('primary' | 'replica')` override (available on `Model`, query objects, and `LoadBuilder`). Cross-referenced from the `@SoftDelete()` entry's neighboring "Special Decorators" list and from `deploying.md`.
+- **`deploying.md`** — new "Read Replicas" section documenting the `replica` credential in `app.set('db', { primary, replica })` (same shape as `primary`, optional) and that configuring it only makes the connection available — routing to it is controlled entirely by `@ReplicaSafe()`, documented in `models.md`.
+
 ## 0.60.0 — 2026-07-01
 
 ### Changed
