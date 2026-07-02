@@ -594,7 +594,7 @@ These same columns are excluded from a model-derived OpenAPI request body — li
 
 #### Declaring `paramSafeColumns` on the model
 
-`paramSafeColumns` is the model-level upper bound on what `extractParams` can return. Declare it on any model where you want a single source of truth for "what a normal user can touch" — the runtime intersects the call-site allowlist with `paramSafeColumns`, so a column missing from the model's declaration cannot be extracted even if a controller lists it.
+`paramSafeColumns` is the model-level upper bound on what `extractParams` can return **and** on what a model-derived `@OpenAPI` `requestBody` can list — both derive from the same `paramSafeColumnsOrFallback()` set, so a column missing from the model's declaration is excluded from extraction and from the generated spec alike, even if a controller's `params`/`including` names it.
 
 Every controller action still declares its own explicit allowlist at the call site (`extractParams(Model, [...])`) regardless of whether the model declares `paramSafeColumns` — that requirement never goes away. `paramSafeColumns`/`paramUnsafeColumns` add a model-level cap on top of it, for a column that must never be bulk-assignable no matter what any action's allowlist says — an admin/role flag, an internal payout-account ID, a hand-managed tenancy column not backed by a declared `@BelongsTo`. Reach for `paramUnsafeColumns` to block just that column (it layers on top of the always-excluded set above); reach for `paramSafeColumns` to enumerate the model's whole safe set instead. Neither is something to add reflexively to every model — only where a column genuinely must never be assignable no matter what a controller passes.
 
