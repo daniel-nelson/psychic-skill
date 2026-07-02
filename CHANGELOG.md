@@ -16,6 +16,7 @@
 ### Changed
 
 - **`SKILL.md`** — bumped the ecosystem version baseline: `@rvoh/dream` 2.17.x → 2.18.x, `@rvoh/psychic` 3.8.x → 3.10.x.
+- **`controllers.md`** — corrected the `extractParams` "Other options" block, which showed two options that do not exist. `extractParams` accepts only `key` and `array` (its opts type is exactly `{ key?, array? }`): the allowlist is the required positional array, and `including` is an `@OpenAPI` `requestBody` key that reshapes only the spec, never runtime extraction. Removed the bogus `{ only }` and `{ including }` examples and added a note that nothing widens extraction past the model's `paramSafeColumnsOrFallback()` set. Also tightened the `SKILL.md` one-line summary to say `extractParams` always intersects with the model's param-safe set (declared `paramSafeColumns` or the default) and to list the primary key and polymorphic type fields among the always-stripped columns.
 
 ## 0.61.1 — 2026-07-01
 

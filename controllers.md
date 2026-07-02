@@ -562,13 +562,9 @@ public async update() {
 
 #### Other options
 
+`extractParams` takes exactly two options, `key` and `array`:
+
 ```typescript
-// Restrict further to a subset
-this.extractParams(Place, ['name', 'style'], { only: ['name', 'style'] })
-
-// Include extra fields beyond the allowlist
-this.extractParams(Place, ['name'], { including: ['specialField'] })
-
 // Extract from a nested key in the body
 this.extractParams(Place, ['name', 'style'], { key: 'place' })
 
@@ -577,6 +573,8 @@ this.extractParams(Place, ['name', 'style'], { key: 'place' })
 // Each element is validated against the allowlist.
 const roomsParams = this.extractParams(Room, ['type', 'name'], { key: 'rooms', array: true })
 ```
+
+Nothing widens extraction past the model's safe set: the positional array is the entire allowlist, and it is always intersected with the model's `paramSafeColumnsOrFallback()` (see [Always-excluded columns](#always-excluded-columns)). `including` is not an `extractParams` option — it is an `@OpenAPI` `requestBody` key that reshapes only the spec, never runtime extraction. An excluded column can never be extracted; pull it with `castParam` instead.
 
 Prefer `extractParams(Model, allowed, { key, array: true })` over `castParam('key', 'json[]')` for nested object arrays that correspond to a Dream model — it validates each item against the allowlist instead of accepting arbitrary JSON.
 
