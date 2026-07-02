@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.63.0 — 2026-07-02
+
+### Added
+
+- **`serializers.md`** — new "Layering two `delegatedAttribute`s onto the same output key" subsection under `.delegatedAttribute()`: the general "default value, optionally overridden by something more specific" technique — render a fallback association first, then a more-specific association second with `required: false` so it overrides the fallback when present but is skipped (not written as `null`) when absent. Canonical home for the pattern; other docs link here instead of re-deriving it.
+- **`serializers.md`** — `.customAttribute()` note now points readers at the layered-`delegatedAttribute` pattern instead of a `current?.title ?? fallback.title` callback, since the latter is invisible to `preloadFor`.
+- **`i18n.md`** — the Data-Driven i18n model gains a `fallbackCurrentLocalizedText` `HasOne` (`and: { locale: 'en-US' }`) alongside `currentLocalizedText`, and "Using in Serializers" now shows the two layered as the canonical `PlaceSummaryForGuestsSerializer`, so a locale missing a `LocalizedText` row falls back to the always-present default-locale row instead of serializing `null`. "Combining Both Patterns" updated to build on top of that (no longer redundantly re-delegates `title`).
+
 ## 0.62.0 — 2026-07-02
 
 ### Added

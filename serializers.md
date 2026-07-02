@@ -112,7 +112,7 @@ Computed/virtual field with a callback:
 })
 ```
 
-Note: a `customAttribute` whose function body reads an association is invisible to `preloadFor` — see [preloadFor Integration](#preloadfor-integration).
+Note: a `customAttribute` whose function body reads an association is invisible to `preloadFor` — see [preloadFor Integration](#preloadfor-integration). This includes a fallback expression like `() => current?.title ?? fallback.title`: reach for [layered `delegatedAttribute`s](#layering-two-delegatedattributes-onto-the-same-output-key) instead, so both associations get preloaded automatically.
 
 ### .delegatedAttribute(associationName, propertyName, options?)
 
@@ -143,6 +143,34 @@ When the delegated-through path may resolve to `undefined`/`null` (a missing `Ha
 Resolution order at render time: first non-`null`/non-`undefined` value from `target?.[name]`; else `default` if provided; else omit if `required: false`; else render `null`.
 
 Both options are accepted uniformly across regular columns, virtual columns, JSON/JSONB columns, STI `type` discriminators, and non-Dream targets — pick by what you want consumers to see, not by what kind of column the target is. `@deco.BelongsTo('Foo', { optional: true })` paths auto-infer the OpenAPI nullability, so `optional: true` is most often needed for `HasOne` or other non-`BelongsTo` nullable paths. On the STI `type` branch, `default:` is rejected by design — substituting a discriminator string would produce a response indistinguishable from "this is genuinely a record of that type." Use `required: false` to honestly signal absence.
+
+#### Layering two `delegatedAttribute`s onto the same output key
+
+Two `delegatedAttribute` calls can target the same output name — a general
+"default value, optionally overridden by something more specific" pattern for
+any model with a fallback association and a more-specific one (e.g. a
+locale-specific translation over a default-locale one, an org-level setting
+over a global default). The builder folds attributes in declaration order, so
+a later directive overwrites an earlier one — unless it's skipped:
+
+```typescript
+.delegatedAttribute('fallbackAssociation', 'title', { openapi: 'string' })
+.delegatedAttribute('specificAssociation', 'title', { openapi: 'string', required: false })
+```
+
+- The first (fallback) directive is required, so it always writes `title`.
+- The second directive uses `required: false`, not `optional: true`: when
+  `specificAssociation` is absent, the key is **omitted** rather than
+  overwritten with `null`, leaving the fallback's value in place. `optional:
+  true` would still write `title: null` and blank out the fallback.
+- Because the fallback directive is required, the merged OpenAPI schema keeps
+  `title` as a required string — adding the fallback doesn't change the
+  generated client type.
+- `preloadFor` resolves both `delegatedAttribute` targets automatically, so no
+  controller change is needed to load both associations.
+
+See [i18n.md — Falling Back to a Default Locale](i18n.md#falling-back-to-a-default-locale)
+for a worked example using locale-specific vs. default-locale `LocalizedText` rows.
 
 ### .rendersOne(name, options?)
 
