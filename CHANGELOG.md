@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.62.0 — 2026-07-02
+
+### Added
+
+- **`generators.md`** — new "Choose `--singular` by association shape, not by naming convention" note: decide `--singular` from the owning model's actual association (`HasOne` vs `HasMany`), since a plural resource generated against a `HasOne` parent produces controller/spec scaffolding shaped for a collection association that doesn't exist.
+- **`generators.md`** — new "`g:resource` unconditionally overwrites existing model, spec, factory, and serializer files" note: `g:resource` regenerates those files unconditionally with no existence check and no flag to skip them, so re-running it for an already-hand-edited model (e.g., to backfill a missing controller) silently discards prior edits. Documents the commit-first/restore-and-cherry-pick workaround.
+
 ## 0.61.1 — 2026-07-01
 
 ### Changed

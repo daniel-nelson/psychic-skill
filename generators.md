@@ -35,6 +35,16 @@ Because these are independent, **a nested route does not imply a namespaced mode
 
 A nested resource has a parent-id placeholder in its route path (the `{}` segment, e.g. `v1/posts/{}/comments`, `internal/clients/{}/addresses`). For these, always pass `--owning-model` set to the fully-qualified nesting (parent) model name (`--owning-model=Post`, `--owning-model=Client`). This makes the generated controller scope every query and write through `associationQuery` / `createAssociation` on the owning model, and scaffolds the parent correctly throughout — including in the generated controller spec. Omitting it generates a controller that doesn't scope to the parent and a spec that references an unconstructed parent path-param variable (the symptom is a spec that 404s on the missing parent rather than exercising the action). For `admin`/`internal` paths (which drop `currentUser` scoping), `--owning-model` is also how you reintroduce ownership scoping.
 
+### Choose `--singular` by association shape, not by naming convention
+
+Pass `--singular` when the owning side has-one of the resource (e.g., a `Host` `HasOne` `Guest` waiver, a `Place` `HasOne` `Host`-agreement). It generates a singular `r.resource` route instead of `r.resources`, omits the `index` action, and drops `:id` from URLs since there is only one per parent. Decide this from the actual association on the owning model — a plural-sounding resource name generated without `--singular` against a `HasOne` parent produces a controller and controller spec shaped for a `HasMany` collection (e.g. `associationQuery('hosts')` on a model that only has a singular `host` association), which will not compile or pass against the real association.
+
+### `g:resource` unconditionally overwrites existing model, spec, factory, and serializer files
+
+`g:resource` always regenerates the model file, unit spec, factory, and serializer for the given model name — it does not check whether those files already exist, and there is no flag to skip them (no `--controller-only` / `--skip-model` equivalent; `--only` only controls which controller actions are scaffolded). Running `g:resource` for a model name that already has hand-edited associations, hooks, validations, or serializer fields will silently discard those edits.
+
+This mainly bites when a model was already created (via `g:model` or a prior `g:resource`) and you need to add the missing controller/routes after the fact. Before running `g:resource` in that situation: commit or stash first, run the generator, then restore the hand-edited model/spec/factory/serializer files and cherry-pick only the newly generated controller, controller spec, route entry, and migration.
+
 ## Generated defaults
 
 `g:resource` and `g:model` automatically include `id`, `created_at`, `updated_at`, and `deleted_at` columns and decorate the model with `@SoftDelete()`. Do not specify these in the generator command. Use `--no-soft-delete` to opt out, since hard deletion should be an intentional decision.
