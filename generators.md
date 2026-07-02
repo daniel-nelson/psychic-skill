@@ -37,7 +37,7 @@ A nested resource has a parent-id placeholder in its route path (the `{}` segmen
 
 ### Choose `--singular` by association shape, not by naming convention
 
-Pass `--singular` when the owning side has-one of the resource (e.g., a `User` `HasOne` `Host`). It generates `r.resource` instead of `r.resources` and omits the `index` action; `r.resource` declares the path without `:id` because the owning model only has one of the resource, so there's nothing to disambiguate by ID. Decide this from the actual association on the owning model — a plural-sounding resource name generated without `--singular` against a `HasOne` parent produces a controller and controller spec shaped for a `HasMany` collection (e.g. `associationQuery('hosts')` on a model that only has a singular `host` association), which will not compile or pass against the real association.
+Pass `--singular` when the owning side has-one of the resource (e.g., a `User` `HasOne` `Host`). It generates `r.resource` instead of `r.resources` and omits the `index` action; `r.resource` declares the path without `:id` because the owning model only has one of the resource, so there's nothing to disambiguate by ID. Get this wrong and the generated controller/spec don't match reality: a plural resource generated against a `HasOne` parent calls `associationQuery('hosts')` when the model only has a singular `host` association, which won't compile.
 
 ### `g:resource` unconditionally overwrites existing model, spec, factory, and serializer files
 
