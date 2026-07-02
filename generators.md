@@ -41,7 +41,7 @@ Pass `--singular` when the owning side has-one of the resource (e.g., a `User` `
 
 ### `g:resource` unconditionally overwrites existing model, spec, factory, and serializer files
 
-`g:resource` always regenerates the model file, unit spec, factory, and serializer for the given model name — it does not check whether those files already exist, and there is no flag to skip them (no `--controller-only` / `--skip-model` equivalent; `--only` only controls which controller actions are scaffolded). Running `g:resource` for a model name that already has hand-edited associations, hooks, validations, or serializer fields will silently discard those edits.
+`g:resource` always regenerates the model file, unit spec, factory, and serializer for the given model name — it does not check whether those files already exist, and there is no flag to skip them (`--only` controls which controller actions are scaffolded, not which files are written). Running `g:resource` for a model name that already has hand-edited associations, hooks, validations, or serializer fields will silently discard those edits.
 
 This mainly bites when a model was already created (via `g:model` or a prior `g:resource`) and you need to add the missing controller/routes after the fact. Before running `g:resource` in that situation: commit or stash first, run the generator, then restore the hand-edited model/spec/factory/serializer files and cherry-pick only the newly generated controller, controller spec, route entry, and migration.
 
