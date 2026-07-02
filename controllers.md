@@ -574,7 +574,7 @@ this.extractParams(Place, ['name', 'style'], { key: 'place' })
 const roomsParams = this.extractParams(Room, ['type', 'name'], { key: 'rooms', array: true })
 ```
 
-Nothing widens extraction past the model's safe set: the positional array is the entire allowlist, and it is always intersected with the model's `paramSafeColumnsOrFallback()` (see [Always-excluded columns](#always-excluded-columns)). `including` is not an `extractParams` option — it is an `@OpenAPI` `requestBody` key that reshapes only the spec, never runtime extraction. An excluded column can never be extracted; pull it with `castParam` instead.
+Nothing widens extraction past the model's safe set: the positional array is the entire allowlist, always intersected with the model's `paramSafeColumnsOrFallback()`. An excluded column can't be extracted at all; to surface one in the spec instead, see [Always-excluded columns](#always-excluded-columns) below.
 
 Prefer `extractParams(Model, allowed, { key, array: true })` over `castParam('key', 'json[]')` for nested object arrays that correspond to a Dream model — it validates each item against the allowlist instead of accepting arbitrary JSON.
 
@@ -588,11 +588,11 @@ Some columns are always stripped, regardless of `paramSafeColumns` or the positi
 - Foreign keys of BelongsTo associations
 - The polymorphic type field of polymorphic BelongsTo associations
 
-These same columns are excluded from a model-derived OpenAPI request body — listing one in `params` won't surface it. The `requestBody.including` shorthand on `@OpenAPI` exists to re-add them — read it as "re-add what extraction excluded" rather than as a generic "add fields" knob. The exclusions exist to prevent mass-assignment on FK references and STI/polymorphic type discriminators. Re-add via `including` for the spec, and pull the value explicitly via `castParam` (or via the request-body shape for bulk operations) inside the action.
+These same columns are excluded from a model-derived OpenAPI request body — listing one in `params` won't surface it. The exclusions exist to prevent mass-assignment on FK references and STI/polymorphic type discriminators. To re-add an excluded column to the spec, use `requestBody.including` ([`requestBody` shorthand](#requestbody-shorthand--what-each-option-is-for)) and pull its value with `castParam` inside the action.
 
 #### Declaring `paramSafeColumns` on the model
 
-`paramSafeColumns` is the model-level upper bound on what `extractParams` can return and on what a model-derived `@OpenAPI` `requestBody`'s `params` can list — both derive from the same `paramSafeColumnsOrFallback()` set, so a column missing from the model's declaration is excluded from both, even if a controller's `params` names it. `including` is a separate mechanism for exactly the columns `paramSafeColumns` (or the always-excluded set) leaves out — it re-adds a column straight from the model's real columns/virtual attributes that isn't already in `params`. That's the same pattern already used for FKs and the STI `type` column (see [Always-excluded columns](#always-excluded-columns) above): `including` documents the field in the spec so the frontend knows to send it, while the controller pulls it explicitly via `castParam` rather than through bulk extraction. Use `including` this way for a column blocked by `paramUnsafeColumns` too, when the action needs it but must handle it outside `extractParams`.
+`paramSafeColumns` is the model-level upper bound on what `extractParams` can return and on what a model-derived `@OpenAPI` `requestBody`'s `params` can list — both derive from the same `paramSafeColumnsOrFallback()` set, so a column missing from the model's declaration is excluded from both, even if a controller's `params` names it. A `paramUnsafeColumns`-blocked column behaves like any auto-excluded column: it's dropped from both `params` and extraction, so re-add it to the spec with `requestBody.including` ([`requestBody` shorthand](#requestbody-shorthand--what-each-option-is-for)) and pull its value with `castParam`.
 
 Reach for this cap when a column must never be bulk-assignable no matter what any action's allowlist says — an admin/role flag, an internal payout-account ID, a hand-managed tenancy column not backed by a declared `@BelongsTo`. Use `paramUnsafeColumns` to block just that column (it layers on top of the always-excluded set above); use `paramSafeColumns` to enumerate the model's whole safe set instead. Neither is something to add reflexively to every model — only where a column genuinely must never be assignable no matter what a controller passes.
 
@@ -618,9 +618,7 @@ const favoritePlace = await this.currentUser.createAssociation('favoritePlaces',
 })
 ```
 
-Use `requestBody: { including: ['placeId'] }` in the `@OpenAPI` decorator to add the FK to the OpenAPI request body shape (for typed spec helpers and client SDKs). This only affects the OpenAPI spec — extraction still excludes the column, so you must handle it explicitly via `castParam`.
-
-The exclusion of FKs is intentional — the OpenAPI spec advertises them via `including`, but extraction itself still strips the FK. Always extract the FK explicitly via `castParam` (or look up the parent resource and pass it as an association), even when the OpenAPI shape says it's part of the body.
+The FK exclusion is intentional. Advertise the FK in the spec with `requestBody: { including: ['placeId'] }` (for typed spec helpers and client SDKs), but extraction still strips it — always pull the FK with `castParam`, or look up the parent and pass it as an association (as above).
 
 #### Generator output
 
