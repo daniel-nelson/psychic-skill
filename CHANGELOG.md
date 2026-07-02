@@ -6,6 +6,16 @@
 
 - **`generators.md`** — new "Choose `--singular` by association shape, not by naming convention" note: decide `--singular` from the owning model's actual association (`HasOne` vs `HasMany`), since a plural resource generated against a `HasOne` parent produces controller/spec scaffolding shaped for a collection association that doesn't exist.
 - **`generators.md`** — new "`g:resource` unconditionally overwrites existing model, spec, factory, and serializer files" note: `g:resource` regenerates those files unconditionally with no existence check and no flag to skip them, so re-running it for an already-hand-edited model (e.g., to backfill a missing controller) silently discards prior edits. Documents the commit-first/restore-and-cherry-pick workaround.
+- **`controllers.md`** — "Declaring `paramSafeColumns` on the model" now warns that a model with no declared `paramSafeColumns` falls back to every column the always-excluded set doesn't cover, not to nothing: ordinary scalar columns (a payout-account ID, a verification flag, a hand-managed tenancy column) are mass-assignable by default unless the model explicitly narrows `paramSafeColumns`.
+- **`controllers.md`** — Redirect response methods now note the `redirectAllowedHosts` allowlist gate: an absolute-URL redirect target must be pre-registered or the request throws a 500 (not a silent no-op); matching is host-only, case- and port/scheme-insensitive.
+- **`controllers.md`** — Session & Cookie Management now states plainly that `startSession`/`endSession` are cookie-only with no server-side session store or per-session revocation — only a full cookie-key rotation invalidates outstanding sessions — and documents the default 31-day cookie `maxAge`.
+- **`openapi.md`** — `validate` section now explains it validates a clone of the request, so `useDefaults`/`coerceTypes`/`removeAdditional` never reach the real `this.params` — except query array-wrapping, which mutates the request in place.
+- **`models.md`** — `@deco.Encrypted()` example now warns that its `DoNotSetEncryptedFieldsDirectly` guard is a custom setter, so `setAttributes`/`updateAttributes` (which bypass custom setters) can write unencrypted data straight into the encrypted column with no error.
+- **`querying.md`** — new "Client-controlled page size is capped, not unbounded" note documenting the `paginationPageSize` (default 25) / `paginationMaxPageSize` (default 200) `conf/dream.ts` options that cap every paginator, so forwarding a request's `pageSize` is safe by default.
+
+### Changed
+
+- **`SKILL.md`** — bumped the ecosystem version baseline: `@rvoh/dream` 2.17.x → 2.18.x, `@rvoh/psychic` 3.8.x → 3.10.x.
 
 ## 0.61.1 — 2026-07-01
 

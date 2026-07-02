@@ -594,7 +594,9 @@ These same columns are excluded from a model-derived OpenAPI request body — li
 
 #### Declaring `paramSafeColumns` on the model
 
-`paramSafeColumns` is the model-level upper bound on what `extractParams` can return. Declare it on any model where you want a single source of truth for "what a normal user can touch" — the runtime intersects the call-site allowlist with `paramSafeColumns`, so a column missing from the model's declaration cannot be extracted even if a controller lists it:
+`paramSafeColumns` is the model-level upper bound on what `extractParams` can return. Declare it on any model where you want a single source of truth for "what a normal user can touch" — the runtime intersects the call-site allowlist with `paramSafeColumns`, so a column missing from the model's declaration cannot be extracted even if a controller lists it.
+
+**A model that declares no `paramSafeColumns` falls back to every column the always-excluded set doesn't cover — not to nothing.** The fallback strips only the primary key, timestamps, `@deco.Encrypted` columns, declared BelongsTo foreign keys, polymorphic type fields, and the STI `type` column. An ordinary scalar column is param-safe by default even when it holds something sensitive: a `Host.payoutAccountId`, a `Host.isVerified` boolean, or a hand-managed tenancy column like `organizationId` (anything not backed by a declared `@BelongsTo`) is extractable by any caller that lists it, on any model that hasn't explicitly narrowed `paramSafeColumns`. Declare `paramSafeColumns` on every model with a security- or authorization-sensitive scalar column — don't rely on the default being restrictive.
 
 ```typescript
 // Canonical allowlist for the model — caps extractParams.
@@ -678,6 +680,12 @@ this.noContent()           // 204
 // Redirects
 this.redirect(path)        // 302
 this.movedPermanently(path) // 301
+// A same-origin relative path (starting with a single `/`) always works. An
+// absolute-URL target is checked against `redirectAllowedHosts` — an empty
+// allowlist by default — and throws a 500 (not a silent no-op) if the host
+// isn't listed. Allowlist matching is host-only: case-insensitive and both
+// port- and scheme-insensitive. Add external redirect targets explicitly:
+//   psy.set('redirectAllowedHosts', ['oauth.example.com'])
 
 // Client errors
 this.badRequest()          // 400
@@ -1058,6 +1066,8 @@ this.endSession()
 this.getCookie<string>('theme')
 this.setCookie('theme', 'dark', { expires: new Date('2025-12-31') })
 ```
+
+`startSession` creates no server-side session record — the encrypted cookie itself is the entire credential. `endSession` only clears the cookie on the client; a cookie already captured elsewhere stays valid until it expires regardless of "logout." There is no per-session or per-user revocation — the only framework lever to invalidate outstanding sessions is rotating the cookie encryption key (see [Cookie Encryption](#cookie-encryption) below), which logs out every user, not just one. Design around this: if you need to revoke a single compromised session or a single user's sessions without logging everyone out, track that state yourself (e.g. a `sessionsInvalidatedAt` column on the user, checked against a timestamp embedded in the session payload) rather than assuming `endSession` accomplishes it server-side. The default cookie `maxAge` is 31 days; pass `{ maxAge: { hours: … } }` to `setCookie` for a shorter-lived session.
 
 Session cookies set by Psychic default to `SameSite=Strict` — the browser won't send them on any cross-origin request (including link-click navigations from another site), which blocks classical CSRF without needing a CSRF token. Override only when a legitimate cross-site link-follow flow needs to preserve auth (rare for JSON APIs):
 

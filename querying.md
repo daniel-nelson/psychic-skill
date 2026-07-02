@@ -147,6 +147,17 @@ Terminal or result-producing query methods include:
 - `query.sql()`
 - `query.toKysely(...)`
 
+### Client-controlled page size is capped, not unbounded
+
+`paginate`/`cursorPaginate`/`scrollPaginate` resolve the effective page size as `requestedPageSize || paginationPageSize` (default 25 when the caller passes none), then clamp the result to `paginationMaxPageSize` (default 200). So forwarding a request's `pageSize` straight into one of these methods is already safe against a client asking for the whole table in one page — the framework caps it regardless. Configure either default as a Dream-app option in `conf/dream.ts`:
+
+```typescript
+app.set('paginationPageSize', 25)
+app.set('paginationMaxPageSize', 200)
+```
+
+Lower `paginationMaxPageSize` if an endpoint's per-row cost (large payloads, expensive preloads) warrants a stricter cap than the app-wide default.
+
 Query-level write methods also exist and are easy to miss:
 
 - `query.update(...)`

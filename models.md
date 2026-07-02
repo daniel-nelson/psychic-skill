@@ -696,6 +696,14 @@ public phone: DreamColumn<User, 'encryptedPhone'>
 // plaintext property (e.g. `phone`) is not assignable in `.create()` / `UpdateableProperties`
 // until sync lists it under the model's `virtualColumns`; until then `tsc` reports
 // `TS2353 ... 'phone' does not exist` even though the model declares the field.
+//
+// The raw encrypted column (`encryptedPhone`) has a setter that throws if you try
+// to assign it directly — write through the plaintext property (`phone`) instead.
+// That guard is itself a custom setter, so it only fires on the setter path
+// (`create`/`update`/`assignAttribute(s)`/`this.phone = ...`). `setAttribute(s)`
+// bypasses custom setters entirely (see "Which writes run the setter" below) and
+// will write an unencrypted value straight into `encryptedPhone` with no error —
+// never use `setAttributes`/`updateAttributes` to touch an `@deco.Encrypted` column.
 
 // Virtual — accepted by create(), update(), and extractParams() but not stored directly in DB.
 // Use getter/setter pairs to transform between the virtual and the actual DB column.

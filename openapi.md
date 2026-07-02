@@ -108,6 +108,8 @@ psy.set('openapi', {
 
 Gating `responseBody` on `AppEnv.isTest` validates responses under test without paying the cost in production.
 
+`validate` is a gate, not a sanitizer. It runs against a clone of the incoming data — your controller still reads the raw, unvalidated `this.params` either way, so `useDefaults`/`coerceTypes`/`removeAdditional` in the underlying AJV validation never reach what the action actually uses. The one exception is query array-wrapping: with `query` validation on, a single `?tags=a` is rewritten in place to `['a']` (and `?tags=` to `[]`) for array-typed query params, so that one case does mutate what the controller reads. Don't rely on `validate` to coerce or strip request data — enforce shape and defaults explicitly in the action (`castParam`, `extractParams`) regardless of whether validation is on.
+
 ### syncTypes
 
 When `syncTypes` is true, Psychic reads the spec with `openapi-typescript` and generates TypeScript interfaces from it. Use those to type response bodies in tests via the `OpenapiResponseBody` utility.
