@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.65.0 — 2026-07-03
+
+### Added
+
+- **`models.md`** — new canonical "Passing associations: use the instance, not the foreign key" section under Creating and Updating. When you hold a model instance, pass it (not the FK id, or id + type for a polymorphic association) to `create`/`update` and to `where`/`and` filters. Documents that the instance form works uniformly regardless of the association's shape — polymorphic or not, plain model or STI child — because Dream derives the foreign key from the primary key and, when polymorphic, the type discriminator from `referenceTypeString` (resolving an STI child to its base). Gives the three reasons it's a rule and not a preference: polymorphic id-only filters omit the type column and match across types that share an id (a correctness bug on integer/serial keys); STI type strings resolve to the base automatically while a hand-written child type matches nothing; and holding the instance keeps the authorization load in the code path. Notes the controller case is effectively absolute, and carves out the three legitimate id-form cases (bulk id arrays, cross-type polymorphic batch loads, and background-job arguments).
+
+### Changed
+
+- **`querying.md`** — added a query-side note next to the `where`-update examples pointing at the new rule, framing polymorphic instance-filtering as a correctness fix (the id-only form omits `localizable_type`). Fixed the examples to filter by the instance (`where({ localizable: host })`, `where({ post })`, `where({ place })`) and switched the batch `GROUP BY` example from `ops.in(placeIds)` to the idiomatic array form `where({ placeId: placeIds })`.
+- **`controllers.md`** — widened the FK-exclusion guidance from "because `extractParams` strips FKs" to reference the general pass-the-instance rule, and added the authorization rationale: a param id is untrusted, verifying it means loading the record (ideally scoped to `currentUser`), and the load hands you the instance to pass.
+- **`soft-delete.md`** — fixed the cascade-count examples to filter by the instance (`Room.where({ place })`) instead of `Room.where({ placeId: place.id })`.
+- **`SKILL.md`** — bumped the ecosystem version baseline for `@rvoh/dream` from 2.18.x to 2.19.x.
+
 ## 0.64.0 — 2026-07-02
 
 ### Added

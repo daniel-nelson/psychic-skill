@@ -168,14 +168,16 @@ Query-level write methods also exist and are easy to miss:
 
 ```typescript
 // Update matching records — loads each record and calls instance update(), running lifecycle hooks and validations
-await LocalizedText.where({ localizableId: host.id, locale: 'en-US' }).update({ title: 'New Title' })
+await LocalizedText.where({ localizable: host, locale: 'en-US' }).update({ title: 'New Title' })
 
 // Update in a single SQL call (skips lifecycle hooks)
-await LocalizedText.where({ localizableId: host.id, locale: 'en-US' }).update({ title: 'New Title' }, { skipHooks: true })
+await LocalizedText.where({ localizable: host, locale: 'en-US' }).update({ title: 'New Title' }, { skipHooks: true })
 
 // Delete matching records
-await Tag.where({ postId: post.id }).delete()
+await Tag.where({ post }).delete()
 ```
+
+When you hold the associated instance, filter by it — `where({ localizable: host })`, not `where({ localizableId: host.id })`. For a polymorphic association this is a correctness fix, not just style: the id-only form omits `localizable_type`, so it matches rows across every type that shares that id. Passing the instance sets both columns (and resolves an STI child to its base type). See [models.md — Passing associations](models.md#passing-associations-use-the-instance-not-the-foreign-key) for the full rule and its exceptions.
 
 Query-level `.update()` is not Rails `update_all`: by default it iterates the matched
 records with `findEach`, calls instance `.update()` on each one, and runs per-record
@@ -213,7 +215,7 @@ For two-column interval overlap checks, choose the boundary semantics explicitly
 
 ```typescript
 const overlaps = await Booking.where({
-  placeId,
+  place,
   startsOn: ops.lessThanOrEqualTo(requestedEndsOn),
   endsOn: ops.greaterThan(requestedStartsOn),
 }).exists()
@@ -588,7 +590,7 @@ places.forEach(place => (place.pendingBookingCount = 0))
 const placeIds = places.map(place => place.id)
 if (!placeIds.length) return
 
-const rows = await Booking.where({ placeId: ops.in(placeIds), confirmedAt: null })
+const rows = await Booking.where({ placeId: placeIds, confirmedAt: null })
   .toKysely('select')
   .clearSelect()                                  // toKysely seeds `select "bookings".*`; drop it before grouping
   .select('bookings.place_id as placeId')

@@ -620,6 +620,8 @@ const favoritePlace = await this.currentUser.createAssociation('favoritePlaces',
 
 The FK exclusion is intentional. Advertise the FK in the spec with `requestBody: { including: ['placeId'] }` (for typed spec helpers and client SDKs), but extraction still strips it — always pull the FK with `castParam`, or look up the parent and pass it as an association (as above).
 
+Passing the loaded parent rather than the raw id is the general rule, not a controller quirk: [pass the association instance, not the foreign key](models.md#passing-associations-use-the-instance-not-the-foreign-key). It reads best here because the two steps are the same motion — a param id is untrusted, verifying it means loading the record (ideally through an association chain from `currentUser` that proves the current user may touch it), and the load hands you the instance to pass. Scope that lookup to the current user where you can (`this.currentUser.associationQuery('places').findOrFail(...)`) rather than a bare `Place.findOrFail(...)`, so the verification and the authorization are one query.
+
 #### Generator output
 
 `psy g:resource` (and related generators) emit a shared `paramSafeColumns` const at the top of the controller file and reference it from every `create` / `update` action — and from those actions' `@OpenAPI` `requestBody` — so the allowlist stays visible at the call site without duplicating the array per action:

@@ -819,6 +819,39 @@ loads each matched record and calls instance `.update()` on it. It is not a sing
 bulk SQL update unless you pass `{ skipHooks: true }`, which bypasses hooks and
 validations.
 
+## Passing associations: use the instance, not the foreign key
+
+When you hold a model instance and are creating or updating a record with an association, or filtering a query by an association the record belongs to, pass the **instance** — never the foreign-key id (or id + type for a polymorphic association).
+
+```typescript
+// create / update
+await Booking.create({ place, guest })          // not { placeId: place.id, guestId: guest.id }
+await review.update({ booking })                 // not { bookingId: booking.id }
+
+// filtering
+await Booking.where({ place }).all()             // not { placeId: place.id }
+await room.associationQuery('bookings', { and: { guest } })   // not { guestId: guest.id }
+
+// polymorphic works the same way
+await LocalizedText.where({ localizable: host }).first()      // not { localizableId: host.id }
+```
+
+The instance form works the same **regardless of the association's shape** — polymorphic or not, and whether the model you pass is a plain model or an STI child. Dream derives the foreign key from the instance's primary key and, for a polymorphic association, the type discriminator from the instance's `referenceTypeString` (which resolves an STI child such as a `Bathroom` to its base, `'Room'`). One form covers every case, so the call site never has to know which case it is in.
+
+Three reasons this is the rule, not a preference:
+
+1. **Polymorphic filters are wrong without it.** `where({ localizableId: host.id })` constrains the id alone — it never sets `localizable_type`. With integer/serial primary keys a `Host` and a `Place` can share id `1`, so that query matches localized texts belonging to *both*. `where({ localizable: host })` adds `localizable_type = 'Host'` for you. (UUID keys hide the collision, but the id-only form is still incomplete.)
+2. **STI type strings resolve correctly.** Creating or filtering through an STI child records/matches the base type (`'Room'`). A hand-written `localizableType: 'Bathroom'` matches nothing, because the association is declared on the `Room` base — and nothing at the call site warns you.
+3. **Holding the instance means you loaded it.** The authorized way to obtain a record is to load it, usually through an association chain from `currentUser` that proves the current user may touch it. Passing the instance keeps that step in the code path; hand-assigning a raw id from a request param skips it.
+
+In a **controller this is effectively absolute** (see [controllers.md — `extractParams`](controllers.md#extractparams)): an id or type that arrives in a param is untrusted, verifying it means loading the record through an authorized association chain, and once you have done that you hold the instance — so you use it. There is no path where you legitimately hold a verified id but not the instance.
+
+**When the id form is correct** — all cases where you genuinely do not hold a single instance, never "you hold it but prefer the id":
+
+- An **array of ids** (bulk filter): `Booking.where({ placeId: placeIds })` where `placeIds` came from a prior query. (Use the plain array — `where({ col: [...] })` — not `ops.in([...])`.)
+- A **cross-type polymorphic batch load**, where two types cannot be expressed in one `where` and you fall back to `whereAny` with explicit `localizableType`/`localizableId` groups (see [serializers.md](serializers.md)).
+- **Background-job arguments**, which must serialize to Redis and therefore pass IDs, not instances — this is the deliberate opposite rule for the worker boundary ([workers.md](workers.md)), where the implementation method re-hydrates the model from the id.
+
 ## Dirty Tracking
 
 ```typescript
@@ -954,7 +987,7 @@ If the callback throws, the entire transaction rolls back.
 // Class-level transaction
 await ApplicationModel.transaction(async (txn) => {
   const user = await User.txn(txn).create({ email: 'test@test.com' })
-  const post = await Post.txn(txn).create({ userId: user.id, title: 'Test' })
+  const post = await Post.txn(txn).create({ user, title: 'Test' })
   await user.txn(txn).createAssociation('profile', {})
 
   // Queries also need .txn(txn) to see uncommitted data
