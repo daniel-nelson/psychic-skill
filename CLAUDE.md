@@ -19,8 +19,9 @@ Every example in the skill — models, controllers, serializers, generators, mig
 Because of that, **every PR must include both of the following**, or it is not ready to open:
 
 1. **A `VERSION` bump.**
-   - **Minor bump** (`0.34.0` → `0.35.0`) — the default for almost everything: new guidance, new sections, reworked explanations, new rules, syncing the skill to a framework change.
-   - **Patch bump** (`0.34.0` → `0.34.1`) — reserved for small corrections: typo fixes, broken-link/anchor fixes, factual corrections to existing prose, or an odd one-off fix that doesn't introduce new guidance.
+   - **Minor bump** (`1.4.0` → `1.5.0`) — the default for almost everything: new guidance, new sections, reworked explanations, new rules, syncing the skill to a framework change.
+   - **Patch bump** (`1.4.0` → `1.4.1`) — reserved for small corrections: typo fixes, broken-link/anchor fixes, factual corrections to existing prose, or an odd one-off fix that doesn't introduce new guidance.
+   - **Major bump** (`1.4.0` → `2.0.0`) — reserved for one thing only: the skill's baseline drops support for a documented `@rvoh` package's previous major (see [Major versions & old-major support](#major-versions--old-major-support)). Rare; not for large content changes, which are still minors.
    - When in doubt, bump minor.
 
 2. **A matching `CHANGELOG.md` entry** under a new `## <version> — <YYYY-MM-DD>` heading, grouped into `### Added` / `### Changed` / `### Removed` as appropriate. Describe user-facing skill changes (what an agent reading the skill will now see differently), not internal churn.
@@ -32,6 +33,21 @@ Merging to `main` **is** the publishing event. A version that never merged was n
 Consequently, while a branch/PR is still open, it carries **exactly one** version heading — the version it will publish as. If the scope of the open PR grows (more commits, a bigger change class), do not add a second `## <version>` section; instead bump the single heading to the new appropriate version and fold all the branch's changes under it. Multiple `## <version>` sections only ever exist for versions that have *actually merged* in separate PRs. Never append a later PR's changes into an already-merged version's section.
 
 A PR that changes skill content without a `VERSION` bump + `CHANGELOG` entry is incomplete. Treat the bump and changelog as part of the change, not a follow-up.
+
+### Major versions & old-major support
+
+The skill graduated to `1.0.0` once its shape and release discipline were stable; `1.0.0` was a maturity re-baseline, not a semver-contract event. From here, `major`, `minor`, and `patch` mean what the bump list above says. This section defines the one trigger for a `major` and what a `major` obligates.
+
+**A `major` bump means exactly one thing:** the skill's baseline drops support for a documented `@rvoh` package's previous major. That is, `main` gets rewritten to teach the next major of some documented package (say `@rvoh/dream` 2.x → 3.x) and stops teaching the old one. Nothing else is a `major` — large rewrites, whole new files, and sweeping guidance changes are still `minor`s.
+
+Old-major readers are served by a **frozen whole-skill snapshot**, not by parallel in-tree docs:
+
+- **Snapshot, not per-package track.** When a `major` drops support for a package major, tag the last commit compatible with that major — a whole-skill snapshot, e.g. `dream-v2-final` (a branch instead of a tag only if a friendlier install target is wanted later). The snapshot is the entire skill as it stood at that boundary. Snapshots are **not composable per-package**: there is no `dream-v2` + `psychic-v3` mix. If a future checker ever has to *select* a snapshot for a project, it selects the one at the **first unsupported package-major boundary the project crosses**, via an explicit ordered manifest — never by combining per-package tracks.
+- **No backports.** A frozen snapshot never receives fixes. This is the same "assume current, upgrade if reality disagrees" posture the [ecosystem baseline](#keep-the-ecosystem-version-baseline-current) already takes — stated as an EOL, not a support promise.
+- **No inline old-version docs.** Never keep `models-dream-v2.md` beside `models-dream-v3.md`, and never annotate "in v2 do X, in v3 do Y" inside a feature doc. An agent weights all tokens roughly equally and would blend the two; the frozen snapshot is the whole mechanism for old majors. (This is the same reason as the existing "don't narrate past behavior" rule.)
+- **Global install tracks `main` only.** A single global install (`~/.claude`, `~/.agents`) is one physical copy of the docs and cannot be correct for a `dream@2` project and a `dream@3` project at once. The global install always tracks `main` (current baseline); a project deliberately on an old documented major must install/pin the frozen snapshot **project-locally**. The global install is never made multi-version-aware — that would push version resolution into the agent's context.
+
+**Build the machinery at the first real major-drop, not before.** Until a documented package actually forces a major, none of the above exists as code: the update check stays "is `main` newer?", there is no snapshot, and no checker is major-aware. The PR that performs the first `major` bump is the one that also tags the frozen snapshot and, if warranted, teaches the update check to resolve the right snapshot from the project's lockfile — deterministically, in a shell script, never spending agent tokens on version resolution. Do not write update-check code or a snapshot before there is a package major to snapshot against; do not claim in this repo that the checker is major-aware before that PR makes it so.
 
 ## Keep the ecosystem version baseline current
 

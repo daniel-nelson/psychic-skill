@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.0 — 2026-07-03
+
+### Changed
+
+- **Graduated the skill from `0.x` (beta) to `1.0.0`.** This is a maturity re-baseline, not a semver-contract event — the skill's shape and release discipline have been stable, so the version now reflects that. No guidance changed.
+- **`CLAUDE.md`** — defined the full semver scheme for the release process. Added a `major` bump to the bump list and a new "Major versions & old-major support" section: a `major` means exactly one thing — the skill's baseline drops support for a documented `@rvoh` package's previous major. Old-major readers are served by a frozen whole-skill snapshot (a tag such as `dream-v2-final`), which is not composable per-package, receives no backports, and never coexists with inline old-version docs. Global installs track `main` only; a project deliberately on an old major pins the frozen snapshot project-locally. All snapshot/update-check machinery is deferred until the first real package-major drop — the same PR that performs the first `major` bump builds it.
+
 ## 0.65.0 — 2026-07-03
 
 ### Added
