@@ -1,0 +1,191 @@
+#!/usr/bin/env bash
+# psychic-skill-update-apply — upgrade EVERY installed copy of psychic-skill.
+#
+# This reconciles all install roots (~/.agents, ~/.claude, ~/.codex, plus
+# project-local .agents/.claude/.codex) in one pass, instead of upgrading only
+# the first one found. A single stale copy in a root the host loads from is the
+# split-brain bug this exists to prevent — see bin/psychic-skill-update-check.
+#
+# Modes:
+#   psychic-skill-update-apply          reconcile all copies to the remote version
+#   psychic-skill-update-apply --plan   print what WOULD happen; mutate nothing
+#
+# Output (parseable; the /psychic-update-skill flow relays it):
+#   REMOTE <version>
+#   COPY <dir> <old> -> <new> <status>   status: upgraded|unchanged|
+#                                        dev-symlink-skipped|stashed|failed
+#   SUMMARY <oldmin> -> <new> (<u> upgraded, <c> unchanged, <s> skipped, <f> failed)
+#
+# Exit: 0 ok · 2 remote unreachable · 3 one or more copies failed
+#
+# Env overrides (testing):
+#   PSYCHIC_SKILL_DIRS   explicit space-separated dir list (default: enumerate)
+#   PSYCHIC_SKILL_REMOTE_URL   remote VERSION url
+#   PSYCHIC_SKILL_SOURCE_REPO  git URL/path to clone for vendored copies
+#   PSYCHIC_SKILL_SOURCE_DIR   local dir to copy for vendored copies (skips clone)
+#   PSYCHIC_SKILL_STATE_DIR    ~/.psychic-skill state dir (marker + cache)
+#   PSYCHIC_SKILL_NO_SETUP=1   skip ./setup after each upgrade
+set -uo pipefail
+
+REMOTE_URL="${PSYCHIC_SKILL_REMOTE_URL:-https://raw.githubusercontent.com/daniel-nelson/psychic-skill/main/VERSION}"
+SOURCE_REPO="${PSYCHIC_SKILL_SOURCE_REPO:-https://github.com/daniel-nelson/psychic-skill.git}"
+STATE_DIR="${PSYCHIC_SKILL_STATE_DIR:-$HOME/.psychic-skill}"
+
+PLAN=false
+[ "${1:-}" = "--plan" ] && PLAN=true
+
+disp() { case "$1" in "$HOME"/*) printf '~%s' "${1#"$HOME"}" ;; *) printf '%s' "$1" ;; esac; }
+
+ver_lt() {
+  [ "$1" = "$2" ] && return 1
+  local IFS=. i max
+  local -a A=($1) B=($2)
+  max=${#A[@]}
+  [ ${#B[@]} -gt "$max" ] && max=${#B[@]}
+  for ((i = 0; i < max; i++)); do
+    local ai="${A[i]:-0}" bi="${B[i]:-0}"
+    ai="${ai%%[!0-9]*}"; bi="${bi%%[!0-9]*}"
+    ai="${ai:-0}"; bi="${bi:-0}"
+    if [ "$ai" -lt "$bi" ]; then return 0; fi
+    if [ "$ai" -gt "$bi" ]; then return 1; fi
+  done
+  return 1
+}
+
+list_install_dirs() {
+  if [ -n "${PSYCHIC_SKILL_DIRS:-}" ]; then
+    printf '%s\n' $PSYCHIC_SKILL_DIRS
+    return
+  fi
+  local candidates=(
+    "$HOME/.agents/skills/psychic-skill"
+    "$HOME/.claude/skills/psychic-skill"
+    "$HOME/.codex/skills/psychic-skill"
+    ".agents/skills/psychic-skill"
+    ".claude/skills/psychic-skill"
+    ".codex/skills/psychic-skill"
+  )
+  local seen="" d rp
+  for d in "${candidates[@]}"; do
+    [ -n "$d" ] || continue
+    [ -e "$d" ] || [ -L "$d" ] || continue
+    rp="$(cd "$d" 2>/dev/null && pwd -P)" || rp="$d"   # keep symlinks by literal path
+    [ -L "$d" ] && rp="$d"
+    case ":$seen:" in *":$rp:"*) continue ;; esac
+    seen="$seen:$rp"
+    printf '%s\n' "$rp"
+  done
+}
+
+read_ver() { tr -d '[:space:]' < "$1/VERSION" 2>/dev/null || echo unknown; }
+
+# ─── Fetch + validate remote version ─────────────────────────
+REMOTE="$(curl -sf --max-time 10 "$REMOTE_URL" 2>/dev/null | tr -d '[:space:]' || true)"
+if ! echo "$REMOTE" | grep -qE '^[0-9]+\.[0-9.]+$'; then
+  echo "ERROR could not reach remote ($REMOTE_URL)"
+  exit 2
+fi
+echo "REMOTE $REMOTE"
+
+# ─── Lazy source clone (only needed for vendored copies) ─────
+SRC=""
+TMP_CLONE=""
+ensure_src() {
+  [ -n "$SRC" ] && return 0
+  if [ -n "${PSYCHIC_SKILL_SOURCE_DIR:-}" ]; then
+    SRC="$PSYCHIC_SKILL_SOURCE_DIR"
+    return 0
+  fi
+  TMP_CLONE="$(mktemp -d)"
+  if git clone --depth 1 "$SOURCE_REPO" "$TMP_CLONE/psychic-skill" >/dev/null 2>&1; then
+    SRC="$TMP_CLONE/psychic-skill"
+    return 0
+  fi
+  return 1
+}
+cleanup() { [ -n "$TMP_CLONE" ] && rm -rf "$TMP_CLONE" 2>/dev/null || true; }
+trap cleanup EXIT
+
+run_setup() { [ "${PSYCHIC_SKILL_NO_SETUP:-}" = "1" ] && return 0; ( cd "$1" && ./setup >/dev/null 2>&1 ); }
+
+UP=0; UNCH=0; SKIP=0; FAIL=0
+OLDMIN=""
+
+while IFS= read -r dir; do
+  [ -n "$dir" ] || continue
+  old="$(read_ver "$dir")"
+  [ "$old" != "unknown" ] && { [ -z "$OLDMIN" ] || ver_lt "$old" "$OLDMIN"; } && OLDMIN="$old"
+
+  # Dev symlink → never touch; the developer git-pulls the source clone.
+  if [ -L "$dir" ]; then
+    echo "COPY $(disp "$dir") $old -> $old dev-symlink-skipped"
+    SKIP=$((SKIP + 1))
+    continue
+  fi
+
+  is_git=false
+  [ -d "$dir/.git" ] && is_git=true
+
+  if $PLAN; then
+    if ver_lt "$old" "$REMOTE"; then act="would-upgrade"; else act="up-to-date"; fi
+    $is_git && kind=git || kind=vendored
+    echo "COPY $(disp "$dir") $old -> $REMOTE plan:$kind:$act"
+    continue
+  fi
+
+  status=""
+  if $is_git; then
+    stash_out="$(git -C "$dir" stash 2>&1)"
+    if git -C "$dir" fetch origin >/dev/null 2>&1 &&
+       git -C "$dir" reset --hard origin/main >/dev/null 2>&1; then
+      run_setup "$dir" || true
+      case "$stash_out" in *"Saved working directory"*) status="stashed" ;; esac
+    else
+      echo "COPY $(disp "$dir") $old -> $old failed"
+      FAIL=$((FAIL + 1))
+      continue
+    fi
+  else
+    if ! ensure_src; then
+      echo "COPY $(disp "$dir") $old -> $old failed"
+      FAIL=$((FAIL + 1))
+      continue
+    fi
+    rm -rf "$dir.bak" 2>/dev/null || true
+    if cp -R "$dir" "$dir.bak" 2>/dev/null &&
+       rm -rf "$dir" 2>/dev/null &&
+       cp -R "$SRC" "$dir" 2>/dev/null &&
+       rm -rf "$dir/.git" 2>/dev/null &&
+       run_setup "$dir"; then
+      rm -rf "$dir.bak" 2>/dev/null || true
+    else
+      rm -rf "$dir" 2>/dev/null || true
+      [ -d "$dir.bak" ] && mv "$dir.bak" "$dir" 2>/dev/null || true
+      echo "COPY $(disp "$dir") $old -> $old failed"
+      FAIL=$((FAIL + 1))
+      continue
+    fi
+  fi
+
+  new="$(read_ver "$dir")"
+  if [ "$new" = "$old" ]; then
+    echo "COPY $(disp "$dir") $old -> $new unchanged"
+    UNCH=$((UNCH + 1))
+  else
+    echo "COPY $(disp "$dir") $old -> $new ${status:-upgraded}"
+    UP=$((UP + 1))
+  fi
+done < <(list_install_dirs)
+
+[ -z "$OLDMIN" ] && OLDMIN="unknown"
+echo "SUMMARY $OLDMIN -> $REMOTE ($UP upgraded, $UNCH unchanged, $SKIP skipped, $FAIL failed)"
+
+# Write the just-upgraded marker + clear caches only on a real run that changed something.
+if ! $PLAN && [ "$UP" -gt 0 ]; then
+  mkdir -p "$STATE_DIR" 2>/dev/null || true
+  echo "$OLDMIN" > "$STATE_DIR/just-upgraded-from" 2>/dev/null || true
+  rm -f "$STATE_DIR/last-update-check" "$STATE_DIR/update-snoozed" 2>/dev/null || true
+fi
+
+[ "$FAIL" -gt 0 ] && exit 3
+exit 0

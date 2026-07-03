@@ -67,148 +67,70 @@ Tell user the snooze duration: "Next reminder in 24h" (or 48h or 1 week, dependi
 Tell user: "Update checks disabled. Run `/psychic-update-skill` manually anytime, or re-enable with: `~/.psychic-skill/bin/psychic-skill-config set update_check true`"
 Continue with the current skill.
 
-### Step 2: Detect install type
+### Step 2: Reconcile every installed copy
+
+psychic-skill can be installed in more than one root at once (`~/.agents`,
+`~/.claude`, `~/.codex`, plus project-local `.agents`/`.claude`/`.codex`). The
+host may load a different copy than the one that sorts first, so the upgrade must
+bring **every** copy to the remote version, not just the first one found.
+`bin/psychic-skill-update-apply` does that in one pass — it upgrades git copies
+via fetch + reset and vendored copies via a single re-clone, reconciling both
+global and project-local installs. It replaces the old single-directory detect →
+upgrade → local-copy-sync sequence.
+
+Find a copy that ships the script (prefer the newest, since a stale copy may
+predate it), then run it:
 
 ```bash
-if [ -d "$HOME/.agents/skills/psychic-skill/.git" ]; then
-  INSTALL_TYPE="global-git"
-  INSTALL_DIR="$HOME/.agents/skills/psychic-skill"
-elif [ -d "$HOME/.claude/skills/psychic-skill/.git" ]; then
-  INSTALL_TYPE="global-git"
-  INSTALL_DIR="$HOME/.claude/skills/psychic-skill"
-elif [ -d "$HOME/.codex/skills/psychic-skill/.git" ]; then
-  INSTALL_TYPE="global-git"
-  INSTALL_DIR="$HOME/.codex/skills/psychic-skill"
-elif [ -d ".agents/skills/psychic-skill/.git" ]; then
-  INSTALL_TYPE="local-git"
-  INSTALL_DIR=".agents/skills/psychic-skill"
-elif [ -d ".claude/skills/psychic-skill/.git" ]; then
-  INSTALL_TYPE="local-git"
-  INSTALL_DIR=".claude/skills/psychic-skill"
-elif [ -d ".codex/skills/psychic-skill/.git" ]; then
-  INSTALL_TYPE="local-git"
-  INSTALL_DIR=".codex/skills/psychic-skill"
-elif [ -d "$HOME/.agents/skills/psychic-skill" ]; then
-  INSTALL_TYPE="vendored-global"
-  INSTALL_DIR="$HOME/.agents/skills/psychic-skill"
-elif [ -d ".agents/skills/psychic-skill" ]; then
-  INSTALL_TYPE="vendored"
-  INSTALL_DIR=".agents/skills/psychic-skill"
-elif [ -d ".claude/skills/psychic-skill" ]; then
-  INSTALL_TYPE="vendored"
-  INSTALL_DIR=".claude/skills/psychic-skill"
-elif [ -d "$HOME/.claude/skills/psychic-skill" ]; then
-  INSTALL_TYPE="vendored-global"
-  INSTALL_DIR="$HOME/.claude/skills/psychic-skill"
-elif [ -d ".codex/skills/psychic-skill" ]; then
-  INSTALL_TYPE="vendored"
-  INSTALL_DIR=".codex/skills/psychic-skill"
-elif [ -d "$HOME/.codex/skills/psychic-skill" ]; then
-  INSTALL_TYPE="vendored-global"
-  INSTALL_DIR="$HOME/.codex/skills/psychic-skill"
+APPLY=""
+for d in "${CLAUDE_SKILL_DIR:-}" "${CODEX_SKILL_DIR:-}" "$HOME/.agents/skills/psychic-skill" "$HOME/.claude/skills/psychic-skill" "$HOME/.codex/skills/psychic-skill" ".agents/skills/psychic-skill" ".claude/skills/psychic-skill" ".codex/skills/psychic-skill"; do
+  [ -n "$d" ] && [ -x "$d/bin/psychic-skill-update-apply" ] && APPLY="$d/bin/psychic-skill-update-apply" && break
+done
+if [ -n "$APPLY" ]; then
+  "$APPLY"
 else
-  echo "ERROR: psychic-skill not found"
-  exit 1
+  echo "NO_APPLY_SCRIPT"   # every copy predates the reconcile-all updater; use the fallback below
 fi
-echo "Install type: $INSTALL_TYPE at $INSTALL_DIR"
 ```
 
-The install type and directory path printed above will be used in all subsequent steps.
+**Optional preview:** run `"$APPLY" --plan` first to show the user what will
+change without mutating anything (lists each copy, its version, and whether it
+would upgrade). Skip the preview during an auto-upgrade.
 
-### Step 3: Save old version
+Read the script's output and relay it:
 
-Use the install directory from Step 2's output:
+- `REMOTE <version>` — the target version.
+- One `COPY <dir> <old> -> <new> <status>` line per copy. Statuses: `upgraded`,
+  `unchanged` (already current), `stashed` (upgraded, but local git changes were
+  stashed — tell the user to `git stash pop` in that dir), `dev-symlink-skipped`
+  (a developer install; leave it, they `git pull` the source clone), `failed`.
+- `SUMMARY <oldmin> -> <new> (<u> upgraded, <c> unchanged, <s> skipped, <f> failed)`.
 
-```bash
-OLD_VERSION=$(cat "$INSTALL_DIR/VERSION" 2>/dev/null || echo "unknown")
-```
+If any copy is `failed`, tell the user which one and that they can re-run
+`/psychic-update-skill`. The script writes the just-upgraded marker and clears
+the update cache itself when at least one copy was upgraded. If any copy was
+vendored (project-local, no `.git`), remind the user to commit it.
 
-### Step 4: Upgrade
-
-Use the install type and directory detected in Step 2:
-
-**For git installs** (global-git, local-git):
-```bash
-cd "$INSTALL_DIR"
-STASH_OUTPUT=$(git stash 2>&1)
-git fetch origin
-git reset --hard origin/main
-./setup
-```
-If `$STASH_OUTPUT` contains "Saved working directory", warn the user: "Note: local changes were stashed. Run `git stash pop` in the skill directory to restore them."
-
-**For vendored installs** (vendored, vendored-global):
-```bash
-PARENT=$(dirname "$INSTALL_DIR")
-TMP_DIR=$(mktemp -d)
-git clone --depth 1 https://github.com/daniel-nelson/psychic-skill.git "$TMP_DIR/psychic-skill"
-mv "$INSTALL_DIR" "$INSTALL_DIR.bak"
-mv "$TMP_DIR/psychic-skill" "$INSTALL_DIR"
-cd "$INSTALL_DIR" && ./setup
-rm -rf "$INSTALL_DIR.bak" "$TMP_DIR"
-```
-
-### Step 4.5: Sync local vendored copies
-
-Use the install directory from Step 2. Check if there are also local vendored copies that need updating:
+**Fallback (only if `NO_APPLY_SCRIPT`):** every installed copy predates this
+updater, so reconcile the git copies inline:
 
 ```bash
-_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || true)
-LOCAL_COPIES=""
-for _SUBDIR in .agents/skills/psychic-skill .claude/skills/psychic-skill .codex/skills/psychic-skill; do
-  if [ -n "$_ROOT" ] && [ -d "$_ROOT/$_SUBDIR" ]; then
-    _RESOLVED_LOCAL=$(cd "$_ROOT/$_SUBDIR" && pwd -P)
-    _RESOLVED_PRIMARY=$(cd "$INSTALL_DIR" && pwd -P)
-    if [ "$_RESOLVED_LOCAL" != "$_RESOLVED_PRIMARY" ]; then
-      LOCAL_COPIES="${LOCAL_COPIES}${LOCAL_COPIES:+
-}$_ROOT/$_SUBDIR"
-    fi
-  fi
+for d in "$HOME/.agents/skills/psychic-skill" "$HOME/.claude/skills/psychic-skill" "$HOME/.codex/skills/psychic-skill" ".agents/skills/psychic-skill" ".claude/skills/psychic-skill" ".codex/skills/psychic-skill"; do
+  [ -d "$d/.git" ] || continue
+  [ -L "$d" ] && { echo "$d: dev symlink, skipped"; continue; }
+  OLD=$(cat "$d/VERSION" 2>/dev/null || echo unknown)
+  ( cd "$d" && git stash >/dev/null 2>&1; git fetch origin >/dev/null 2>&1 && git reset --hard origin/main >/dev/null 2>&1 && ./setup >/dev/null 2>&1 )
+  echo "$d: $OLD -> $(cat "$d/VERSION" 2>/dev/null || echo unknown)"
 done
-printf 'LOCAL_COPIES=%s\n' "$LOCAL_COPIES"
+mkdir -p ~/.psychic-skill && rm -f ~/.psychic-skill/last-update-check ~/.psychic-skill/update-snoozed
 ```
 
-For each path in `LOCAL_COPIES`, compare versions first. Only sync copies whose version differs from the primary:
-```bash
-PRIMARY_VER=$(cat "$INSTALL_DIR/VERSION" 2>/dev/null || echo "unknown")
-printf '%s\n' "$LOCAL_COPIES" | while IFS= read -r LOCAL_COPY; do
-  [ -n "$LOCAL_COPY" ] || continue
-  LOCAL_VER=$(cat "$LOCAL_COPY/VERSION" 2>/dev/null || echo "unknown")
-  if [ "$LOCAL_VER" = "$PRIMARY_VER" ]; then
-    echo "LOCAL_COPY_CURRENT $LOCAL_COPY $LOCAL_VER"
-    continue
-  fi
+### Step 3: Show What's New
 
-  rm -rf "$LOCAL_COPY.bak"
-  mv "$LOCAL_COPY" "$LOCAL_COPY.bak"
-  cp -Rf "$INSTALL_DIR" "$LOCAL_COPY"
-  rm -rf "$LOCAL_COPY/.git"
-  (cd "$LOCAL_COPY" && ./setup)
-  rm -rf "$LOCAL_COPY.bak"
-  echo "LOCAL_COPY_UPDATED $LOCAL_COPY $LOCAL_VER $PRIMARY_VER"
-done
-```
-Tell user which vendored copies were updated and which were already current. If any were updated, add: "Commit the vendored copy when you're ready."
-
-If `./setup` fails, restore from backup and warn the user:
-```bash
-rm -rf "$LOCAL_COPY"
-mv "$LOCAL_COPY.bak" "$LOCAL_COPY"
-```
-Tell user: "Sync failed — restored previous version at `$LOCAL_COPY`. Run `/psychic-update-skill` manually to retry."
-
-### Step 5: Write marker + clear cache
-
-```bash
-mkdir -p ~/.psychic-skill
-echo "$OLD_VERSION" > ~/.psychic-skill/just-upgraded-from
-rm -f ~/.psychic-skill/last-update-check
-rm -f ~/.psychic-skill/update-snoozed
-```
-
-### Step 6: Show What's New
-
-Read `$INSTALL_DIR/CHANGELOG.md`. Find all version entries between the old version and the new version. Summarize as 5-7 bullets grouped by theme. Focus on user-facing changes. Skip internal refactors unless significant.
+Read `CHANGELOG.md` from any upgraded copy (e.g. the `$APPLY` dir). Find all
+version entries between `{old}` (the `SUMMARY` `oldmin`) and `{new}`. Summarize as
+5-7 bullets grouped by theme. Focus on user-facing changes. Skip internal
+refactors unless significant.
 
 Format:
 ```
@@ -220,9 +142,10 @@ What's new:
 - ...
 ```
 
-### Step 7: Continue
+### Step 4: Continue
 
-After showing What's New, continue with whatever skill the user originally invoked. The upgrade is done — no further action needed.
+After showing What's New, continue with whatever skill the user originally
+invoked. The upgrade is done — no further action needed.
 
 ---
 
@@ -230,7 +153,7 @@ After showing What's New, continue with whatever skill the user originally invok
 
 When invoked directly as `/psychic-update-skill` (not from a preamble):
 
-1. Detect the install directory first (run the Step 2 bash block). Then attempt a forced update check. Avoid using shell variable names like `status` in zsh; `status` is read-only there.
+1. Force a fresh check. The checker scans every installed copy and reports the lowest version, so this catches a stale copy in a root the host doesn't load first. Avoid using shell variable names like `status` in zsh; `status` is read-only there.
 ```bash
 UPDATE_CHECK_OUTPUT=""
 UPDATE_CHECK_OK=false
@@ -246,36 +169,6 @@ echo "UPDATE_CHECK_OK=$UPDATE_CHECK_OK"
 echo "UPDATE_CHECK_OUTPUT=$UPDATE_CHECK_OUTPUT"
 ```
 
-2. If `UPDATE_CHECK_OUTPUT` contains `UPGRADE_AVAILABLE <old> <new>`: follow Steps 2-6 above.
+2. If `UPDATE_CHECK_OUTPUT` contains `UPGRADE_AVAILABLE <old> <new>`: run the inline flow (Step 2 reconcile onward). The `--plan` preview is a good idea here so the user sees which copies are behind before anything changes.
 
-3. If `UPDATE_CHECK_OK=true` and no `UPGRADE_AVAILABLE` in output: do **not** assume the install is current yet. The helper may have emitted `JUST_UPGRADED`, `UP_TO_DATE`, or no output from cached/local state. Confirm by comparing the installed version to the remote version using the Step 4 fallback block. If the remote differs, treat it as `UPGRADE_AVAILABLE $INSTALLED_VERSION $REMOTE_VERSION` and follow Steps 2-6. If they match, continue to step 5.
-
-4. **If `UPDATE_CHECK_OK=false`** (script failed or was not found — e.g. sandbox filesystem restrictions): fall back to directly checking the remote version:
-```bash
-INSTALLED_VERSION=$(cat "$INSTALL_DIR/VERSION" 2>/dev/null || echo "unknown")
-REMOTE_VERSION=$(curl -fsSL https://raw.githubusercontent.com/daniel-nelson/psychic-skill/main/VERSION 2>/dev/null | tr -d '[:space:]')
-echo "INSTALLED=$INSTALLED_VERSION REMOTE=$REMOTE_VERSION"
-```
-- If `REMOTE_VERSION` is empty (no network): tell the user "Could not reach GitHub to check for updates. Verify network access and try again." Stop.
-- If `REMOTE_VERSION` differs from `INSTALLED_VERSION`: treat this as `UPGRADE_AVAILABLE $INSTALLED_VERSION $REMOTE_VERSION` and follow Steps 2-6.
-- If they match: the install is current. Continue to step 5.
-
-**Never conclude "up to date" solely because the update-check script produced no output.** No output can mean the script failed. Always confirm by comparing installed vs. remote version before telling the user they are current.
-
-5. Check for stale local vendored copies. Run the Step 2 bash block to confirm `INSTALL_TYPE` and `INSTALL_DIR`, then run the Step 4.5 detection bash block to check for `LOCAL_COPIES`.
-
-**If `LOCAL_COPIES` is empty** (no local vendored copies): tell the user "You're already on the latest version (v{version})."
-
-**If `LOCAL_COPIES` is non-empty**, compare versions for every copy:
-```bash
-PRIMARY_VER=$(cat "$INSTALL_DIR/VERSION" 2>/dev/null || echo "unknown")
-printf '%s\n' "$LOCAL_COPIES" | while IFS= read -r LOCAL_COPY; do
-  [ -n "$LOCAL_COPY" ] || continue
-  LOCAL_VER=$(cat "$LOCAL_COPY/VERSION" 2>/dev/null || echo "unknown")
-  echo "PRIMARY=$PRIMARY_VER LOCAL_COPY=$LOCAL_COPY LOCAL=$LOCAL_VER"
-done
-```
-
-**If any versions differ:** follow the Step 4.5 sync bash block above to update stale local copies from the primary. Tell user: "Global v{PRIMARY_VER} is up to date. Updated stale local vendored copies to v{PRIMARY_VER}. Commit the vendored copies when you're ready."
-
-**If all versions match:** tell the user "You're on the latest version (v{PRIMARY_VER}). Global and local vendored copies are all up to date."
+3. **Otherwise — do not trust silence.** No output can mean the check was cached, hit a disabled flag, or failed (sandbox filesystem restrictions); it does **not** prove the install is current. Just run the reconcile directly — `bin/psychic-skill-update-apply` fetches the remote version itself, is a no-op for copies already current, and reports per-copy status, so it is safe to run unconditionally. Locate it as in Step 2 and run `"$APPLY" --plan` then `"$APPLY"`. If no copy ships the script either, use the Step 2 fallback loop. If the reconcile reports every copy `unchanged`, tell the user "You're on the latest version (v{version}); all installed copies are up to date."
