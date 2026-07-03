@@ -537,8 +537,16 @@ Use this order when reasoning about a query:
 2. Use scopes, `where`, `whereAny`, `whereNot`, joins, association queries, and eager-loading methods.
 3. Prefer `preloadFor(...)` or `loadFor(...)` when the query exists to feed serialization.
 4. Prefer `associationQuery(...)`, `createAssociation(...)`, `updateAssociation(...)`, and destroy helpers for association-driven work.
-5. Use aggregates, `pluck`, `pluckEach`, `nestedSelect`, and pagination before assuming SQL is required.
+5. Use aggregates, `distinct`, `pluck`, `pluckEach`, `nestedSelect`, and pagination before assuming SQL is required.
 6. Only then consider `toKysely(...)` or typed `db()`.
+
+## Distinct rows: `.distinct(...)`
+
+`SELECT DISTINCT` is native to Dream — no Kysely eject. `.distinct(column)` distincts on that column; `.distinct()` or `.distinct(true)` distincts on the primary key; `.distinct(false)` clears a distinct applied earlier in the chain.
+
+```typescript
+await Host.query().distinct('familyName').pluck('familyName')  // unique family names
+```
 
 ## Preferred Kysely Escape Hatch: `toKysely(...)`
 
@@ -570,6 +578,29 @@ Supported forms:
 - `Model.toKysely('update')`
 - `Model.toKysely('delete')`
 - `query.toKysely('select' | 'update' | 'delete')`
+
+### Grouped aggregates (`GROUP BY`)
+
+Dream's aggregates (`.count()`, `.sum`, `.min`, `.max`) each return a single scalar — there is no `GROUP BY`. When you need an aggregate broken out per group — a booking count for each place on a dashboard, in one query — keep Dream for the scoped, association-aware setup and eject to Kysely for the grouping. Query the associated model directly so its own default scopes still apply: `Place`'s `HasMany('Booking', { and: { confirmedAt: null } })` filter becomes `Booking.where({ confirmedAt: null })`, which keeps Booking's soft-delete and STI scopes.
+
+```typescript
+places.forEach(place => (place.pendingBookingCount = 0))
+const placeIds = places.map(place => place.id)
+if (!placeIds.length) return
+
+const rows = await Booking.where({ placeId: ops.in(placeIds), confirmedAt: null })
+  .toKysely('select')
+  .clearSelect()                                  // toKysely seeds `select "bookings".*`; drop it before grouping
+  .select('bookings.place_id as placeId')
+  .select(eb => eb.fn.countAll<number>().as('count'))
+  .groupBy('bookings.place_id')
+  .execute()
+
+const countByPlaceId = new Map(rows.map(row => [row.placeId, Number(row.count)]))
+places.forEach(place => (place.pendingBookingCount = countByPlaceId.get(place.id) ?? 0))
+```
+
+`toKysely('select')` seeds the builder with `select "<baseAlias>".*`, which a pure `.count()` never reveals, so `.clearSelect()` is required before a grouped aggregate — otherwise the base columns aren't in the `GROUP BY` and the SQL is invalid. Postgres returns `COUNT(*)` as a string with no type error to catch it, hence `Number(row.count)`; a group with no matching rows produces no row at all, so seed each place to `0` first.
 
 ### Scope-preserving subqueries: `nestedSelect(...)`
 

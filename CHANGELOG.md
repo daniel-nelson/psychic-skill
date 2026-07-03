@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.64.0 — 2026-07-02
+
+### Added
+
+- **`querying.md`** — new "Distinct rows: `.distinct(...)`" subsection: `SELECT DISTINCT` is native to Dream (`.distinct(column)`, `.distinct()`/`.distinct(true)` on the primary key, `.distinct(false)` to clear), so deduplication needs no Kysely eject. Also added to the "What To Reach For First" list so an agent doesn't drop to SQL for it.
+- **`querying.md`** — new "Grouped aggregates (`GROUP BY`)" subsection under the `toKysely(...)` escape hatch: Dream's aggregates (`.count()`/`.sum`/`.min`/`.max`) each return a single scalar with no `GROUP BY`, so an aggregate broken out per group (a booking count for each place) is a `toKysely` job — keep Dream for the scoped, association-aware setup and eject for the grouping, querying the associated model directly so its scopes still apply. Documents the two things it depends on: `.clearSelect()` before the aggregate, since `toKysely('select')` seeds `select "<baseAlias>".*`; and `Number(row.count)`, since Postgres returns `COUNT(*)` as a string with absent groups producing no row.
+
+### Fixed
+
+- **The update check now scans every installed copy instead of stopping at the first one.** psychic-skill can be installed in more than one root at once (`~/.agents`, `~/.claude`, `~/.codex`, plus project-local variants), and the host often loads a different copy than the one that sorts first. The old check ran the version check from the first directory it found and stopped there, so a current `~/.agents` copy could mask a stale `~/.claude` copy — the one the host actually loads — and report "up to date" while the running skill was many versions behind. `bin/psychic-skill-update-check` now reads the VERSION of every installed copy and reports `UPGRADE_AVAILABLE` whenever any copy is behind remote, using the lowest version as the baseline. When a copy is behind, the check prints a second line listing each copy and marking the stale ones `(behind)`, which the preamble relays so you can see exactly which install is out of date.
+- **`/psychic-update-skill` now reconciles all installed copies in one pass, including sibling global installs.** The updater previously detected a single primary directory and only synced project-local vendored copies alongside it, so a stale sibling global install (e.g. `~/.claude` while `~/.agents` was primary) was left untouched — the same split that hid the staleness. A new `bin/psychic-skill-update-apply` helper upgrades every copy — global and project-local — in one pass (git installs via fetch + reset, vendored installs via a single re-clone), skips developer symlinks, rolls back a failed vendored copy, and prints a per-copy summary. Run `psychic-skill-update-apply --plan` to preview which copies would change before touching anything. This replaces the old detect → upgrade → Step 4.5 local-sync sequence.
+
 ## 0.63.0 — 2026-07-02
 
 ### Added

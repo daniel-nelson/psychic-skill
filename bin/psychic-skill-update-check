@@ -3,21 +3,32 @@
 #
 # Output (one line, or nothing):
 #   JUST_UPGRADED <old> <new>       — marker found from recent upgrade
-#   UPGRADE_AVAILABLE <old> <new>   — remote VERSION differs from local
+#   UPGRADE_AVAILABLE <old> <new>   — some installed copy is behind remote
 #   (nothing)                       — up to date, snoozed, disabled, or check skipped
 #
+# On the slow path an UPGRADE_AVAILABLE line may be followed by an indented
+# per-copy detail line (which dir is behind), for the human to see. The first
+# token of the first line is always the machine-readable verdict.
+#
+# This script scans EVERY installed copy of psychic-skill (not just its own
+# directory) and reports UPGRADE_AVAILABLE if ANY copy is behind remote. This is
+# deliberate: psychic-skill can be installed in several roots at once (~/.agents,
+# ~/.claude, ~/.codex, plus project-local variants) and the host may load a
+# different copy than the one that sorts first. A single copy scanned in
+# isolation hid staleness before.
+#
 # Env overrides (for testing):
-#   PSYCHIC_SKILL_DIR        — override auto-detected skill root
+#   PSYCHIC_SKILL_DIR        — single-dir mode: scan ONLY this dir (also locates bin/)
+#   PSYCHIC_SKILL_DIRS       — explicit space-separated dir list to scan
 #   PSYCHIC_SKILL_REMOTE_URL — override remote VERSION URL
 #   PSYCHIC_SKILL_STATE_DIR  — override ~/.psychic-skill state directory
 set -euo pipefail
 
-PSYCHIC_SKILL_DIR="${PSYCHIC_SKILL_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
+SELF_DIR="${PSYCHIC_SKILL_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 STATE_DIR="${PSYCHIC_SKILL_STATE_DIR:-$HOME/.psychic-skill}"
 CACHE_FILE="$STATE_DIR/last-update-check"
 MARKER_FILE="$STATE_DIR/just-upgraded-from"
 SNOOZE_FILE="$STATE_DIR/update-snoozed"
-VERSION_FILE="$PSYCHIC_SKILL_DIR/VERSION"
 REMOTE_URL="${PSYCHIC_SKILL_REMOTE_URL:-https://raw.githubusercontent.com/daniel-nelson/psychic-skill/main/VERSION}"
 
 # ─── Force flag (busts cache + snooze for standalone /psychic-update-skill) ──
@@ -29,8 +40,102 @@ if [ "${1:-}" = "--force" ]; then
 fi
 
 # ─── Step 0: Check if updates are disabled ────────────────────
-_UC=$("$PSYCHIC_SKILL_DIR/bin/psychic-skill-config" get update_check 2>/dev/null || true)
+_UC=$("$SELF_DIR/bin/psychic-skill-config" get update_check 2>/dev/null || true)
 if [ "$_UC" = "false" ]; then
+  exit 0
+fi
+
+# ─── Install-dir enumeration ─────────────────────────────────
+# Echo one absolute path per existing install copy, deduplicated by realpath.
+list_install_dirs() {
+  if [ -n "${PSYCHIC_SKILL_DIRS:-}" ]; then
+    printf '%s\n' $PSYCHIC_SKILL_DIRS
+    return
+  fi
+  if [ -n "${PSYCHIC_SKILL_DIR:-}" ]; then
+    printf '%s\n' "$PSYCHIC_SKILL_DIR"
+    return
+  fi
+  local candidates=(
+    "${CLAUDE_SKILL_DIR:-}"
+    "${CODEX_SKILL_DIR:-}"
+    "$HOME/.agents/skills/psychic-skill"
+    "$HOME/.claude/skills/psychic-skill"
+    "$HOME/.codex/skills/psychic-skill"
+    ".agents/skills/psychic-skill"
+    ".claude/skills/psychic-skill"
+    ".codex/skills/psychic-skill"
+  )
+  local seen="" d rp
+  for d in "${candidates[@]}"; do
+    [ -n "$d" ] || continue
+    [ -d "$d" ] || continue
+    rp="$(cd "$d" 2>/dev/null && pwd -P)" || continue
+    case ":$seen:" in *":$rp:"*) continue ;; esac
+    seen="$seen:$rp"
+    printf '%s\n' "$rp"
+  done
+}
+
+# ver_lt A B → return 0 (true) if version A is strictly less than B.
+ver_lt() {
+  [ "$1" = "$2" ] && return 1
+  local IFS=. i max
+  local -a A=($1) B=($2)
+  max=${#A[@]}
+  [ ${#B[@]} -gt "$max" ] && max=${#B[@]}
+  for ((i = 0; i < max; i++)); do
+    local ai="${A[i]:-0}" bi="${B[i]:-0}"
+    ai="${ai%%[!0-9]*}"; bi="${bi%%[!0-9]*}"
+    ai="${ai:-0}"; bi="${bi:-0}"
+    if [ "$ai" -lt "$bi" ]; then return 0; fi
+    if [ "$ai" -gt "$bi" ]; then return 1; fi
+  done
+  return 1
+}
+
+# Pretty path for humans: collapse $HOME to ~.
+disp() { case "$1" in "$HOME"/*) printf '~%s' "${1#"$HOME"}" ;; *) printf '%s' "$1" ;; esac; }
+
+# ─── Step 1: Read local versions — LOCAL is the LOWEST across all copies ──────
+LOCAL=""
+DIRS=()
+VERS=()
+while IFS= read -r dir; do
+  [ -n "$dir" ] || continue
+  v=""
+  [ -f "$dir/VERSION" ] && v="$(tr -d '[:space:]' < "$dir/VERSION" 2>/dev/null || true)"
+  [ -n "$v" ] || v="0"          # missing/unreadable VERSION → treat as behind
+  DIRS+=("$dir")
+  VERS+=("$v")
+  if [ -z "$LOCAL" ] || ver_lt "$v" "$LOCAL"; then LOCAL="$v"; fi
+done < <(list_install_dirs)
+
+if [ -z "$LOCAL" ]; then
+  exit 0  # No install copy found → skip check
+fi
+
+# build_detail <remote> — echo an indented "which copies are behind" line.
+build_detail() {
+  local remote="$1" i out=""
+  for i in "${!DIRS[@]}"; do
+    local tag=""
+    ver_lt "${VERS[i]}" "$remote" && tag=" (behind)"
+    out="$out · $(disp "${DIRS[i]}") ${VERS[i]}$tag"
+  done
+  [ -n "$out" ] && printf '  %s\n' "${out# · }"
+}
+
+# ─── Step 2: Check "just upgraded" marker ─────────────────────
+if [ "$FORCE_CHECK" != "true" ] && [ -f "$MARKER_FILE" ]; then
+  OLD="$(cat "$MARKER_FILE" 2>/dev/null | tr -d '[:space:]')"
+  rm -f "$MARKER_FILE" 2>/dev/null || true
+  rm -f "$SNOOZE_FILE" 2>/dev/null || true
+  mkdir -p "$STATE_DIR" 2>/dev/null || true
+  echo "UP_TO_DATE $LOCAL" > "$CACHE_FILE" 2>/dev/null || true
+  if [ -n "$OLD" ]; then
+    echo "JUST_UPGRADED $OLD $LOCAL"
+  fi
   exit 0
 fi
 
@@ -87,28 +192,6 @@ check_snooze() {
   return 1  # snooze expired
 }
 
-# ─── Step 1: Read local version ──────────────────────────────
-LOCAL=""
-if [ -f "$VERSION_FILE" ]; then
-  LOCAL="$(cat "$VERSION_FILE" 2>/dev/null | tr -d '[:space:]')"
-fi
-if [ -z "$LOCAL" ]; then
-  exit 0  # No VERSION file → skip check
-fi
-
-# ─── Step 2: Check "just upgraded" marker ─────────────────────
-if [ "$FORCE_CHECK" != "true" ] && [ -f "$MARKER_FILE" ]; then
-  OLD="$(cat "$MARKER_FILE" 2>/dev/null | tr -d '[:space:]')"
-  rm -f "$MARKER_FILE" 2>/dev/null || true
-  rm -f "$SNOOZE_FILE" 2>/dev/null || true
-  mkdir -p "$STATE_DIR" 2>/dev/null || true
-  echo "UP_TO_DATE $LOCAL" > "$CACHE_FILE" 2>/dev/null || true
-  if [ -n "$OLD" ]; then
-    echo "JUST_UPGRADED $OLD $LOCAL"
-  fi
-  exit 0
-fi
-
 # ─── Step 3: Check cache freshness ──────────────────────────
 # UP_TO_DATE: 60 min TTL (detect new releases quickly)
 # UPGRADE_AVAILABLE: 720 min TTL (keep nagging)
@@ -137,6 +220,7 @@ if [ "$FORCE_CHECK" != "true" ] && [ -f "$CACHE_FILE" ]; then
             exit 0  # snoozed — stay quiet
           fi
           echo "$CACHED"
+          build_detail "$CACHED_NEW"
           exit 0
         fi
         ;;
@@ -158,15 +242,17 @@ if ! echo "$REMOTE" | grep -qE '^[0-9]+\.[0-9.]+$'; then
   exit 0
 fi
 
-if [ "$LOCAL" = "$REMOTE" ]; then
+# Any installed copy behind remote? (LOCAL is the lowest across all copies.)
+if ! ver_lt "$LOCAL" "$REMOTE"; then
   echo "UP_TO_DATE $LOCAL" > "$CACHE_FILE" 2>/dev/null || true
   exit 0
 fi
 
-# Versions differ — upgrade available
+# Some copy is behind — upgrade available.
 echo "UPGRADE_AVAILABLE $LOCAL $REMOTE" > "$CACHE_FILE" 2>/dev/null || true
 if check_snooze "$REMOTE"; then
   exit 0  # snoozed — stay quiet
 fi
 
 echo "UPGRADE_AVAILABLE $LOCAL $REMOTE"
+build_detail "$REMOTE"
