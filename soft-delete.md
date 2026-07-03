@@ -159,14 +159,14 @@ export default class Place extends ApplicationModel {
 await place.destroy()
 
 // Hidden from normal queries
-await Room.where({ placeId: place.id }).count() // 0
+await Room.where({ place }).count() // 0
 
 // Still in the database
-await Room.removeAllDefaultScopes().where({ placeId: place.id }).count() // 3
+await Room.removeAllDefaultScopes().where({ place }).count() // 3
 
 // Undestroy also cascades — restores the place AND its rooms and hostPlaces
 await place.undestroy()
-await Room.where({ placeId: place.id }).count() // 3
+await Room.where({ place }).count() // 3
 ```
 
 ## Querying Soft-Deleted Records
