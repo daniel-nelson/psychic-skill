@@ -598,7 +598,7 @@ The scalar aggregates (`.count()`, `.sum`, `.min`, `.max`, `.avg`) each collapse
 - `countBy(groupColumn)` — count per group. Returns `Map<groupValue, number>`.
 - `minBy` / `maxBy` / `sumBy` / `avgBy` `(groupColumn, aggregatedColumn)` — the value aggregate per group. Returns `Map<groupValue, aggregate>`.
 
-Each takes a single group column and runs one query. They fix the classic per-parent N+1 (`await parent.associationQuery('children').count()` in a loop) by grouping on the foreign key instead:
+Each takes a single group column and runs one query, grouping on the foreign key:
 
 ```typescript
 const placeIds = places.map(place => place.id)

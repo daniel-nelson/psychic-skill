@@ -9,7 +9,7 @@
 
 ### Changed
 
-- **`querying.md`** — the grouped-aggregate section now teaches the first-class `countBy` / `minBy` / `maxBy` / `sumBy` / `avgBy` family instead of a hand-rolled `toKysely` + `GROUP BY`. These stay entirely in Dream, return a `Map` keyed by the group value (with counts already coerced to `number`), respect the model's default scopes, and collapse the per-parent `.count()` N+1 by grouping on the foreign key. `toKysely` is now called out only for grouping the family can't express (multiple group columns, `HAVING`, distinct-count). Adds the ten new methods to the model- and query-method reference lists.
+- **`querying.md`** — the grouped-aggregate section now teaches the first-class `countBy` / `minBy` / `maxBy` / `sumBy` / `avgBy` family instead of a hand-rolled `toKysely` + `GROUP BY`. These stay entirely in Dream, return a `Map` keyed by the group value (with counts already coerced to `number`), respect the model's default scopes, and group on the foreign key in a single query. `toKysely` is now called out only for grouping the family can't express (multiple group columns, `HAVING`, distinct-count). Adds the ten new methods to the model- and query-method reference lists.
 
 ## 0.66.0 — 2026-07-06
 
