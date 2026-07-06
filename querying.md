@@ -75,11 +75,16 @@ These are also query-oriented convenience methods on the model class:
 - `Model.last()`
 - `Model.lastOrFail()`
 - `Model.count()`
+- `Model.countBy(...)`
 - `Model.exists()`
 - `Model.max(...)`
 - `Model.min(...)`
 - `Model.sum(...)`
 - `Model.avg(...)`
+- `Model.maxBy(...)`
+- `Model.minBy(...)`
+- `Model.sumBy(...)`
+- `Model.avgBy(...)`
 - `Model.pluck(...)`
 - `Model.pluckEach(...)`
 - `Model.paginate(...)`
@@ -134,11 +139,16 @@ Terminal or result-producing query methods include:
 - `query.last()`
 - `query.lastOrFail()`
 - `query.count()`
+- `query.countBy(...)`
 - `query.exists()`
 - `query.max(...)`
 - `query.min(...)`
 - `query.sum(...)`
 - `query.avg(...)`
+- `query.maxBy(...)`
+- `query.minBy(...)`
+- `query.sumBy(...)`
+- `query.avgBy(...)`
 - `query.pluck(...)`
 - `query.pluckEach(...)`
 - `query.paginate(...)`
@@ -581,28 +591,30 @@ Supported forms:
 - `Model.toKysely('delete')`
 - `query.toKysely('select' | 'update' | 'delete')`
 
-### Grouped aggregates (`GROUP BY`)
+### Grouped aggregates (`countBy` / `minBy` / `maxBy` / `sumBy` / `avgBy`)
 
-Dream's aggregates (`.count()`, `.sum`, `.min`, `.max`) each return a single scalar — there is no `GROUP BY`. When you need an aggregate broken out per group — a booking count for each place on a dashboard, in one query — keep Dream for the scoped, association-aware setup and eject to Kysely for the grouping. Query the associated model directly so its own default scopes still apply: `Place`'s `HasMany('Booking', { and: { confirmedAt: null } })` filter becomes `Booking.where({ confirmedAt: null })`, which keeps Booking's soft-delete and STI scopes.
+The scalar aggregates (`.count()`, `.sum`, `.min`, `.max`, `.avg`) each collapse the whole query to one number. When you need the aggregate broken out per group — a booking count for each place on a dashboard, in one query — use the grouped counterparts. They stay entirely in Dream, so no ejection to Kysely and no `GROUP BY` by hand:
+
+- `countBy(groupColumn)` — count per group. Returns `Map<groupValue, number>`.
+- `minBy` / `maxBy` / `sumBy` / `avgBy` `(groupColumn, aggregatedColumn)` — the value aggregate per group. Returns `Map<groupValue, aggregate>`.
+
+Each takes a single group column and runs one query. They fix the classic per-parent N+1 (`await parent.associationQuery('children').count()` in a loop) by grouping on the foreign key instead:
 
 ```typescript
-places.forEach(place => (place.pendingBookingCount = 0))
 const placeIds = places.map(place => place.id)
-if (!placeIds.length) return
 
-const rows = await Booking.where({ placeId: placeIds, confirmedAt: null })
-  .toKysely('select')
-  .clearSelect()                                  // toKysely seeds `select "bookings".*`; drop it before grouping
-  .select('bookings.place_id as placeId')
-  .select(eb => eb.fn.countAll<number>().as('count'))
-  .groupBy('bookings.place_id')
-  .execute()
+// One query, grouped on the FK. Query the associated model directly so its own
+// default scopes still apply — Booking keeps its soft-delete and STI scopes, and
+// the `Place` HasMany's `and: { confirmedAt: null }` filter becomes an explicit where.
+const pendingByPlaceId = await Booking.where({ placeId: placeIds, confirmedAt: null }).countBy('placeId')
 
-const countByPlaceId = new Map(rows.map(row => [row.placeId, Number(row.count)]))
-places.forEach(place => (place.pendingBookingCount = countByPlaceId.get(place.id) ?? 0))
+// Only groups with a matching row appear in the Map, so seed absent places to 0.
+places.forEach(place => (place.pendingBookingCount = pendingByPlaceId.get(place.id) ?? 0))
 ```
 
-`toKysely('select')` seeds the builder with `select "<baseAlias>".*`, which a pure `.count()` never reveals, so `.clearSelect()` is required before a grouped aggregate — otherwise the base columns aren't in the `GROUP BY` and the SQL is invalid. Postgres returns `COUNT(*)` as a string with no type error to catch it, hence `Number(row.count)`; a group with no matching rows produces no row at all, so seed each place to `0` first.
+Two things to know about the returned `Map`: only groups with at least one matching row are present (seed absent keys with `map.get(key) ?? 0`), and a nullable group column produces a real `null` key. The counts arrive already coerced to `number` — no manual `Number(...)` cast. Grouping also works over a joined association column (`Place.query().innerJoin('bookings').countBy('bookings.status')`) and inside an `associationQuery`.
+
+Reach for `toKysely('select')` only when the grouping is beyond this family — multiple group columns, `HAVING`, or a distinct-count. In that case build the full scoped Dream query first, then eject (see [the Kysely escape hatch](#preferred-kysely-escape-hatch-tokysely) above).
 
 ### Scope-preserving subqueries: `nestedSelect(...)`
 

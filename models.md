@@ -192,13 +192,22 @@ public peakSeasonBookings: Booking[]
 public siblingRooms: Room[]
 // SQL: ... AND rooms.id != this.id   (joined through the shared Place)
 
-// Through (many-to-many)
+// Through (many-to-many) — `through` names a LOCAL association, so declare both:
+// the `hostPlaces` join and the `hosts` reach across it.
+@deco.HasMany('HostPlace')
+public hostPlaces: HostPlace[]
+
 @deco.HasMany('Host', { through: 'hostPlaces' })
 public hosts: Host[]
 
-// Nested through
-@deco.HasMany('PostComment', { through: 'posts', source: 'comments' })
-public postComments: PostComment[]
+// Nested through — same rule, chained: `through` names a LOCAL association (`bookings`),
+// and `source` picks the intermediate's association when its name differs. Multi-hop
+// chains, and where each hop belongs, are covered in full after the options table below.
+@deco.HasMany('Booking')
+public bookings: Booking[]
+
+@deco.HasMany('Guest', { through: 'bookings', source: 'guest' })
+public guests: Guest[]
 
 // Polymorphic
 @deco.HasMany('LocalizedText', { polymorphic: true, on: 'localizableId', dependent: 'destroy' })
@@ -239,6 +248,78 @@ public allBookings: Booking[]  // includes soft-deleted bookings
 | `withoutDefaultScopes` | scope name[] | Default scopes to skip when loading this association |
 
 **Through associations** (`through` option) cannot use: `dependent`, `primaryKeyOverride`, `withoutDefaultScopes`, `on`, or `polymorphic`.
+
+**`through` names an association declared on the *same* model** — Dream resolves it against this model's own association metadata, so the named association must exist here or the through has nothing to walk. Every hop in a chain is therefore an ordinary association on the model at that hop; a multi-hop reach is built by declaring one through per model, each naming the next model's association.
+
+**`through` traverses `BelongsTo` hops too, not only `HasMany`/`HasOne`, and a `through` can point at another `through`** to span any number of hops. The classic case reaches *down* a many-to-many; the same mechanism reaches *up* the ownership tree over `BelongsTo` intermediates. Reaching the owning `Host` from a `Booking` (`Booking →(BelongsTo) Room →(BelongsTo) Place →(BelongsTo) Host`) is one association per model, each pointing at the next:
+
+```typescript
+// Place.ts — the concrete top of the chain
+@deco.BelongsTo('Host')
+public host: Host
+
+// Room.ts — `place` is the local association `through: 'place'` names;
+// `host` here is itself a through, so it can be the target of a further hop
+@deco.BelongsTo('Place')
+public place: Place
+@deco.HasOne('Host', { through: 'place' })
+public host: Host
+
+// Booking.ts — `through: 'room'` names Booking's own `room` association, whose
+// `host` is a through; Dream keeps unwinding until it hits Place's concrete BelongsTo
+@deco.BelongsTo('Room')
+public room: Room
+@deco.HasOne('Host', { through: 'room' })
+public host: Host
+```
+
+`host` is now one association name on `Booking`, usable with `preload`, `associationQuery`, `association`, or a serializer, replacing a per-hop preload of `room` and `place` and the `booking.room?.place?.host` walk. A chain over an optional `BelongsTo` is nullable — type it `Host | null`. Condition and shaping clauses work on `through` associations too (`and`, `andNot`, `andAny`, `selfAnd`, `selfAndNot`, `order`, `distinct`), with one positional catch in a multi-hop chain. An *intermediate* through, one that a further through reaches across, must be bare (only `through` and `source`); if a bridged-through intermediate also carries any of those clauses, resolving the chain throws `ThroughAssociationConditionsIncompatibleWithThroughAssociationSource`. Keep the clauses on the outermost hop, or on a plain non-through association.
+
+**`source` defaults to the association's own name, matched by name (not by target model).** In each hop above, `source` is omitted because the next model's association is also named `host`; Dream looks up an association literally named after the property. This is what disambiguates an intermediate that has two associations of the *same* target model (e.g. a `Room` with both `host` and `substituteHost`, both `BelongsTo('Host')`) — the name match picks the right one. Pass `source: '...'` only when the intermediate's association name differs from the name you want on this model (as in the `through: 'bookings', source: 'guest'` example above).
+
+#### Where a hop belongs: compose across models, or stack on the origin
+
+A deep reach can be built two ways, and they are capability-equivalent — both compile to the same joins, and both resolve each `source` on the destination model. The difference is only *where the intermediate `through`s are declared*, which makes it a code-organization decision.
+
+**Compose across models** — declare a `through` on the model whose relationship it describes, then let higher models point their `source` at it. Here a `Host` reaches every guest who has booked any of its places, and the middle hop (`Place.guests`, a many-to-many over the `Booking` join) lives on `Place`:
+
+```typescript
+// Booking.ts — the join between a place and a guest
+@deco.BelongsTo('Place')
+public place: Place
+@deco.BelongsTo('Guest')
+public guest: Guest
+
+// Place.ts — a place's guests, through its bookings. `source: 'guest'` is explicit
+// because Booking's association is `guest`, not `guests`.
+@deco.HasMany('Booking')
+public bookings: Booking[]
+@deco.HasMany('Guest', { through: 'bookings', source: 'guest' })
+public guests: Guest[]
+
+// Host.ts — a host's guests, through its places. `source` defaults (property `guests`
+// matches Place's `guests`), and Place's `guests` is itself a through-over-a-join, so
+// Dream keeps unwinding. Resolves: Host →HasMany Place →HasMany Booking →BelongsTo Guest.
+@deco.HasMany('Place')
+public places: Place[]
+@deco.HasMany('Guest', { through: 'places' })
+public guests: Guest[]
+```
+
+`Place.guests` is now a first-class association any code can use, and if `Booking`'s link to `Guest` ever changes, the fix lands in one place and every consumer (`Host.guests`, a future `City.guests`, …) inherits it.
+
+**Stack on the origin** — declare the intermediate `through`s on the origin model instead, leaving the middle models with only their plain neighbor associations. This keeps the whole path in one file and avoids adding an association to a shared model that only exists to serve one distant consumer. It is also the *correct* choice when a middle hop carries an **origin-relative** condition or order — a filter that describes how this origin wants to view the path, not an intrinsic fact about the middle model:
+
+```typescript
+// Host.ts — recent bookings' guests. The "recent" filter belongs to the host's view,
+// so the filtered intermediate (`recentBookings`) is declared here, not on Place.
+@deco.HasMany('Booking', { and: { createdAt: () => range(DateTime.now().minus({ week: 1 })) } })
+public recentBookings: Booking[]
+@deco.HasMany('Guest', { through: 'recentBookings', source: 'guest' })
+public recentGuests: Guest[]
+```
+
+**How to choose:** would this intermediate association make sense called directly on that model, independent of this chain? If yes, declare it there and compose — that is the default, because the reflex to collapse every hop onto the model you happen to be editing produces duplicated path knowledge and misses reuse. If the association would exist *only* to serve one longer reach, or a hop needs an origin-relative filter/order, stack it on the origin. The two approaches also mix freely within a single chain — compose where a real association already exists, stack where one doesn't.
 
 ### HasOne
 

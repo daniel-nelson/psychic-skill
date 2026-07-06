@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.67.0 — 2026-07-06
+
+### Added
+
+- **`models.md`** — documents multi-hop and `BelongsTo` `through` associations, with fully-declared examples (every intermediate association shown). Makes several previously-unstated facts explicit: `through` names an association declared on the *same* model (so a multi-hop reach is one through per model, each naming the next model's association); a `through` can point at an association that is itself a `through`, so Dream unwinds the chain recursively over `BelongsTo` intermediates to reach up the ownership tree (a `Booking → Room → Place → Host` example); and `source` defaults to the association's own property name, matched by name rather than target model, which disambiguates an intermediate with two associations of the same target type. Notes that condition/shaping clauses (`and`, `andNot`, `andAny`, `selfAnd`, `selfAndNot`, `order`, `distinct`) are allowed on `through` associations, with the positional catch that an intermediate through bridged across by a further through must be bare or it throws `ThroughAssociationConditionsIncompatibleWithThroughAssociationSource`.
+- **`models.md`** — new "Where a hop belongs: compose across models, or stack on the origin" subsection. The two ways to build a deep `through` reach are capability-equivalent (same joins, same `source` resolution on the destination), so the choice is a code-organization one. Gives a composition example (a `Host → Place → Booking → Guest` reach where the middle `Place.guests` many-to-many lives on `Place` and higher models point their `source` at it) and an origin-stacking example (an origin-relative `recentGuests` filter that must live on the origin), then a decision rule: declare the hop on the model whose relationship it describes and compose by default; stack on the origin only when the intermediate would exist solely to serve one distant reach or a hop needs an origin-relative filter/order. Notes the two approaches mix freely within one chain.
+
+### Changed
+
+- **`querying.md`** — the grouped-aggregate section now teaches the first-class `countBy` / `minBy` / `maxBy` / `sumBy` / `avgBy` family instead of a hand-rolled `toKysely` + `GROUP BY`. These stay entirely in Dream, return a `Map` keyed by the group value (with counts already coerced to `number`), respect the model's default scopes, and collapse the per-parent `.count()` N+1 by grouping on the foreign key. `toKysely` is now called out only for grouping the family can't express (multiple group columns, `HAVING`, distinct-count). Adds the ten new methods to the model- and query-method reference lists.
+
 ## 0.66.0 — 2026-07-06
 
 ### Added
