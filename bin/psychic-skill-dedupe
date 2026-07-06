@@ -1,0 +1,155 @@
+#!/usr/bin/env bash
+# psychic-skill-dedupe — retrofit an existing dual install into the canonical
+# link shape.
+#
+# A project scaffolded before the .agents-canonical shape can carry BOTH a real
+# .claude/skills/psychic-skill copy AND a real .agents/skills/psychic-skill copy.
+# The two drift independently. This consolidates them: .agents is the single
+# source of truth, and .claude references it — a POSIX symlink for pnpm/yarn/bun,
+# a Windows directory junction (no admin needed) with a recursive-copy fallback.
+# For npm it deliberately LEAVES .claude as a real copy: npm ships
+# ignore-scripts=true (so the install-time linker never runs) and a committed
+# symlink checks out broken on Windows, so a real copy is the safe choice.
+#
+# Runs against the current project (cwd), or a root passed as the last argument.
+# Idempotent and safe to re-run: once .claude is a link it is a no-op.
+#
+# Modes:
+#   psychic-skill-dedupe          convert in place
+#   psychic-skill-dedupe --plan   print what WOULD happen; mutate nothing
+#
+# Output (parseable; the /psychic-update-skill flow relays it):
+#   PM <pnpm|yarn|bun|npm|unknown>
+#   RESULT <state>   state: no-agents-copy | no-claude-copy | already-linked |
+#                           not-dual | converted | plan:convert |
+#                           left-npm-realcopy | left-unknown-pm | failed
+#
+# Exit: 0 ok (including every no-op) · 3 conversion failed
+set -uo pipefail
+
+PLAN=false
+ROOT="."
+for arg in "$@"; do
+  case "$arg" in
+    --plan) PLAN=true ;;
+    *) ROOT="$arg" ;;
+  esac
+done
+
+SKILL="psychic-skill"
+CLAUDE_SKILLS="$ROOT/.claude/skills"
+AGENTS_SKILLS="$ROOT/.agents/skills"
+CLAUDE_TREE="$CLAUDE_SKILLS/$SKILL"
+AGENTS_TREE="$AGENTS_SKILLS/$SKILL"
+
+is_win=0
+case "$(uname -s 2>/dev/null)" in MINGW* | MSYS* | CYGWIN*) is_win=1 ;; esac
+
+# ─── Detect the dual-real precondition ───────────────────────
+# .agents must be a real (non-symlink) tree to link to.
+if [ -L "$AGENTS_TREE" ] || [ ! -d "$AGENTS_TREE" ] || [ ! -f "$AGENTS_TREE/SKILL.md" ]; then
+  echo "RESULT no-agents-copy"
+  exit 0
+fi
+# .claude already a link → already deduped (idempotent re-run).
+if [ -L "$CLAUDE_TREE" ]; then
+  echo "RESULT already-linked"
+  exit 0
+fi
+if [ ! -e "$CLAUDE_TREE" ]; then
+  echo "RESULT no-claude-copy"
+  exit 0
+fi
+if [ ! -d "$CLAUDE_TREE" ]; then
+  echo "RESULT not-dual"
+  exit 0
+fi
+
+# ─── Determine the package manager ───────────────────────────
+# packageManager field wins; else the lockfile; checked at the project root and
+# in an api/ subdir (the client-case layout puts package.json under api/).
+detect_pm() {
+  local base pm
+  for base in "$ROOT" "$ROOT/api"; do
+    if [ -f "$base/package.json" ]; then
+      pm="$(sed -n 's/.*"packageManager"[[:space:]]*:[[:space:]]*"\([a-z]*\)@.*/\1/p' "$base/package.json" 2>/dev/null | head -1)"
+      case "$pm" in pnpm | yarn | bun | npm) printf '%s' "$pm"; return ;; esac
+    fi
+  done
+  for base in "$ROOT" "$ROOT/api"; do
+    [ -f "$base/pnpm-lock.yaml" ] && { printf 'pnpm'; return; }
+    [ -f "$base/yarn.lock" ] && { printf 'yarn'; return; }
+    [ -f "$base/bun.lockb" ] || [ -f "$base/bun.lock" ] && { printf 'bun'; return; }
+    [ -f "$base/package-lock.json" ] && { printf 'npm'; return; }
+  done
+  printf 'unknown'
+}
+
+PM="$(detect_pm)"
+echo "PM $PM"
+
+case "$PM" in
+  npm)
+    echo "RESULT left-npm-realcopy"
+    exit 0
+    ;;
+  pnpm | yarn | bun) : ;; # convert
+  *)
+    echo "RESULT left-unknown-pm"
+    exit 0
+    ;;
+esac
+
+# ─── Build the link set: the skill + every sub-skill (mirrors ./setup) ───
+# Each entry: "<name>|<posix-rel-target>|<abs-target>"
+LINKS=("$SKILL|../../.agents/skills/$SKILL|$AGENTS_TREE")
+for sub in "$AGENTS_TREE"/*/; do
+  [ -d "$sub" ] || continue
+  name="$(basename "$sub")"
+  case "$name" in node_modules | .*) continue ;; esac
+  [ -f "$sub/SKILL.md" ] || continue
+  LINKS+=("$name|$SKILL/$name|$AGENTS_TREE/$name")
+done
+
+if $PLAN; then
+  echo "RESULT plan:convert"
+  for entry in "${LINKS[@]}"; do
+    name="${entry%%|*}"; rest="${entry#*|}"; rel="${rest%%|*}"
+    echo "  LINK $CLAUDE_SKILLS/$name -> $rel"
+  done
+  exit 0
+fi
+
+# ─── Convert ─────────────────────────────────────────────────
+make_link() {
+  local link="$1" rel="$2" abs="$3"
+  rm -rf "$link" 2>/dev/null || true
+  if [ "$is_win" = "1" ]; then
+    # Junction (no admin privilege needed); target must be absolute.
+    local abswin
+    abswin="$(cd "$(dirname "$abs")" 2>/dev/null && pwd)/$(basename "$abs")" || abswin="$abs"
+    if cmd //c "mklink /J \"$link\" \"$abswin\"" >/dev/null 2>&1; then return 0; fi
+    cp -R "$abs" "$link" 2>/dev/null && return 0
+    return 1
+  fi
+  ln -s "$rel" "$link" 2>/dev/null && return 0
+  cp -R "$abs" "$link" 2>/dev/null && return 0
+  return 1
+}
+
+mkdir -p "$CLAUDE_SKILLS" 2>/dev/null || true
+FAILS=0
+for entry in "${LINKS[@]}"; do
+  name="${entry%%|*}"; rest="${entry#*|}"; rel="${rest%%|*}"; abs="${rest#*|}"
+  if ! make_link "$CLAUDE_SKILLS/$name" "$rel" "$abs"; then
+    FAILS=$((FAILS + 1))
+    echo "  LINK-FAILED $CLAUDE_SKILLS/$name"
+  fi
+done
+
+if [ "$FAILS" -gt 0 ]; then
+  echo "RESULT failed"
+  exit 3
+fi
+echo "RESULT converted"
+exit 0

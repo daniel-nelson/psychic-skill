@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 # psychic-skill-update-apply — upgrade EVERY installed copy of psychic-skill.
 #
-# This reconciles all install roots (~/.agents, ~/.claude, ~/.codex, plus
-# project-local .agents/.claude/.codex) in one pass, instead of upgrading only
-# the first one found. A single stale copy in a root the host loads from is the
-# split-brain bug this exists to prevent — see bin/psychic-skill-update-check.
+# This reconciles all install roots (~/.agents, ~/.claude, plus project-local
+# .agents/.claude) in one pass, instead of upgrading only the first one found. A
+# single stale copy in a root the host loads from is the split-brain bug this
+# exists to prevent — see bin/psychic-skill-update-check.
+#
+# It also runs a one-time .codex → .agents consolidation pass first: Codex now
+# reads .agents, so any legacy .codex psychic-skill copy is moved into the
+# matching .agents location (or dropped if an .agents copy already exists).
 #
 # Modes:
 #   psychic-skill-update-apply          reconcile all copies to the remote version
@@ -60,10 +64,8 @@ list_install_dirs() {
   local candidates=(
     "$HOME/.agents/skills/psychic-skill"
     "$HOME/.claude/skills/psychic-skill"
-    "$HOME/.codex/skills/psychic-skill"
     ".agents/skills/psychic-skill"
     ".claude/skills/psychic-skill"
-    ".codex/skills/psychic-skill"
   )
   local seen="" d rp
   for d in "${candidates[@]}"; do
@@ -79,6 +81,47 @@ list_install_dirs() {
 
 read_ver() { tr -d '[:space:]' < "$1/VERSION" 2>/dev/null || echo unknown; }
 
+# ─── One-time .codex → .agents consolidation ─────────────────
+# Codex now reads .agents. Move any legacy .codex psychic-skill copy into the
+# matching .agents location when none exists there, or drop it when an .agents
+# copy already does. Dev symlinks are never touched (mirrors the guard below).
+# Idempotent: a no-op once .codex is gone. Under --plan, reports without mutating.
+migrate_codex_to_agents() {
+  local pair codex agents
+  local -a pairs=(
+    "$HOME/.codex/skills/psychic-skill|$HOME/.agents/skills/psychic-skill"
+    ".codex/skills/psychic-skill|.agents/skills/psychic-skill"
+  )
+  for pair in "${pairs[@]}"; do
+    codex="${pair%%|*}"
+    agents="${pair##*|}"
+    [ -e "$codex" ] || [ -L "$codex" ] || continue
+    if [ -L "$codex" ]; then
+      echo "MIGRATE $(disp "$codex") dev-symlink-skipped"
+      continue
+    fi
+    if [ -e "$agents" ] || [ -L "$agents" ]; then
+      if $PLAN; then
+        echo "MIGRATE $(disp "$codex") plan:drop (.agents copy exists)"
+      else
+        rm -rf "$codex" 2>/dev/null || true
+        echo "MIGRATE $(disp "$codex") dropped (.agents copy exists)"
+      fi
+    else
+      if $PLAN; then
+        echo "MIGRATE $(disp "$codex") plan:move -> $(disp "$agents")"
+      else
+        mkdir -p "$(dirname "$agents")" 2>/dev/null || true
+        if mv "$codex" "$agents" 2>/dev/null; then
+          echo "MIGRATE $(disp "$codex") -> $(disp "$agents") moved"
+        else
+          echo "MIGRATE $(disp "$codex") move-failed"
+        fi
+      fi
+    fi
+  done
+}
+
 # ─── Fetch + validate remote version ─────────────────────────
 REMOTE="$(curl -sf --max-time 10 "$REMOTE_URL" 2>/dev/null | tr -d '[:space:]' || true)"
 if ! echo "$REMOTE" | grep -qE '^[0-9]+\.[0-9.]+$'; then
@@ -86,6 +129,9 @@ if ! echo "$REMOTE" | grep -qE '^[0-9]+\.[0-9.]+$'; then
   exit 2
 fi
 echo "REMOTE $REMOTE"
+
+# ─── Consolidate legacy .codex copies into .agents ───────────
+migrate_codex_to_agents
 
 # ─── Lazy source clone (only needed for vendored copies) ─────
 SRC=""

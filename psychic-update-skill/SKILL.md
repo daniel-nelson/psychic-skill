@@ -17,7 +17,7 @@ This section is referenced by the main skill preamble when it detects `UPGRADE_A
 First, check if auto-upgrade is enabled:
 ```bash
 _SKILL_DIR=""
-for d in "${CLAUDE_SKILL_DIR:-}" "${CODEX_SKILL_DIR:-}" "$HOME/.agents/skills/psychic-skill" "$HOME/.claude/skills/psychic-skill" "$HOME/.codex/skills/psychic-skill" ".agents/skills/psychic-skill" ".claude/skills/psychic-skill" ".codex/skills/psychic-skill"; do
+for d in "${CLAUDE_SKILL_DIR:-}" "$HOME/.agents/skills/psychic-skill" "$HOME/.claude/skills/psychic-skill" ".agents/skills/psychic-skill" ".claude/skills/psychic-skill"; do
   [ -n "$d" ] && [ -x "$d/bin/psychic-skill-config" ] && _SKILL_DIR="$d" && break
 done
 _AUTO=""
@@ -70,7 +70,7 @@ Continue with the current skill.
 ### Step 2: Reconcile every installed copy
 
 psychic-skill can be installed in more than one root at once (`~/.agents`,
-`~/.claude`, `~/.codex`, plus project-local `.agents`/`.claude`/`.codex`). The
+`~/.claude`, plus project-local `.agents`/`.claude`). The
 host may load a different copy than the one that sorts first, so the upgrade must
 bring **every** copy to the remote version, not just the first one found.
 `bin/psychic-skill-update-apply` does that in one pass — it upgrades git copies
@@ -83,7 +83,7 @@ predate it), then run it:
 
 ```bash
 APPLY=""
-for d in "${CLAUDE_SKILL_DIR:-}" "${CODEX_SKILL_DIR:-}" "$HOME/.agents/skills/psychic-skill" "$HOME/.claude/skills/psychic-skill" "$HOME/.codex/skills/psychic-skill" ".agents/skills/psychic-skill" ".claude/skills/psychic-skill" ".codex/skills/psychic-skill"; do
+for d in "${CLAUDE_SKILL_DIR:-}" "$HOME/.agents/skills/psychic-skill" "$HOME/.claude/skills/psychic-skill" ".agents/skills/psychic-skill" ".claude/skills/psychic-skill"; do
   [ -n "$d" ] && [ -x "$d/bin/psychic-skill-update-apply" ] && APPLY="$d/bin/psychic-skill-update-apply" && break
 done
 if [ -n "$APPLY" ]; then
@@ -115,7 +115,7 @@ vendored (project-local, no `.git`), remind the user to commit it.
 updater, so reconcile the git copies inline:
 
 ```bash
-for d in "$HOME/.agents/skills/psychic-skill" "$HOME/.claude/skills/psychic-skill" "$HOME/.codex/skills/psychic-skill" ".agents/skills/psychic-skill" ".claude/skills/psychic-skill" ".codex/skills/psychic-skill"; do
+for d in "$HOME/.agents/skills/psychic-skill" "$HOME/.claude/skills/psychic-skill" ".agents/skills/psychic-skill" ".claude/skills/psychic-skill"; do
   [ -d "$d/.git" ] || continue
   [ -L "$d" ] && { echo "$d: dev symlink, skipped"; continue; }
   OLD=$(cat "$d/VERSION" 2>/dev/null || echo unknown)
@@ -124,6 +124,51 @@ for d in "$HOME/.agents/skills/psychic-skill" "$HOME/.claude/skills/psychic-skil
 done
 mkdir -p ~/.psychic-skill && rm -f ~/.psychic-skill/last-update-check ~/.psychic-skill/update-snoozed
 ```
+
+### Step 2.5: Dedupe a dual project install (optional)
+
+Older project installs can carry BOTH a real `.claude/skills/psychic-skill` copy
+AND a real `.agents/skills/psychic-skill` copy in the same repo. The two are
+independent full clones that drift apart. The canonical shape is one real tree at
+`.agents` with `.claude` referencing it (a symlink for pnpm/yarn/bun, a real copy
+for npm — npm's `ignore-scripts=true` plus Windows symlink breakage make the real
+copy the safe choice there). A helper detects and fixes this on demand; it never
+runs automatically.
+
+Only offer this when the current project has both as real (non-symlink) copies.
+Preview with `--plan`, ask the user, then run it. The helper lives next to the
+apply script (`psychic-skill-dedupe` in the same `bin/`); reuse the `$APPLY` dir
+found in Step 2, or locate it the same way.
+
+```bash
+DEDUPE=""
+[ -n "$APPLY" ] && DEDUPE="$(dirname "$APPLY")/psychic-skill-dedupe"
+if [ -z "$DEDUPE" ] || [ ! -x "$DEDUPE" ]; then
+  for d in "${CLAUDE_SKILL_DIR:-}" "$HOME/.agents/skills/psychic-skill" "$HOME/.claude/skills/psychic-skill" ".agents/skills/psychic-skill" ".claude/skills/psychic-skill"; do
+    [ -n "$d" ] && [ -x "$d/bin/psychic-skill-dedupe" ] && DEDUPE="$d/bin/psychic-skill-dedupe" && break
+  done
+fi
+if [ -n "$DEDUPE" ] && [ -x "$DEDUPE" ]; then
+  "$DEDUPE" --plan .
+else
+  echo "NO_DEDUPE_SCRIPT"   # this install predates the dedupe helper; skip this step
+fi
+```
+
+Read the `RESULT` line from the `--plan` output:
+
+- `no-agents-copy`, `no-claude-copy`, `not-dual`, or `already-linked` — nothing to
+  do; skip silently and move on to Step 3.
+- `left-npm-realcopy` — the project uses npm; the real `.claude` copy is correct
+  and stays. No action; mention it only if the user asked.
+- `left-unknown-pm` — package manager couldn't be determined; leave it as is.
+- `plan:convert` — a dual real install on pnpm/yarn/bun. The plan lists the links
+  that would be created. **Ask the user** whether to convert `.claude` into a
+  symlink that references the canonical `.agents` tree (removing the duplicate
+  copy). If yes, run `"$DEDUPE" .` and relay its `RESULT` (`converted` or
+  `failed`). Remind the user to commit the changed `.claude` links.
+
+The helper is idempotent and safe to re-run.
 
 ### Step 3: Show What's New
 
@@ -157,7 +202,7 @@ When invoked directly as `/psychic-update-skill` (not from a preamble):
 ```bash
 UPDATE_CHECK_OUTPUT=""
 UPDATE_CHECK_OK=false
-for d in "${CLAUDE_SKILL_DIR:-}" "${CODEX_SKILL_DIR:-}" "$HOME/.agents/skills/psychic-skill" "$HOME/.claude/skills/psychic-skill" "$HOME/.codex/skills/psychic-skill" ".agents/skills/psychic-skill" ".claude/skills/psychic-skill" ".codex/skills/psychic-skill"; do
+for d in "${CLAUDE_SKILL_DIR:-}" "$HOME/.agents/skills/psychic-skill" "$HOME/.claude/skills/psychic-skill" ".agents/skills/psychic-skill" ".claude/skills/psychic-skill"; do
   if [ -n "$d" ] && [ -x "$d/bin/psychic-skill-update-check" ]; then
     UPDATE_CHECK_OUTPUT=$("$d/bin/psychic-skill-update-check" --force 2>/dev/null)
     rc=$?

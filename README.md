@@ -59,6 +59,15 @@ Add psychic-skill to this project: run `cp -Rf ~/.agents/skills/psychic-skill .a
 
 Real files get committed to your repo (not a submodule), so teammates just need to run `cd .agents/skills/psychic-skill && ./setup` once.
 
+#### Using both Claude and a `.agents` agent in one project
+
+`.agents` is the canonical location for Codex and other `.agents`-compatible agents. If a project installs psychic-skill for **both** Claude Code (`.claude`) and a `.agents` agent, keep a single real copy at `.agents/skills/psychic-skill` and have the Claude copy reference it, rather than committing two independent trees that drift apart:
+
+- **pnpm / yarn / bun:** `.claude/skills/psychic-skill` is a symlink to `../../.agents/skills/psychic-skill` (and the `psychic-update-skill` sub-skill links through it).
+- **npm:** `.claude` stays a real copy. npm ships `ignore-scripts=true` and Windows checks a committed symlink out as a broken text file, so a real copy is the safe choice.
+
+Run `/psychic-update-skill` in a project that already committed both real trees to convert the older dual install to this shape; it detects the package manager and links or leaves `.claude` accordingly.
+
 ### Install via `npx skills`
 
 ```bash

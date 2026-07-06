@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.66.0 — 2026-07-06
+
+### Added
+
+- **`.codex` → `.agents` consolidation in the updater.** `bin/psychic-skill-update-apply` now runs a one-time migration before reconciling: any legacy `.codex` psychic-skill copy (global `~/.codex` or project `.codex`) is moved into the matching `.agents` location, or dropped if an `.agents` copy already exists there. Dev symlinks are left untouched, and `--plan` reports the migration without mutating anything. Codex reads `.agents`, so this retires the legacy location without losing an install.
+- **`bin/psychic-skill-dedupe` — retrofit a dual project install.** A project that committed both a real `.claude/skills/psychic-skill` copy and a real `.agents/skills/psychic-skill` copy carries two trees that drift apart. The new helper detects that case, determines the project's package manager, and converts `.claude` (and its `psychic-update-skill` sub-skill link) into the canonical link shape — a relative POSIX symlink into `../../.agents/skills/psychic-skill` for pnpm/yarn/bun (Windows junction with a recursive-copy fallback), while leaving npm's `.claude` as a real copy (npm disables install scripts and Windows breaks committed symlinks). It is idempotent and safe to re-run, and `--plan` previews without mutating.
+- **`/psychic-update-skill` now offers to dedupe a dual install.** A new post-upgrade step detects a dual real `.claude`+`.agents` project install, previews the conversion with `--plan`, asks the user, and runs the dedupe helper. The routine updater does not auto-restructure committed repos — this is an on-demand, opt-in step.
+
+### Changed
+
+- **`.codex` is no longer enumerated as an install root.** Removed `.codex` (and the `CODEX_SKILL_DIR` override) from the root lists in `bin/psychic-skill-update-check`, `bin/psychic-skill-update-apply`, the `SKILL.md` update-check one-liner, and the `psychic-update-skill/SKILL.md` root-detection loops. Existing `.codex` copies are consolidated into `.agents` by the migration above.
+- **`README.md`** — documents the canonical shape for a project using both Claude and a `.agents`-compatible agent: one real tree at `.agents`, with the Claude copy referencing it (symlink for pnpm/yarn/bun, real copy for npm), and points at `/psychic-update-skill` to retrofit an existing dual install.
+
 ## 0.65.0 — 2026-07-03
 
 ### Added
