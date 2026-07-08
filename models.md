@@ -785,6 +785,16 @@ public phone: DreamColumn<User, 'encryptedPhone'>
 // bypasses custom setters entirely (see "Which writes run the setter" below) and
 // will write an unencrypted value straight into `encryptedPhone` with no error —
 // never use `setAttributes`/`updateAttributes` to touch an `@deco.Encrypted` column.
+//
+// An @deco.Encrypted column is not queryable in a `where` clause. The plaintext
+// property (`phone`) is virtual, not a DB column, so it isn't in the model's
+// Whereable type — `where({ phone: ... })` is a TS2353 compile error. This is
+// correct: the plaintext never exists in the database, and the stored ciphertext is
+// non-deterministic (a fresh IV per write), so even matching the raw `encryptedPhone`
+// column can't find a row by its plaintext value. For an existence/idempotency
+// check, fetch candidate rows by their queryable columns and compare the decrypted
+// property in memory. A true server-side equality lookup needs a separate
+// deterministic (blind-index) column you maintain yourself; Dream does not add one.
 
 // Virtual — accepted by create(), update(), and extractParams() but not stored directly in DB.
 // Use getter/setter pairs to transform between the virtual and the actual DB column.
@@ -915,9 +925,15 @@ await room.associationQuery('bookings', { and: { guest } })   // not { guestId: 
 
 // polymorphic works the same way
 await LocalizedText.where({ localizable: host }).first()      // not { localizableId: host.id }
+
+// filtering by several instances at once — an array is accepted under an
+// association key in query where/join-on-clauses (see note below)
+await Booking.where({ place: places }).all()                  // place_id IN (...)
 ```
 
 The instance form works the same **regardless of the association's shape** — polymorphic or not, and whether the model you pass is a plain model or an STI child. Dream derives the foreign key from the instance's primary key and, for a polymorphic association, the type discriminator from the instance's `referenceTypeString` (which resolves an STI child such as a `Bathroom` to its base, `'Room'`). One form covers every case, so the call site never has to know which case it is in.
+
+**Filtering accepts an array of instances**, not just a single one — `where({ place: places })`, and likewise in `whereNot`/`whereAny` and the `and`/`andNot`/`andAny` of a join on-clause. A non-polymorphic key expands to a foreign-key `IN`; a polymorphic key groups the instances by type, turns each group into an id-`IN` plus type-match pair, and ORs the groups, so an id collision across types can never match the wrong row. This is query-only: `create`, `update`, and `findOrCreateBy` still take a single instance, because a list of parents is meaningless there.
 
 Three reasons this is the rule, not a preference:
 
