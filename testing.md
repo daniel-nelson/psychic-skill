@@ -665,7 +665,7 @@ In production the same job runs on a separate BullMQ worker. A throw there moves
 
 Two practical consequences:
 
-- A spec that drives a backgrounded job must stub or record any external I/O that job performs (HTTP, third-party clients). Because the job runs synchronously inside the request, an unstubbed call hits the network for real and, if it fails, 500s the spec. This is a frequent source of "works in isolation, flaky in the suite" feature/controller specs.
+- A spec that drives a backgrounded job must stub or record any external I/O that job performs (HTTP, third-party clients). Because the job runs synchronously inside the request, an unstubbed call hits the network for real and, if it fails, 500s the spec. This is a frequent source of "works in isolation, flaky in the suite" feature/controller specs. Because single-file-green / full-suite-red is the *default* shape of a flake in this stack, validate a fix by re-running the full suite or the failing ordering — never the single file you iterated in, which is the run most likely to pass for the wrong reason.
 - The inline error propagation is useful — it surfaces job bugs the prod fire-and-forget path would bury — but it means a spec asserting on the request's status code is exercising a different path than production. Assert on the job's side effects, not on a status code that only differs because the job ran inline.
 
 ## Feature Spec Pattern
