@@ -540,6 +540,18 @@ const BOOKABLE_ROOM_TYPES: Extract<RoomTypesEnum, 'Bedroom' | 'Den' | 'LivingRoo
 this.castParam('roomType', 'string', { enum: BOOKABLE_ROOM_TYPES })
 ```
 
+### Bounding length and range
+
+Beyond `enum`/`allowNull`/`match`, `castParam` (and `extractParams`) enforce size bounds: `minLength`/`maxLength` on a `'string'`, and `minimum`/`maximum` on a `'number'`/`'integer'`/`'bigint'`. All four are inclusive and checked *after* type coercion; a violation throws `ParamValidationError`, which Psychic renders as a `400`. Bound untrusted request input at the boundary rather than validating it later in a model or service:
+
+```typescript
+this.castParam('title', 'string', { minLength: 1, maxLength: 200 })
+this.castParam('nightlyRateCents', 'integer', { minimum: 0, maximum: 100_000_000 })
+this.castParam('sleeps', 'integer', { minimum: 1, maximum: 20, allowNull: true })
+```
+
+For array casts (`'string[]'`, `'integer[]'`, …) the bounds apply **element-wise** — each element must satisfy them — and `bigint` range checks compare without precision loss. Reach for these to cap a free-text field's length or a numeric range at the request boundary, the same job `maxLength`/`minimum` do in an OpenAPI/JSON-schema spec (the option names mirror them).
+
 ### String params are trimmed automatically
 
 Psychic strips leading and trailing whitespace from string params before validation and casting. Both `castParam` and `extractParams` resolve strings through the same `Params.cast` path, so `'  Cozy Cabin  '` arrives as `'Cozy Cabin'`. This applies to scalar `'string'` params, `enum` strings, Virtual string params, and the elements of string and enum arrays (`'string[]'`, array enum columns). Don't re-trim in a controller, a model setter, or a hook — it's already done.
