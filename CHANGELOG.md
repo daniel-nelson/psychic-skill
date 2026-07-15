@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.68.0 — 2026-07-14
+
+### Changed
+
+- **`migrations.md`** — corrects the `DreamMigrationHelpers.dropEnumValue` two-migration example: a `replacements` entry for a **scalar** enum column is `{ table, column, replaceWith }`, with no `behavior` key (the previous example wrongly put `behavior: 'replace'` on the scalar `places.style` column). Adds a note that `behavior` (`'remove'`/`'replace'`) and `replaceWith` apply only to array columns, where the entry also carries `array: true`, with worked examples of both array shapes.
+
 ## 0.67.0 — 2026-07-06
 
 ### Added

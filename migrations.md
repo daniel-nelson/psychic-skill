@@ -316,12 +316,7 @@ export async function up(db: Kysely<any>): Promise<void> {
     enumName: 'place_styles_enum',
     value: 'lean_to',
     replacements: [
-      {
-        table: 'places',
-        column: 'style',
-        behavior: 'replace',
-        replaceWith: 'treehouse',
-      },
+      { table: 'places', column: 'style', replaceWith: 'treehouse' },
     ],
   })
 }
@@ -332,6 +327,15 @@ export async function down(db: Kysely<any>): Promise<void> {
     value: 'lean_to',
   })
 }
+```
+
+A `replacements` entry for a **scalar** enum column is exactly `{ table, column, replaceWith }`. The `behavior` key (`'remove'` to strip the value from array cells, `'replace'` to swap it) applies **only** to array columns, where the entry also carries `array: true`:
+
+```typescript
+// array column: strip 'lean_to' from every cell
+{ table: 'places', column: 'past_styles', array: true, behavior: 'remove' }
+// array column: swap 'lean_to' for 'treehouse' in every cell
+{ table: 'places', column: 'past_styles', array: true, behavior: 'replace', replaceWith: 'treehouse' }
 ```
 
 Dream automatically starts a new transaction when it encounters `dropEnumValue` in a migration, ensuring the new enum value from Migration 1 is committed and visible before Migration 2 tries to use it as a replacement. If an enum is used on multiple tables/columns, add a separate entry in the `replacements` array for each.
