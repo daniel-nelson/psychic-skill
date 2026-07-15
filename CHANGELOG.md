@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.69.0 — 2026-07-15
+
+### Changed
+
+- **`testing.md`** — the "Key Test Matchers" section now states that `toMatchDreamModels` compares its two arrays as **sets** (both sides sorted by comparison key before matching), so it passes regardless of the order the query returned rows in — the right assertion for a query whose order you don't control. Adds the corresponding warning: a Dream query that declares no `order` (`.all()`, an unordered `associationQuery(...).all()`, a `pluck`) carries no SQL `ORDER BY`, so the observed row sequence is not a guarantee; don't assert it with an order-sensitive matcher, and make order explicit in the query when order is part of what you're testing.
+
 ## 0.68.0 — 2026-07-14
 
 ### Changed
