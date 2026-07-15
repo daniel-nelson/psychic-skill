@@ -565,14 +565,14 @@ await Host.query().distinct('familyName').pluck('familyName')  // unique family 
 If Dream gets you most of the way there, keep the query in Dream for as long as possible and convert at the end.
 
 ```typescript
-const query = User.query()
-  .where({ status: 'active' })
-  .leftJoin('pets as p')
+const query = Place.query()
+  .where({ style: 'cabin' })
+  .leftJoin('rooms as r')
 
 const rows = await query
   .toKysely('select')
-  .select(['users.id', 'p.name as petName'])
-  .where('p.name', 'ilike', '%fido%')
+  .select(['places.id', 'r.type as roomType'])
+  .where('r.type', '=', 'Bedroom')
   .execute()
 ```
 
@@ -581,7 +581,7 @@ This keeps Dream's scopes, association-aware join setup, and types in play until
 You can also convert directly from the model class:
 
 ```typescript
-await User.toKysely('select').where('email', '=', 'how@yadoin').execute()
+await Place.toKysely('select').where('name', '=', 'Cozy Cabin').execute()
 ```
 
 Supported forms:
