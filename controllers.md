@@ -1032,7 +1032,7 @@ Three knobs to know:
 
 ### Reacting to unhandled errors
 
-Errors that escape the controller stack (anything Psychic doesn't auto-convert to a 4xx) fire the `server:error` hook. This is the right place to ship to Sentry, Datadog, structured alerting, or whatever your error pipeline is:
+Genuine server errors (anything Psychic doesn't render as a 4xx) fire the `server:error` hook. This is the right place to ship to Sentry, Datadog, structured alerting, or whatever your error pipeline is:
 
 ```typescript
 psy.on('server:error', (err, ctx) => {
@@ -1050,6 +1050,8 @@ psy.on('server:error', (err, ctx) => {
 ```
 
 The handler signature is `(err: Error, ctx: Koa.Context) => void | Promise<void>`. The scaffold registers a default that sets `ctx.status = 500` if a response hasn't been sent and re-throws in development/test so the failure surfaces loudly.
+
+`server:error` is the **single** 5xx surface for the web process. Psychic mounts an error boundary as its outermost middleware, so everything inside it — the body parser, CORS origin callbacks, custom `psy.use(...)` middleware, anything mounted via `server:init:after-routes` (e.g. Bull Board), and controller actions — escalates uncaught genuine errors to this one hook. One registration gives complete 5xx observability; do **not** add a second `koaApp.on('error')` listener for coverage. Two things never reach the hook: a 4xx-shaped error (a body-parser 400, an `HttpError` thrown from middleware) renders as its own status, and once response headers are already sent the error is re-thrown to Koa for socket cleanup (and logged by psychic's own app-level listener). So don't filter by status inside the hook — it only ever sees 5xx-class errors.
 
 ## Session & Cookie Management
 
