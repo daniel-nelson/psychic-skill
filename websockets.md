@@ -92,6 +92,8 @@ export default async function resolveWebsocketUser(socket: Socket): Promise<User
 
 The "fail loudly in dev" ergonomic is intentional — if auth isn't wired up, no socket connects.
 
+**A throwing `ws:connect` hook is contained to the connecting socket.** If an auth hook throws (a DB or Redis blip mid-handshake, say), the framework catches it, logs at error level, and calls `socket.disconnect(true)` — the ws process stays up. So a hook may throw to reject a connection; the cost is that one socket, not process safety, and the hook does not need its own outer try/catch to protect the process. (Startup is stricter: a redis adapter that can't attach aborts ws startup rather than silently falling back to in-memory delivery.)
+
 ### Origin allowlist
 
 `allowRequestForOrigins(origins: string[])` returns a socket.io `allowRequest` handler that rejects handshakes whose `Origin` header isn't in the allowlist. Wire it via `wsApp.set('socketio', { allowRequest: ... })` (shown above).

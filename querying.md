@@ -630,6 +630,31 @@ const bookedPlaces = await Place.where({
 }).all()
 ```
 
+`nestedSelect` projects a **single column** and cannot correlate to the outer query, so two subquery shapes are out of reach: a **correlated** subquery (one that references an outer row) and an **aggregate** subquery (`count`/`sum`/… as the projected value). For either, drop to Kysely — but keep the scope-preservation lesson from ["Eject late"](#eject-late-never-early-associations-carry-scopes-that-tokysely-does-not): source the inner table from a **scoped Dream query** (`AssocModel.query().toKysely('select')`), never a raw `db().selectFrom('table')`, so the association's own default scopes stay in the compiled SQL instead of being hand-rolled as a `deleted_at is null` that silently rots when the model later gains another default scope. Correlate the standalone subquery to the outer row with `sql.ref('outer_table.col')` (from `kysely`) as the `whereRef` right-hand side — a standalone builder's table context only includes its own FROM tables, so a bare `.whereRef('bookings.placeId', '=', 'places.id')` string won't type-check against the outer table.
+
+```typescript
+import { sql } from 'kysely'
+
+// Places with more than five non-soft-deleted bookings. A correlated aggregate
+// can't be a nestedSelect, so drop to Kysely — but source the inner count from
+// Booking.query() so Booking's soft-delete scope is applied by Dream, not
+// hand-written as `deleted_at is null`.
+const rows = await Place.query()
+  .toKysely('select')                          // carries Place's own default scopes
+  .where(eb =>
+    eb(
+      Booking.query()                          // scoped Dream query, not db().selectFrom('bookings')
+        .toKysely('select')
+        .clearSelect()
+        .whereRef('bookings.placeId', '=', sql.ref('places.id'))
+        .select(eb2 => eb2.fn.countAll<number>().as('count')),
+      '>',
+      5,
+    ),
+  )
+  .execute()
+```
+
 ## Starting From Scratch With Typed `db()`
 
 Every Psychic project provides a typed Kysely entrypoint in `src/db/index.ts` as a default export named `db`.
