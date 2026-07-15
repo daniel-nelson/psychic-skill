@@ -94,6 +94,8 @@ The "fail loudly in dev" ergonomic is intentional — if auth isn't wired up, no
 
 **A throwing `ws:connect` hook is contained to the connecting socket.** If an auth hook throws (a DB or Redis blip mid-handshake, say), the framework catches it, logs at error level, and calls `socket.disconnect(true)` — the ws process stays up. So a hook may throw to reject a connection; the cost is that one socket, not process safety, and the hook does not need its own outer try/catch to protect the process. (Startup is stricter: a redis adapter that can't attach aborts ws startup rather than silently falling back to in-memory delivery.)
 
+**The websocket process has no request-aware error hook.** The web process funnels uncaught server errors to `server:error` with the Koa `ctx` in hand (see [controllers.md](controllers.md#reacting-to-unhandled-errors)), but there is no equivalent on the ws side — a socket has no HTTP request context to carry. Errors thrown outside the contained `ws:connect` path (inside an event handler, a broadcast, or `ws:start`) surface as bare, context-less `uncaughtException`s. If you ship ws errors to an error tracker, attach your own identifying context (socket id, resolved user id, event name) at the throw site or in a wrapper — nothing downstream will add it for you.
+
 ### Origin allowlist
 
 `allowRequestForOrigins(origins: string[])` returns a socket.io `allowRequest` handler that rejects handshakes whose `Origin` header isn't in the allowlist. Wire it via `wsApp.set('socketio', { allowRequest: ... })` (shown above).
@@ -182,7 +184,7 @@ startWs()
 > ```
 > BullMQ marks the job failed and retries — the error looks like a framework cache problem rather than an application configuration problem. The generated initializer runs in all processes by default (see Configuration above); if a role guard was added that excludes `'worker'`, that is the cause.
 >
-> **If the job completes but the browser shows stale data until refresh:** the initializer is not the problem. See [Client Transport](#client-transport) — Socket.IO's long-polling default is the likely cause.
+> **If the job completes but the browser shows stale data until refresh:** the initializer is not the problem, and neither is the client transport. The likely cause is cross-process delivery: an emit from a web or worker process only reaches a socket held by the websocket-server process through the Redis adapter. A process emitting on the in-process adapter (the `test` default, or a misconfigured non-`test` process) fans out only within its own process, so the browser's socket never receives it.
 
 Common pattern: Background job sends websocket notification:
 
@@ -215,7 +217,7 @@ public async notifyBooking(this: Booking) {
 
 ## Client Transport
 
-Always set `transports: ['websocket']` on the Socket.IO client. Socket.IO defaults to long-polling first for historical reasons (WebSocket support was patchy in 2012); that fallback is unnecessary today — WebSocket is universally supported by modern browsers and mobile apps. Skipping the polling phase means faster connection establishment and eliminates a class of subtle failures where polling requests interfere with the websocket server's HTTP handler.
+Set `transports: ['websocket']` on the Socket.IO client. Socket.IO defaults to trying long-polling first for historical reasons (WebSocket support was patchy in 2012); that fallback is unnecessary today — WebSocket is universally supported by modern browsers and mobile apps. Skipping the polling phase means faster connection establishment. This is a connection-latency recommendation: the websocket server serves polling and WebSocket clients correctly either way, so it is not required for correctness — it just avoids the slower initial handshake.
 
 ```typescript
 import { io } from 'socket.io-client'
