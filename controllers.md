@@ -550,7 +550,7 @@ this.castParam('nightlyRateCents', 'integer', { minimum: 0, maximum: 100_000_000
 this.castParam('sleeps', 'integer', { minimum: 1, maximum: 20, allowNull: true })
 ```
 
-For array casts (`'string[]'`, `'integer[]'`, …) the bounds apply **element-wise** — each element must satisfy them — and `bigint` range checks compare without precision loss. Reach for these to cap a free-text field's length or a numeric range at the request boundary, the same job `maxLength`/`minimum` do in an OpenAPI/JSON-schema spec (the option names mirror them).
+For array casts (`'string[]'`, `'integer[]'`, …) the bounds apply **element-wise** — each element must satisfy them — and `bigint` range checks compare without precision loss.
 
 ### String params are trimmed automatically
 

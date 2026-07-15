@@ -273,42 +273,17 @@ public room: Room
 public host: Host
 ```
 
-`host` is now one association name on `Booking`, usable with `preload`, `associationQuery`, `association`, or a serializer, replacing a per-hop preload of `room` and `place` and the `booking.room?.place?.host` walk. A chain over an optional `BelongsTo` is nullable — type it `Host | null`. Condition and shaping clauses work on `through` associations too (`and`, `andNot`, `andAny`, `selfAnd`, `selfAndNot`, `order`, `distinct`), at any position in a chain — on the association you load directly, on an intermediate that a further through reaches across, and whether the hop's source is a concrete association or itself another `through`. Each hop's clauses shape the join of that hop's own target model (the model its property is typed as), referencing the target's columns, never an intermediate join table's; for `selfAnd`/`selfAndNot`, the "self" columns come from the model the clause is declared on. When more than one hop in a chain carries `order`, the orders compose rather than override — each is appended to the query's ORDER BY in join order (earlier joins first; when several hops' clauses land on the same join, the source association's own `order` applies last). In the common shape — an intermediate hop carrying `order`, reached across by a further through with its own `order` — the intermediate's sort is primary and the loaded association's is the tie-break. Two limits: a hop whose `and` uses `DreamConst.required` cannot be bridged across (see [DreamConst in Association Conditions](#dreamconst-in-association-conditions)), and a `distinct`-carrying through association loads with `preload` or `innerJoin` but not `leftJoinPreload` (Postgres rejects `leftJoinPreload`'s hydration `ORDER BY` alongside the association's `DISTINCT ON`).
+`host` is now one association name on `Booking`, usable with `preload`, `associationQuery`, `association`, or a serializer, replacing a per-hop preload of `room` and `place` and the `booking.room?.place?.host` walk. A chain over an optional `BelongsTo` is nullable — type it `Host | null`. Condition and shaping clauses work on `through` associations too (`and`, `andNot`, `andAny`, `selfAnd`, `selfAndNot`, `order`, `distinct`), at any position in a chain — on the association you load directly, on an intermediate that a further through reaches across, and whether the hop's source is a concrete association or itself another `through`. Each hop's clauses shape the join of that hop's own target model (the model its property is typed as), referencing the target's columns, never an intermediate join table's; for `selfAnd`/`selfAndNot`, the "self" columns come from the model the clause is declared on. Multiple hops' `order`s compose rather than override — each is appended to the ORDER BY in join order. Two limits: a hop whose `and` uses `DreamConst.required` cannot be bridged across (see [DreamConst in Association Conditions](#dreamconst-in-association-conditions)), and a `distinct`-carrying through association loads with `preload` or `innerJoin` but not `leftJoinPreload` (Postgres rejects `leftJoinPreload`'s hydration `ORDER BY` alongside the association's `DISTINCT ON`).
 
 **`source` defaults to the association's own name, matched by name (not by target model).** In each hop above, `source` is omitted because the next model's association is also named `host`; Dream looks up an association literally named after the property. This is what disambiguates an intermediate that has two associations of the *same* target model (e.g. a `Room` with both `host` and `substituteHost`, both `BelongsTo('Host')`) — the name match picks the right one. Pass `source: '...'` only when the intermediate's association name differs from the name you want on this model (as in the `through: 'bookings', source: 'guest'` example above).
 
 #### Where a hop belongs: compose across models, or stack on the origin
 
-A deep reach can be built two ways, and they are capability-equivalent — both compile to the same joins, and both resolve each `source` on the destination model. The difference is only *where the intermediate `through`s are declared*, which makes it a code-organization decision.
+A deep reach can be built two ways, and they are capability-equivalent — same joins, same `source` resolution on the destination model. The choice is only *where the intermediate `through`s are declared*.
 
-**Compose across models** — declare a `through` on the model whose relationship it describes, then let higher models point their `source` at it. Here a `Host` reaches every guest who has booked any of its places, and the middle hop (`Place.guests`, a many-to-many over the `Booking` join) lives on `Place`:
+**Compose across models** (the default) — declare each `through` on the model whose relationship it describes, then let higher models point their `source` at it. A `Host.guests` reach runs `Host.places` → `Place.guests` (itself a through over the `Booking` join) → `Guest`, each hop living on its natural model. `Place.guests` is then reusable: `Host.guests`, a future `City.guests`, and any other consumer inherit one definition, and a change to how `Booking` links `Place` and `Guest` lands in one place.
 
-```typescript
-// Booking.ts — the join between a place and a guest
-@deco.BelongsTo('Place')
-public place: Place
-@deco.BelongsTo('Guest')
-public guest: Guest
-
-// Place.ts — a place's guests, through its bookings. `source: 'guest'` is explicit
-// because Booking's association is `guest`, not `guests`.
-@deco.HasMany('Booking')
-public bookings: Booking[]
-@deco.HasMany('Guest', { through: 'bookings', source: 'guest' })
-public guests: Guest[]
-
-// Host.ts — a host's guests, through its places. `source` defaults (property `guests`
-// matches Place's `guests`), and Place's `guests` is itself a through-over-a-join, so
-// Dream keeps unwinding. Resolves: Host →HasMany Place →HasMany Booking →BelongsTo Guest.
-@deco.HasMany('Place')
-public places: Place[]
-@deco.HasMany('Guest', { through: 'places' })
-public guests: Guest[]
-```
-
-`Place.guests` is now a first-class association any code can use, and if `Booking`'s link to `Guest` ever changes, the fix lands in one place and every consumer (`Host.guests`, a future `City.guests`, …) inherits it.
-
-**Stack on the origin** — declare the intermediate `through`s on the origin model instead, leaving the middle models with only their plain neighbor associations. This keeps the whole path in one file and avoids adding an association to a shared model that only exists to serve one distant consumer. It is also the *correct* choice when a middle hop carries an **origin-relative** condition or order — a filter that describes how this origin wants to view the path, not an intrinsic fact about the middle model:
+**Stack on the origin** — declare the intermediate `through`s on the origin model instead. This is the *correct* choice when a middle hop carries an **origin-relative** condition or order — a filter describing how this origin views the path, not an intrinsic fact about the middle model:
 
 ```typescript
 // Host.ts — recent bookings' guests. The "recent" filter belongs to the host's view,
@@ -319,7 +294,7 @@ public recentBookings: Booking[]
 public recentGuests: Guest[]
 ```
 
-**How to choose:** would this intermediate association make sense called directly on that model, independent of this chain? If yes, declare it there and compose — that is the default, because the reflex to collapse every hop onto the model you happen to be editing produces duplicated path knowledge and misses reuse. If the association would exist *only* to serve one longer reach, or a hop needs an origin-relative filter/order, stack it on the origin. The two approaches also mix freely within a single chain — compose where a real association already exists, stack where one doesn't.
+Default to composing; stack on the origin only when the intermediate would exist solely for this one reach, or a hop needs an origin-relative filter/order. The two mix freely within a chain.
 
 ### HasOne
 

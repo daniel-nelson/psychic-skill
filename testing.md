@@ -809,5 +809,3 @@ await expect
 ```
 
 Or wait on a UI signal genuinely tied to the mutation finishing (a removed row, a success banner) — not on a `toHavePath` that was already true.
-
-**Assert the resting state, not a transient redirect hop.** The same "did the path change" trap has a second form: a path the app only passes *through*. When an unauthenticated visit chains client-side redirects — `/` forwards to a dashboard whose first fetch `401`s, and the interceptor forwards to `/sign-in` — the dashboard URL exists for only one fetch round-trip. `await expect(page).toHavePath('/dashboard')` races that hop: it passes on a fast machine that polls mid-chain and fails on a loaded CI runner that arrives after the redirect settled. Only the final resting state (`/sign-in` here) is stable enough to assert. If you want the dashboard to be the state you assert, make it the *final* state — sign in first (via your app's feature-spec sign-in helper) so the `401` never fires, then assert `toHavePath('/dashboard')` — and pin the unauthenticated end state (`/sign-in`) in its own separate assertion.
