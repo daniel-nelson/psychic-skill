@@ -46,6 +46,8 @@ The `@rvoh/psychic-websockets` package has a **built-in** health check, but be a
 
 For variables that are only present in some environments, use `AppEnv.string(name, { optional: true })` — it returns `string | undefined` rather than throwing at boot. This is the supported escape hatch for sometimes-present vars; never reach for `process.env` to avoid the boot-time throw.
 
+**Register every new variable name in `AppEnv.ts`'s typed union.** `AppEnv` extends `Env<{ boolean: …; integer: …; string: … }>`, where each key is a closed union of the allowed variable names for that accessor. `AppEnv.string('SOME_NEW_VAR')` only compiles once `'SOME_NEW_VAR'` is added to the `string` union — so adding an env var is a two-part change: add the name to the union and read it through `AppEnv`. The gotcha is *where* the omission surfaces: a Vitest run (`pnpm uspec`) does not type-check, so a spec exercising the new var passes green, and the missing-name error (`TS2345`) only appears at the `pnpm build:spec` type-check gate. Add the union entry in the same change, and don't read a green spec run as done until the build gate has run.
+
 ## TLS Behind a Reverse Proxy
 
 If your reverse proxy (load balancer, ingress controller, etc.) terminates TLS but re-encrypts traffic to the container, the Psychic app must speak TLS on its container port. In this case, baking a self-signed certificate into the image is more reliable than generating one dynamically at runtime.

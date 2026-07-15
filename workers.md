@@ -598,6 +598,16 @@ See the ioredis README and Node's `tls.connect` docs for the option shape and th
 
 The boilerplate `defaultJobOptions` ships `attempts: 20` with exponential `backoff` and `removeOnFail: 20000`. BullMQ's `failed` set is the dead-letter queue; the boilerplate defaults are the canonical retry-and-DLQ pattern. See the BullMQ docs for `QueueEvents` and bespoke DLQ patterns beyond this default.
 
+### Process-level error semantics
+
+`background.work()` installs the worker process's `uncaughtException` and `unhandledRejection` handlers itself: each logs at error level, runs a bounded (~15s) graceful shutdown — `workers:shutdown` hooks → close DB connections → close workers → quit Redis — then `process.exit(1)` so an orchestrator restarts the process. `SIGTERM`/`SIGINT` go through the same bounded shutdown, exiting `0` on a clean stop and `1` on a failed or timed-out one. Consequences:
+
+- **Do not add your own `process.on('uncaughtException' | 'unhandledRejection')` in the worker entry point** — a second exiting handler races the framework's. This asymmetry with the web and ws entry points (which *do* install their own) is deliberate; don't "fix" it.
+- **`workers:shutdown` is the only lifecycle hook** — there is no `job:failed`/`workers:error` hook, by design (thin wrapper over BullMQ). Wire job-failure observability directly on the BullMQ objects after `background.work()` creates them: `background.workers.forEach(w => w.on('failed' | 'error' | 'stalled', …))` and `background.queues.forEach(q => q.on('error', …))`. To feed a fatal-error pipeline (Sentry/Datadog), read from logging or the orchestrator's restart signal — there is no fatal-error hook.
+- **A job whose class no longer resolves by global name fails loud** with a typed `NoClassForSpecifiedGlobalName` (exported from the package's errors module), landing in BullMQ's `failed` set — the designed signal to clean up a stale repeating scheduler after renaming or removing a backgroundable class. (A model-instance job whose record was legitimately deleted still completes quietly.)
+
+**Redis is a trust boundary equal to the app process.** Dispatch reads `{ globalName, method, args }` off the job payload and invokes the resolved class method with no allow-list — anyone who can write to the jobs Redis can run any registered method with full app privileges. Never route request input into a `globalName`/`method` position, and lock down Redis access accordingly.
+
 ## Testing Workers
 
 ### Default: Immediate Invocation

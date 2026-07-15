@@ -75,11 +75,16 @@ These are also query-oriented convenience methods on the model class:
 - `Model.last()`
 - `Model.lastOrFail()`
 - `Model.count()`
+- `Model.countBy(...)`
 - `Model.exists()`
 - `Model.max(...)`
 - `Model.min(...)`
 - `Model.sum(...)`
 - `Model.avg(...)`
+- `Model.maxBy(...)`
+- `Model.minBy(...)`
+- `Model.sumBy(...)`
+- `Model.avgBy(...)`
 - `Model.pluck(...)`
 - `Model.pluckEach(...)`
 - `Model.paginate(...)`
@@ -134,11 +139,16 @@ Terminal or result-producing query methods include:
 - `query.last()`
 - `query.lastOrFail()`
 - `query.count()`
+- `query.countBy(...)`
 - `query.exists()`
 - `query.max(...)`
 - `query.min(...)`
 - `query.sum(...)`
 - `query.avg(...)`
+- `query.maxBy(...)`
+- `query.minBy(...)`
+- `query.sumBy(...)`
+- `query.avgBy(...)`
 - `query.pluck(...)`
 - `query.pluckEach(...)`
 - `query.paginate(...)`
@@ -555,14 +565,14 @@ await Host.query().distinct('familyName').pluck('familyName')  // unique family 
 If Dream gets you most of the way there, keep the query in Dream for as long as possible and convert at the end.
 
 ```typescript
-const query = User.query()
-  .where({ status: 'active' })
-  .leftJoin('pets as p')
+const query = Place.query()
+  .where({ style: 'cabin' })
+  .leftJoin('rooms as r')
 
 const rows = await query
   .toKysely('select')
-  .select(['users.id', 'p.name as petName'])
-  .where('p.name', 'ilike', '%fido%')
+  .select(['places.id', 'r.type as roomType'])
+  .where('r.type', '=', 'Bedroom')
   .execute()
 ```
 
@@ -571,7 +581,7 @@ This keeps Dream's scopes, association-aware join setup, and types in play until
 You can also convert directly from the model class:
 
 ```typescript
-await User.toKysely('select').where('email', '=', 'how@yadoin').execute()
+await Place.toKysely('select').where('name', '=', 'Cozy Cabin').execute()
 ```
 
 Supported forms:
@@ -581,28 +591,30 @@ Supported forms:
 - `Model.toKysely('delete')`
 - `query.toKysely('select' | 'update' | 'delete')`
 
-### Grouped aggregates (`GROUP BY`)
+### Grouped aggregates (`countBy` / `minBy` / `maxBy` / `sumBy` / `avgBy`)
 
-Dream's aggregates (`.count()`, `.sum`, `.min`, `.max`) each return a single scalar — there is no `GROUP BY`. When you need an aggregate broken out per group — a booking count for each place on a dashboard, in one query — keep Dream for the scoped, association-aware setup and eject to Kysely for the grouping. Query the associated model directly so its own default scopes still apply: `Place`'s `HasMany('Booking', { and: { confirmedAt: null } })` filter becomes `Booking.where({ confirmedAt: null })`, which keeps Booking's soft-delete and STI scopes.
+The scalar aggregates (`.count()`, `.sum`, `.min`, `.max`, `.avg`) each collapse the whole query to one number. When you need the aggregate broken out per group — a booking count for each place on a dashboard, in one query — use the grouped counterparts. They stay entirely in Dream, so no ejection to Kysely and no `GROUP BY` by hand:
+
+- `countBy(groupColumn)` — count per group. Returns `Map<groupValue, number>`.
+- `minBy` / `maxBy` / `sumBy` / `avgBy` `(groupColumn, aggregatedColumn)` — the value aggregate per group. Returns `Map<groupValue, aggregate>`.
+
+Each takes a single group column and runs one query, grouping on the foreign key:
 
 ```typescript
-places.forEach(place => (place.pendingBookingCount = 0))
 const placeIds = places.map(place => place.id)
-if (!placeIds.length) return
 
-const rows = await Booking.where({ placeId: placeIds, confirmedAt: null })
-  .toKysely('select')
-  .clearSelect()                                  // toKysely seeds `select "bookings".*`; drop it before grouping
-  .select('bookings.place_id as placeId')
-  .select(eb => eb.fn.countAll<number>().as('count'))
-  .groupBy('bookings.place_id')
-  .execute()
+// One query, grouped on the FK. Query the associated model directly so its own
+// default scopes still apply — Booking keeps its soft-delete and STI scopes, and
+// the `Place` HasMany's `and: { confirmedAt: null }` filter becomes an explicit where.
+const pendingByPlaceId = await Booking.where({ placeId: placeIds, confirmedAt: null }).countBy('placeId')
 
-const countByPlaceId = new Map(rows.map(row => [row.placeId, Number(row.count)]))
-places.forEach(place => (place.pendingBookingCount = countByPlaceId.get(place.id) ?? 0))
+// Only groups with a matching row appear in the Map, so seed absent places to 0.
+places.forEach(place => (place.pendingBookingCount = pendingByPlaceId.get(place.id) ?? 0))
 ```
 
-`toKysely('select')` seeds the builder with `select "<baseAlias>".*`, which a pure `.count()` never reveals, so `.clearSelect()` is required before a grouped aggregate — otherwise the base columns aren't in the `GROUP BY` and the SQL is invalid. Postgres returns `COUNT(*)` as a string with no type error to catch it, hence `Number(row.count)`; a group with no matching rows produces no row at all, so seed each place to `0` first.
+Two things to know about the returned `Map`: only groups with at least one matching row are present (seed absent keys with `map.get(key) ?? 0`), and a nullable group column produces a real `null` key. The counts arrive already coerced to `number` — no manual `Number(...)` cast. Grouping also works over a joined association column (`Place.query().innerJoin('bookings').countBy('bookings.status')`) and inside an `associationQuery`.
+
+Reach for `toKysely('select')` only when the grouping is beyond this family — multiple group columns, `HAVING`, or a distinct-count. In that case build the full scoped Dream query first, then eject (see [the Kysely escape hatch](#preferred-kysely-escape-hatch-tokysely) above).
 
 ### Scope-preserving subqueries: `nestedSelect(...)`
 
@@ -616,6 +628,35 @@ Before reaching for a raw Kysely subquery, check whether `nestedSelect(...)` cov
 const bookedPlaces = await Place.where({
   id: Booking.query().nestedSelect('placeId'),
 }).all()
+```
+
+`nestedSelect` projects a **single column** and cannot correlate to the outer query, so a **correlated** subquery (one that references an outer row) or an **aggregate** subquery (`count`/`sum`/… as the projected value) is out of its reach. For those, drop to Kysely while keeping the inner table scoped — see [Correlated and aggregate subqueries](#correlated-and-aggregate-subqueries-keep-the-inner-table-scoped) below.
+
+### Correlated and aggregate subqueries: keep the inner table scoped
+
+When a subquery must reference the outer row (**correlated**) or project an aggregate (`count`/`sum`/…) — the two shapes `nestedSelect` can't express — build it in Kysely, but source the inner table from a **scoped Dream query** (`AssocModel.query().toKysely('select')`), never a raw `db().selectFrom('table')`. This is the ["Eject late"](#eject-late-never-early-associations-carry-scopes-that-tokysely-does-not) discipline applied to the subquery: the association's own default scopes stay in the compiled SQL instead of being hand-rolled as a `deleted_at is null` that silently rots the day the model gains another default scope. Correlate the standalone subquery to the outer row with `sql.ref('outer_table.col')` (from `kysely`) as the `whereRef` right-hand side — a standalone builder's table context only includes its own FROM tables, so a bare `.whereRef('bookings.placeId', '=', 'places.id')` string won't type-check against the outer table.
+
+```typescript
+import { sql } from 'kysely'
+
+// Places with more than five non-soft-deleted bookings. A correlated aggregate
+// can't be a nestedSelect, so drop to Kysely — but source the inner count from
+// Booking.query() so Booking's soft-delete scope is applied by Dream, not
+// hand-written as `deleted_at is null`.
+const rows = await Place.query()
+  .toKysely('select')                          // carries Place's own default scopes
+  .where(eb =>
+    eb(
+      Booking.query()                          // scoped Dream query, not db().selectFrom('bookings')
+        .toKysely('select')
+        .clearSelect()
+        .whereRef('bookings.placeId', '=', sql.ref('places.id'))
+        .select(eb2 => eb2.fn.countAll<number>().as('count')),
+      '>',
+      5,
+    ),
+  )
+  .execute()
 ```
 
 ## Starting From Scratch With Typed `db()`

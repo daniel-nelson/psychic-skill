@@ -192,13 +192,22 @@ public peakSeasonBookings: Booking[]
 public siblingRooms: Room[]
 // SQL: ... AND rooms.id != this.id   (joined through the shared Place)
 
-// Through (many-to-many)
+// Through (many-to-many) — `through` names a LOCAL association, so declare both:
+// the `hostPlaces` join and the `hosts` reach across it.
+@deco.HasMany('HostPlace')
+public hostPlaces: HostPlace[]
+
 @deco.HasMany('Host', { through: 'hostPlaces' })
 public hosts: Host[]
 
-// Nested through
-@deco.HasMany('PostComment', { through: 'posts', source: 'comments' })
-public postComments: PostComment[]
+// Nested through — same rule, chained: `through` names a LOCAL association (`bookings`),
+// and `source` picks the intermediate's association when its name differs. Multi-hop
+// chains, and where each hop belongs, are covered in full after the options table below.
+@deco.HasMany('Booking')
+public bookings: Booking[]
+
+@deco.HasMany('Guest', { through: 'bookings', source: 'guest' })
+public guests: Guest[]
 
 // Polymorphic
 @deco.HasMany('LocalizedText', { polymorphic: true, on: 'localizableId', dependent: 'destroy' })
@@ -239,6 +248,53 @@ public allBookings: Booking[]  // includes soft-deleted bookings
 | `withoutDefaultScopes` | scope name[] | Default scopes to skip when loading this association |
 
 **Through associations** (`through` option) cannot use: `dependent`, `primaryKeyOverride`, `withoutDefaultScopes`, `on`, or `polymorphic`.
+
+**`through` names an association declared on the *same* model** — Dream resolves it against this model's own association metadata, so the named association must exist here or the through has nothing to walk. Every hop in a chain is therefore an ordinary association on the model at that hop; a multi-hop reach is built by declaring one through per model, each naming the next model's association.
+
+**`through` traverses `BelongsTo` hops too, not only `HasMany`/`HasOne`, and a `through` can point at another `through`** to span any number of hops. The classic case reaches *down* a many-to-many; the same mechanism reaches *up* the ownership tree over `BelongsTo` intermediates. Reaching the owning `Host` from a `Booking` (`Booking →(BelongsTo) Room →(BelongsTo) Place →(BelongsTo) Host`) is one association per model, each pointing at the next:
+
+```typescript
+// Place.ts — the concrete top of the chain
+@deco.BelongsTo('Host')
+public host: Host
+
+// Room.ts — `place` is the local association `through: 'place'` names;
+// `host` here is itself a through, so it can be the target of a further hop
+@deco.BelongsTo('Place')
+public place: Place
+@deco.HasOne('Host', { through: 'place' })
+public host: Host
+
+// Booking.ts — `through: 'room'` names Booking's own `room` association, whose
+// `host` is a through; Dream keeps unwinding until it hits Place's concrete BelongsTo
+@deco.BelongsTo('Room')
+public room: Room
+@deco.HasOne('Host', { through: 'room' })
+public host: Host
+```
+
+`host` is now one association name on `Booking`, usable with `preload`, `associationQuery`, `association`, or a serializer, replacing a per-hop preload of `room` and `place` and the `booking.room?.place?.host` walk. A chain over an optional `BelongsTo` is nullable — type it `Host | null`. Condition and shaping clauses work on `through` associations too (`and`, `andNot`, `andAny`, `selfAnd`, `selfAndNot`, `order`, `distinct`), at any position in a chain — on the association you load directly, on an intermediate that a further through reaches across, and whether the hop's source is a concrete association or itself another `through`. Each hop's clauses shape the join of that hop's own target model (the model its property is typed as), referencing the target's columns, never an intermediate join table's; for `selfAnd`/`selfAndNot`, the "self" columns come from the model the clause is declared on. Multiple hops' `order`s compose rather than override — each is appended to the ORDER BY in join order. Two limits: a hop whose `and` uses `DreamConst.required` cannot be bridged across (see [DreamConst in Association Conditions](#dreamconst-in-association-conditions)), and a `distinct`-carrying through association loads with `preload` or `innerJoin` but not `leftJoinPreload` (Postgres rejects `leftJoinPreload`'s hydration `ORDER BY` alongside the association's `DISTINCT ON`).
+
+**`source` defaults to the association's own name, matched by name (not by target model).** In each hop above, `source` is omitted because the next model's association is also named `host`; Dream looks up an association literally named after the property. This is what disambiguates an intermediate that has two associations of the *same* target model (e.g. a `Room` with both `host` and `substituteHost`, both `BelongsTo('Host')`) — the name match picks the right one. Pass `source: '...'` only when the intermediate's association name differs from the name you want on this model (as in the `through: 'bookings', source: 'guest'` example above).
+
+#### Where a hop belongs: compose across models, or stack on the origin
+
+A deep reach can be built two ways, and they are capability-equivalent — same joins, same `source` resolution on the destination model. The choice is only *where the intermediate `through`s are declared*.
+
+**Compose across models** (the default) — declare each `through` on the model whose relationship it describes, then let higher models point their `source` at it. A `Host.guests` reach runs `Host.places` → `Place.guests` (itself a through over the `Booking` join) → `Guest`, each hop living on its natural model. `Place.guests` is then reusable: `Host.guests`, a future `City.guests`, and any other consumer inherit one definition, and a change to how `Booking` links `Place` and `Guest` lands in one place.
+
+**Stack on the origin** — declare the intermediate `through`s on the origin model instead. This is the *correct* choice when a middle hop carries an **origin-relative** condition or order — a filter describing how this origin views the path, not an intrinsic fact about the middle model:
+
+```typescript
+// Host.ts — recent bookings' guests. The "recent" filter belongs to the host's view,
+// so the filtered intermediate (`recentBookings`) is declared here, not on Place.
+@deco.HasMany('Booking', { and: { createdAt: () => range(DateTime.now().minus({ week: 1 })) } })
+public recentBookings: Booking[]
+@deco.HasMany('Guest', { through: 'recentBookings', source: 'guest' })
+public recentGuests: Guest[]
+```
+
+Default to composing; stack on the origin only when the intermediate would exist solely for this one reach, or a hop needs an origin-relative filter/order. The two mix freely within a chain.
 
 ### HasOne
 
@@ -359,7 +415,7 @@ public requiredLocalizedText: LocalizedText
 ```
 
 - **`DreamConst.passthrough`** — the value is provided at query time via `.passthrough({ column: value })`. Throws `MissingRequiredPassthroughForAssociationAndClause` if the value is `undefined`.
-- **`DreamConst.required`** — the value must be provided via `{ and: { column: value } }` conditions whenever the association is used in any query — `load`, `preload`, `innerJoin`, `leftJoin`, `associationQuery`, `association`, etc. Throws `MissingRequiredAssociationAndClause` if the value is not provided.
+- **`DreamConst.required`** — the value must be provided via `{ and: { column: value } }` conditions whenever the association is used in any query — `load`, `preload`, `innerJoin`, `leftJoin`, `associationQuery`, `association`, etc. Throws `MissingRequiredAssociationAndClause` if the value is not provided. The value can only be supplied for the association actually named in the query, so an association carrying `DreamConst.required` cannot serve as an intermediate hop of a `through` chain — bridging across it always throws.
 
 Both are required — the difference is *how* the value is supplied. Use `passthrough` when the value comes from broad query context (e.g., locale from a request header). Use `required` when the value is specific to a particular association loading call.
 
@@ -704,6 +760,16 @@ public phone: DreamColumn<User, 'encryptedPhone'>
 // bypasses custom setters entirely (see "Which writes run the setter" below) and
 // will write an unencrypted value straight into `encryptedPhone` with no error —
 // never use `setAttributes`/`updateAttributes` to touch an `@deco.Encrypted` column.
+//
+// An @deco.Encrypted column is not queryable in a `where` clause. The plaintext
+// property (`phone`) is virtual, not a DB column, so it isn't in the model's
+// Whereable type — `where({ phone: ... })` is a TS2353 compile error. This is
+// correct: the plaintext never exists in the database, and the stored ciphertext is
+// non-deterministic (a fresh IV per write), so even matching the raw `encryptedPhone`
+// column can't find a row by its plaintext value. For an existence/idempotency
+// check, fetch candidate rows by their queryable columns and compare the decrypted
+// property in memory. A true server-side equality lookup needs a separate
+// deterministic (blind-index) column you maintain yourself; Dream does not add one.
 
 // Virtual — accepted by create(), update(), and extractParams() but not stored directly in DB.
 // Use getter/setter pairs to transform between the virtual and the actual DB column.
@@ -834,9 +900,15 @@ await room.associationQuery('bookings', { and: { guest } })   // not { guestId: 
 
 // polymorphic works the same way
 await LocalizedText.where({ localizable: host }).first()      // not { localizableId: host.id }
+
+// filtering by several instances at once — an array is accepted under an
+// association key in query where/join-on-clauses (see note below)
+await Booking.where({ place: places }).all()                  // place_id IN (...)
 ```
 
 The instance form works the same **regardless of the association's shape** — polymorphic or not, and whether the model you pass is a plain model or an STI child. Dream derives the foreign key from the instance's primary key and, for a polymorphic association, the type discriminator from the instance's `referenceTypeString` (which resolves an STI child such as a `Bathroom` to its base, `'Room'`). One form covers every case, so the call site never has to know which case it is in.
+
+**Filtering accepts an array of instances**, not just a single one — `where({ place: places })`, and likewise in `whereNot`/`whereAny` and the `and`/`andNot`/`andAny` of a join on-clause. A non-polymorphic key expands to a foreign-key `IN`; a polymorphic key groups the instances by type, turns each group into an id-`IN` plus type-match pair, and ORs the groups, so an id collision across types can never match the wrong row. This is query-only: `create`, `update`, and `findOrCreateBy` still take a single instance, because a list of parents is meaningless there.
 
 Three reasons this is the rule, not a preference:
 
