@@ -114,16 +114,15 @@ wsApp.on('ws:error', (error, context) => {
 
 The second argument is a discriminated context (`PsychicWebsocketsErrorContext`, exported alongside `PsychicWebsocketsErrorHook`) with two phases:
 
-- **`phase: 'ws:connect'`** — a `ws:connect` hook threw while a socket was connecting. Carries `socketId`. A throw-to-reject (an auth hook throwing to refuse a connection) fires this too, so filter your own rejection sentinels inside the hook, exactly as you would in `server:error`.
+- **`phase: 'ws:connect'`** — a `ws:connect` hook threw while a socket was connecting. Carries `socketId`. A throw-to-reject (an auth hook throwing to refuse a connection) fires this too, so filter your own rejection sentinels inside the hook.
 - **`phase: 'ws:health-check'`** — the websocket server's own HTTP request handler (Psychic's health check and its catch-all 404) threw. Carries `method` and `path`. This is the ws process's raw `http.Server`, **not** the Koa app — errors here never reach `server:error`.
 
-Three properties worth knowing:
+Two properties worth knowing:
 
-- **The context is privacy-scrubbed for external shipping.** It never carries a raw socket, handshake credentials, request headers, or the raw request URL — `path` is the pathname with the query string stripped, because a query string can carry tokens or PII and the 404 branch sees arbitrary URLs. The framework's own internal error *log* still records the full URL locally; only the external-bound hook context is scrubbed. So you get full detail in your logs and safe-by-default in what you ship to Sentry.
-- **Observers are isolated and never recurse.** Each `ws:error` observer runs in its own try/catch; one that throws is logged and can't block a later observer, and an observer's own failure is never re-dispatched through `ws:error`.
+- **The context is privacy-scrubbed for external shipping.** It never carries a raw socket, handshake credentials, request headers, or the raw request URL — `path` is the pathname with the query string stripped, because a query string can carry tokens or PII and the 404 branch sees arbitrary URLs. The framework's own internal error *log* still records the full URL locally; only the external-bound hook context is scrubbed.
 - **Containment wraps only `ws:connect` hooks.** If you do per-socket auth inside a `ws:start` hook's own `io.on('connection')` handler instead of in a `ws:connect` hook, a throw there is **not** contained and gets no `ws:error` coverage. Put per-socket auth in `wsApp.on('ws:connect', …)` so it's both contained and observed.
 
-**Redis adapter connection errors are observed by app-attached listeners, by design — there is no `ws:error` phase for them.** ioredis emits `'error'` on the pub/sub clients on every reconnect attempt during an outage, which would flood an external tracker; the framework leaves throttling and shipping to you. Attach your own `.on('error', …)` to the public `wsApp.connection` and `wsApp.subConnection` getters immediately after `wsApp.set('connection', redis)` (the `subConnection` — a `duplicate()` of the pub client — only exists after that call), and dedupe before shipping. Configure the connection **once**: `attachServer` captures the clients at startup, so replacing the connection after `cable.start(...)` disconnects the old clients without rebinding the adapter, silently breaking cross-process delivery.
+**Redis adapter connection errors have no `ws:error` phase, by design.** The framework already logs the pub/sub clients' `'error'` events at error level, so they don't go dark — but to ship or dedupe them, attach your own `.on('error', …)` to the public `wsApp.connection` and `wsApp.subConnection` getters right after `wsApp.set('connection', redis)` (the `subConnection`, a `duplicate()` of the pub client, exists only after that call). Dedupe before shipping — ioredis re-emits `'error'` on every reconnect attempt during an outage. Configure the connection **once, before `cable.start(...)`**: replacing it afterward silently breaks cross-process delivery.
 
 ### Origin allowlist
 

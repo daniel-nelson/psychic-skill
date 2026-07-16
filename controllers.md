@@ -1065,7 +1065,17 @@ The handler signature is `(err: Error, ctx: Koa.Context) => void | Promise<void>
 
 `server:error` is the surface for every **shapeable** 5xx error — one the boundary catches while the response can still be formed. Psychic mounts an error boundary as its outermost middleware, so everything inside it — the body parser, CORS origin callbacks, custom `psy.use(...)` middleware, anything mounted via `server:init:after-routes` (e.g. Bull Board), and controller actions — escalates its uncaught genuine errors to this one hook. A 4xx-shaped error (a body-parser 400, an `HttpError` thrown from middleware) never reaches it: that renders as its own status. So don't filter by status inside the hook — it only ever sees 5xx-class errors.
 
-One registration does **not**, however, give you every 5xx error. A residual class bypasses `server:error` entirely and surfaces only on Koa's app-level `'error'` event: an error thrown **after headers were already sent** (the response can no longer be reshaped, so the boundary re-throws to Koa for socket cleanup), a response-stream failure, and the errors the router deliberately re-throws in development/test. Psychic registers its own `koaApp.on('error')` listener that **logs** this residual class through the configured logger, but it does not run your `server:error` hooks for it. If your error pipeline (Sentry, Datadog, alerting) — not just your logs — must capture those post-response failures too, add your own `koaApp.on('error')` listener for them. It won't double-report the shapeable errors, because those are handled inside the boundary and never reach the app-level `'error'` event.
+One registration does **not**, however, give you every 5xx error. A residual class bypasses `server:error` and surfaces only on Koa's app-level `'error'` event: an error thrown **after headers were already sent**, a response-stream failure, and errors the router re-throws to Koa. Psychic registers its own `koaApp.on('error')` listener that **logs** this class through the configured logger but does not run your `server:error` hooks for it. If your error pipeline (Sentry, Datadog, alerting) — not just your logs — must capture those post-response failures too, register your own app-level `'error'` listener; reach `koaApp` from a `server:init` hook:
+
+```typescript
+psy.on('server:init:after-middleware', psychicServer => {
+  psychicServer.koaApp.on('error', err => {
+    // ship err to Sentry / Datadog / etc.
+  })
+})
+```
+
+This won't double-report the shapeable errors — those are handled inside the boundary and never reach this event.
 
 One integration caveat, independent of Psychic: an error-tracking SDK configured with `defaultIntegrations: false` (common, to keep the captured payload lean) does **not** auto-attach HTTP request context. The `server:error` hook receives `ctx`, so pull the fields you want — `ctx.method`, `ctx.path`, `ctx.state.requestId`, the authenticated principal — and attach them to the event yourself, exactly as the example above logs them. Nothing upstream will populate them for you when the default integrations are off.
 
