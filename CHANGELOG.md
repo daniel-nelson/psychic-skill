@@ -10,8 +10,12 @@
 
 ### Added
 
-- **`websockets.md`** — new observability note: the websocket process has no request-aware error hook (a socket carries no HTTP request context), so errors thrown outside the contained `ws:connect` path surface as context-less `uncaughtException`s; attach your own identifying context (socket id, user id, event name) at the throw site if you ship ws errors to a tracker.
+- **`websockets.md`** — new "`ws:error`: the request-aware websocket error hook" section documenting the ws-layer analogue of `server:error` (register with `wsApp.on('ws:error', (error, context) => …)`). Covers the discriminated context (`phase: 'ws:connect'` with `socketId`; `phase: 'ws:health-check'` with `method`/`path` from the ws server's own HTTP handler, which never reaches `server:error`), the privacy scrubbing (context `path` is query-stripped for safe external shipping while the internal log keeps the full URL), observer isolation and non-recursion, and the key gotcha that framework containment wraps only `ws:connect` hooks — per-socket auth done inside a `ws:start` connection handler is neither contained nor observed, so it must live in a `ws:connect` hook. Adds a companion note that Redis pub/sub adapter `'error'` events have no framework hook by design: attach your own listener to the public `wsApp.connection`/`wsApp.subConnection` getters right after `set('connection')`, dedupe before shipping (ioredis floods `'error'` during an outage), and configure the connection once (replacing it after `cable.start` silently breaks cross-process delivery).
 - **`controllers.md`** — new integration caveat in the `server:error` section: an error-tracking SDK configured with `defaultIntegrations: false` does not auto-attach HTTP request context, so pull the fields you want off the hook's `ctx` and attach them to the event yourself.
+
+### Changed
+
+- **`SKILL.md`** — bumped the ecosystem version baseline for `@rvoh/psychic-websockets` 3.4.x → 3.5.x (the `ws:error` hook and the health-check request-handler fix ship in 3.5.0).
 
 ## 0.68.0 — 2026-07-14
 

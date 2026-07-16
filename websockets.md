@@ -92,9 +92,38 @@ export default async function resolveWebsocketUser(socket: Socket): Promise<User
 
 The "fail loudly in dev" ergonomic is intentional — if auth isn't wired up, no socket connects.
 
-**A throwing `ws:connect` hook is contained to the connecting socket.** If an auth hook throws (a DB or Redis blip mid-handshake, say), the framework catches it, logs at error level, and calls `socket.disconnect(true)` — the ws process stays up. So a hook may throw to reject a connection; the cost is that one socket, not process safety, and the hook does not need its own outer try/catch to protect the process. (Startup is stricter: a redis adapter that can't attach aborts ws startup rather than silently falling back to in-memory delivery.)
+**A throwing `ws:connect` hook is contained to the connecting socket.** If an auth hook throws (a DB or Redis blip mid-handshake, say), the framework catches it, logs at error level, and calls `socket.disconnect(true)` — the ws process stays up. So a hook may throw to reject a connection; the cost is that one socket, not process safety, and the hook does not need its own outer try/catch to protect the process. Framework-contained ws failures are also surfaced to the `ws:error` hook (below), which is where you ship them to your monitoring SDK. (Startup is stricter: a redis adapter that can't attach aborts ws startup rather than silently falling back to in-memory delivery.)
 
-**The websocket process has no request-aware error hook.** The web process funnels uncaught server errors to `server:error` with the Koa `ctx` in hand (see [controllers.md](controllers.md#reacting-to-unhandled-errors)), but there is no equivalent on the ws side — a socket has no HTTP request context to carry. Errors thrown outside the contained `ws:connect` path (inside an event handler, a broadcast, or `ws:start`) surface as bare, context-less `uncaughtException`s. If you ship ws errors to an error tracker, attach your own identifying context (socket id, resolved user id, event name) at the throw site or in a wrapper — nothing downstream will add it for you.
+### `ws:error`: the request-aware websocket error hook
+
+`ws:error` is the ws-layer analogue of `server:error` — the point to forward a framework-contained websocket failure to your monitoring SDK (Sentry, Datadog). Register it alongside `ws:start` and `ws:connect`, with the same positional signature `(error, context)`:
+
+```typescript
+// conf/websockets.ts
+wsApp.on('ws:error', (error, context) => {
+  if (context.phase === 'ws:connect') {
+    // a ws:connect hook threw; context.socketId identifies the socket
+    reportToSentry(error, { socketId: context.socketId })
+  } else {
+    // context.phase === 'ws:health-check'
+    // the ws server's own HTTP handler threw; context.method, context.path
+    reportToSentry(error, { method: context.method, path: context.path })
+  }
+})
+```
+
+The second argument is a discriminated context (`PsychicWebsocketsErrorContext`, exported alongside `PsychicWebsocketsErrorHook`) with two phases:
+
+- **`phase: 'ws:connect'`** — a `ws:connect` hook threw while a socket was connecting. Carries `socketId`. A throw-to-reject (an auth hook throwing to refuse a connection) fires this too, so filter your own rejection sentinels inside the hook, exactly as you would in `server:error`.
+- **`phase: 'ws:health-check'`** — the websocket server's own HTTP request handler (Psychic's health check and its catch-all 404) threw. Carries `method` and `path`. This is the ws process's raw `http.Server`, **not** the Koa app — errors here never reach `server:error`.
+
+Three properties worth knowing:
+
+- **The context is privacy-scrubbed for external shipping.** It never carries a raw socket, handshake credentials, request headers, or the raw request URL — `path` is the pathname with the query string stripped, because a query string can carry tokens or PII and the 404 branch sees arbitrary URLs. The framework's own internal error *log* still records the full URL locally; only the external-bound hook context is scrubbed. So you get full detail in your logs and safe-by-default in what you ship to Sentry.
+- **Observers are isolated and never recurse.** Each `ws:error` observer runs in its own try/catch; one that throws is logged and can't block a later observer, and an observer's own failure is never re-dispatched through `ws:error`.
+- **Containment wraps only `ws:connect` hooks.** If you do per-socket auth inside a `ws:start` hook's own `io.on('connection')` handler instead of in a `ws:connect` hook, a throw there is **not** contained and gets no `ws:error` coverage. Put per-socket auth in `wsApp.on('ws:connect', …)` so it's both contained and observed.
+
+**Redis adapter connection errors are observed by app-attached listeners, by design — there is no `ws:error` phase for them.** ioredis emits `'error'` on the pub/sub clients on every reconnect attempt during an outage, which would flood an external tracker; the framework leaves throttling and shipping to you. Attach your own `.on('error', …)` to the public `wsApp.connection` and `wsApp.subConnection` getters immediately after `wsApp.set('connection', redis)` (the `subConnection` — a `duplicate()` of the pub client — only exists after that call), and dedupe before shipping. Configure the connection **once**: `attachServer` captures the clients at startup, so replacing the connection after `cable.start(...)` disconnects the old clients without rebinding the adapter, silently breaking cross-process delivery.
 
 ### Origin allowlist
 
