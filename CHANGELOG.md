@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.69.0 — 2026-07-15
+
+### Changed
+
+- **`testing.md`** — the "Key Test Matchers" section now states that `toMatchDreamModels` compares its two arrays as **sets** (both sides sorted by comparison key before matching), so it passes regardless of the order the query returned rows in — the right assertion for a query whose order you don't control. Adds the corresponding warning: a Dream query that declares no `order` (`.all()`, an unordered `associationQuery(...).all()`, a `pluck`) carries no SQL `ORDER BY`, so the observed row sequence is not a guarantee; don't assert it with an order-sensitive matcher, and make order explicit in the query when order is part of what you're testing.
+- **`websockets.md`** — the "Client Transport" section now frames `transports: ['websocket']` as a connection-latency recommendation only, not a correctness requirement: the server handles polling and WebSocket clients correctly either way, and websocket-only transport just avoids the slower initial handshake. Reworks the "stale data until refresh" troubleshooting callout accordingly — it no longer points at the client transport, and instead names cross-process delivery (an emit from a web/worker process reaches a socket held by the websocket-server process only through the Redis adapter; the in-process adapter fans out only within its own process) as the likely cause.
+- **`controllers.md`** — corrects the `server:error` section. `server:error` is the surface for every **shapeable** 5xx error (caught while the response can still be formed), but it is not the complete 5xx surface: a residual class — errors thrown after headers were sent, response-stream failures, and the router's deliberate dev/test re-throws — bypasses `server:error` and reaches only Koa's app-level `'error'` event, which Psychic's own listener logs but does not route to `server:error` hooks. Replaces the prior "do not add `koaApp.on('error')`" guidance with: add your own `koaApp.on('error')` listener if your error pipeline (not just your logs) must capture that residual class — it won't double-report the shapeable errors.
+
+### Added
+
+- **`websockets.md`** — new "`ws:error`: the request-aware websocket error hook" section documenting the ws-layer analogue of `server:error` (register with `wsApp.on('ws:error', (error, context) => …)`). Covers the discriminated context (`phase: 'ws:connect'` with `socketId`; `phase: 'ws:health-check'` with `method`/`path` from the ws server's own HTTP handler, which never reaches `server:error`), the privacy scrubbing (context `path` is query-stripped for safe external shipping while the internal log keeps the full URL), observer isolation and non-recursion, and the key gotcha that framework containment wraps only `ws:connect` hooks — per-socket auth done inside a `ws:start` connection handler is neither contained nor observed, so it must live in a `ws:connect` hook. Adds a companion note that Redis pub/sub adapter `'error'` events have no framework hook by design: attach your own listener to the public `wsApp.connection`/`wsApp.subConnection` getters right after `set('connection')`, dedupe before shipping (ioredis floods `'error'` during an outage), and configure the connection once (replacing it after `cable.start` silently breaks cross-process delivery).
+- **`controllers.md`** — new integration caveat in the `server:error` section: an error-tracking SDK configured with `defaultIntegrations: false` does not auto-attach HTTP request context, so pull the fields you want off the hook's `ctx` and attach them to the event yourself.
+
+### Changed
+
+- **`SKILL.md`** — bumped the ecosystem version baseline for `@rvoh/psychic-websockets` 3.4.x → 3.5.x (the `ws:error` hook and the health-check request-handler fix ship in 3.5.0).
+
 ## 0.68.0 — 2026-07-14
 
 ### Changed

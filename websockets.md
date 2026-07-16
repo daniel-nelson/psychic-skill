@@ -92,7 +92,37 @@ export default async function resolveWebsocketUser(socket: Socket): Promise<User
 
 The "fail loudly in dev" ergonomic is intentional — if auth isn't wired up, no socket connects.
 
-**A throwing `ws:connect` hook is contained to the connecting socket.** If an auth hook throws (a DB or Redis blip mid-handshake, say), the framework catches it, logs at error level, and calls `socket.disconnect(true)` — the ws process stays up. So a hook may throw to reject a connection; the cost is that one socket, not process safety, and the hook does not need its own outer try/catch to protect the process. (Startup is stricter: a redis adapter that can't attach aborts ws startup rather than silently falling back to in-memory delivery.)
+**A throwing `ws:connect` hook is contained to the connecting socket.** If an auth hook throws (a DB or Redis blip mid-handshake, say), the framework catches it, logs at error level, and calls `socket.disconnect(true)` — the ws process stays up. So a hook may throw to reject a connection; the cost is that one socket, not process safety, and the hook does not need its own outer try/catch to protect the process. Framework-contained ws failures are also surfaced to the `ws:error` hook (below), which is where you ship them to your monitoring SDK. (Startup is stricter: a redis adapter that can't attach aborts ws startup rather than silently falling back to in-memory delivery.)
+
+### `ws:error`: the request-aware websocket error hook
+
+`ws:error` is the ws-layer analogue of `server:error` — the point to forward a framework-contained websocket failure to your monitoring SDK (Sentry, Datadog). Register it alongside `ws:start` and `ws:connect`, with the same positional signature `(error, context)`:
+
+```typescript
+// conf/websockets.ts
+wsApp.on('ws:error', (error, context) => {
+  if (context.phase === 'ws:connect') {
+    // a ws:connect hook threw; context.socketId identifies the socket
+    reportToSentry(error, { socketId: context.socketId })
+  } else {
+    // context.phase === 'ws:health-check'
+    // the ws server's own HTTP handler threw; context.method, context.path
+    reportToSentry(error, { method: context.method, path: context.path })
+  }
+})
+```
+
+The second argument is a discriminated context (`PsychicWebsocketsErrorContext`, exported alongside `PsychicWebsocketsErrorHook`) with two phases:
+
+- **`phase: 'ws:connect'`** — a `ws:connect` hook threw while a socket was connecting. Carries `socketId`. A throw-to-reject (an auth hook throwing to refuse a connection) fires this too, so filter your own rejection sentinels inside the hook.
+- **`phase: 'ws:health-check'`** — the websocket server's own HTTP request handler (Psychic's health check and its catch-all 404) threw. Carries `method` and `path`. This is the ws process's raw `http.Server`, **not** the Koa app — errors here never reach `server:error`.
+
+Two properties worth knowing:
+
+- **The context is privacy-scrubbed for external shipping.** It never carries a raw socket, handshake credentials, request headers, or the raw request URL — `path` is the pathname with the query string stripped, because a query string can carry tokens or PII and the 404 branch sees arbitrary URLs. The framework's own internal error *log* still records the full URL locally; only the external-bound hook context is scrubbed.
+- **Containment wraps only `ws:connect` hooks.** If you do per-socket auth inside a `ws:start` hook's own `io.on('connection')` handler instead of in a `ws:connect` hook, a throw there is **not** contained and gets no `ws:error` coverage. Put per-socket auth in `wsApp.on('ws:connect', …)` so it's both contained and observed.
+
+**Redis adapter connection errors have no `ws:error` phase, by design.** The framework already logs the pub/sub clients' `'error'` events at error level, so they don't go dark — but to ship or dedupe them, attach your own `.on('error', …)` to the public `wsApp.connection` and `wsApp.subConnection` getters right after `wsApp.set('connection', redis)` (the `subConnection`, a `duplicate()` of the pub client, exists only after that call). Dedupe before shipping — ioredis re-emits `'error'` on every reconnect attempt during an outage. Configure the connection **once, before `cable.start(...)`**: replacing it afterward silently breaks cross-process delivery.
 
 ### Origin allowlist
 
@@ -182,7 +212,7 @@ startWs()
 > ```
 > BullMQ marks the job failed and retries — the error looks like a framework cache problem rather than an application configuration problem. The generated initializer runs in all processes by default (see Configuration above); if a role guard was added that excludes `'worker'`, that is the cause.
 >
-> **If the job completes but the browser shows stale data until refresh:** the initializer is not the problem. See [Client Transport](#client-transport) — Socket.IO's long-polling default is the likely cause.
+> **If the job completes but the browser shows stale data until refresh:** the initializer is not the problem, and neither is the client transport. The likely cause is cross-process delivery: an emit from a web or worker process only reaches a socket held by the websocket-server process through the Redis adapter. A process emitting on the in-process adapter (the `test` default, or a misconfigured non-`test` process) fans out only within its own process, so the browser's socket never receives it.
 
 Common pattern: Background job sends websocket notification:
 
@@ -215,7 +245,7 @@ public async notifyBooking(this: Booking) {
 
 ## Client Transport
 
-Always set `transports: ['websocket']` on the Socket.IO client. Socket.IO defaults to long-polling first for historical reasons (WebSocket support was patchy in 2012); that fallback is unnecessary today — WebSocket is universally supported by modern browsers and mobile apps. Skipping the polling phase means faster connection establishment and eliminates a class of subtle failures where polling requests interfere with the websocket server's HTTP handler.
+Set `transports: ['websocket']` on the Socket.IO client. Socket.IO defaults to trying long-polling first for historical reasons (WebSocket support was patchy in 2012); that fallback is unnecessary today — WebSocket is universally supported by modern browsers and mobile apps. Skipping the polling phase means faster connection establishment. This is a connection-latency recommendation: the websocket server serves polling and WebSocket clients correctly either way, so it is not required for correctness — it just avoids the slower initial handshake.
 
 ```typescript
 import { io } from 'socket.io-client'
