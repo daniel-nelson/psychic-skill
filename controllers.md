@@ -702,7 +702,7 @@ this.badRequest()          // 400
 this.unauthorized()        // 401
 this.forbidden()           // 403
 this.notFound()            // 404
-this.unprocessableEntity() // 422
+this.unprocessableContent() // 422
 
 // Server errors
 this.serverError()         // 500
@@ -848,6 +848,23 @@ public async update() {
   await (await this.venue()).update(this.extractParams(Venue, ['name', 'zipCodeId']))
   this.noContent()
 }
+```
+
+**One carve-out: `combining` is the *right* tool when the action's runtime contract is deliberately narrower than the column.** The anti-pattern above is *redundant* shadowing — re-typing a shape `params`/`including` already derives correctly. It is not *narrowing* shadowing. A `params`/`including` column always renders its nullability from the model, and `required: ['col']` only adds the field to the schema-level required array — it does **not** drop `null` from the property type. So a nullable column pulled with a non-null `castParam` (`castParam('timezone', 'string')`, no `allowNull`) has no sanctioned shorthand that documents the real contract: `params` + `required` still advertises `string | null`, and a generated client's explicit `null` is a guaranteed 400. Move that column out of `params` into `combining` + `required`, with a comment naming the deliberate narrowing:
+
+```typescript
+// timezone stays nullable on the column for legacy backfilled rows, but this action
+// requires a non-null value via castParam('timezone', 'string'). combining shadows the
+// column-derived `string | null` with the stricter runtime contract; revisit if the column type changes.
+@OpenAPI(City, {
+  status: 204,
+  tags: ['cities'],
+  requestBody: {
+    params: ['name'],
+    combining: { timezone: 'string' },
+    required: ['name', 'timezone'],
+  },
+})
 ```
 
 #### Nested model-driven shapes — multi-resource creation

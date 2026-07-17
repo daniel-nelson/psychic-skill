@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.70.0 — 2026-07-17
+
+### Changed
+
+- **`controllers.md`** — corrects the client-error Response Methods block: the 422 helper is `this.unprocessableContent()`, not `this.unprocessableEntity()` (which does not exist on `PsychicController` — matching the RFC 9110 rename of 422 to "Unprocessable Content").
+
+### Added
+
+- **`models.md`** — new "Parsers throw on invalid input — all four classes" subsection in Date/Time. `fromISO`/`fromSQL`/`fromFormat`/`fromObject` on `DateTime`, `CalendarDate`, `ClockTime`, and `ClockTimeTz` all **throw** on unparsable or calendar-impossible input (`'2026-02-31'` throws like `'garbage'`) — there is no "invalid instance" to inspect, so the `if (!DateTime.fromISO(v).toISODate()) …` probe idiom never reaches its guard. Documents the class-specific errors (`InvalidDateTime` / `InvalidCalendarDate` / `InvalidClockTime` / `InvalidClockTimeTz`, all from `@rvoh/dream/errors`) and the parse-and-catch-the-specific-error validation idiom for untrusted date strings.
+- **`models.md`** — the Transactions section now states that `instance.txn(txn).update(attrs)` assigns the attributes to that same in-memory instance before saving (like `instance.update()`), so the caller's reference is current after the call — but other loaded instances of the same row are not synchronized and must be `reload()`ed if they must observe the change.
+- **`workers.md`** — the backgrounded-service section now states that `backgroundJobConfig` is class-level: both `background()` and `backgroundWithDelay()` read it and take no per-call config argument, so a service's `workstream`/`priority` govern every backgrounded method on the class. To isolate a subset of jobs, extract them into a separate backgrounded service — splitting the class is the only mechanism.
+- **`controllers.md`** — the `requestBody` "UPDATE with a nullable FK" example now carves the narrowing case out of the `combining` anti-pattern: when an action's runtime contract is deliberately stricter than a nullable column (a non-null `castParam` without `allowNull`), `params` + `required` still advertises `string | null` because `required` only adds to the schema-level required array without dropping `null` from the property type — so shadowing the column via `combining` + `required` is the correct way to document the narrowing (the anti-pattern is *redundant* shadowing, not *narrowing* shadowing).
+- **`migrations.md`** — the two-migration enum-rename section gains two rollback/teardown caveats: (1) a column `DEFAULT` referencing the enum blocks `dropEnumValue`'s internal retype-to-`text` step, so drop the default before and restore it after; (2) a fully-restoring `down()` cannot re-`addEnumValue` and `dropEnumValue` in one file — `dropEnumValue`'s internal `getEnumValues` counts as *use* of a just-added value and throws PostgreSQL `55P04`, so the restoring rollback must be split across the migration pair exactly like the forward pass (and the pair rolls back together).
+
 ## 0.69.0 — 2026-07-15
 
 ### Changed

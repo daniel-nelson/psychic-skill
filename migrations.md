@@ -340,6 +340,10 @@ A `replacements` entry for a **scalar** enum column is exactly `{ table, column,
 
 Dream automatically starts a new transaction when it encounters `dropEnumValue` in a migration, ensuring the new enum value from Migration 1 is committed and visible before Migration 2 tries to use it as a replacement. If an enum is used on multiple tables/columns, add a separate entry in the `replacements` array for each.
 
+**A column `DEFAULT` referencing the enum blocks `dropEnumValue`.** Internally `dropEnumValue` retypes each replacement column to `text`, drops and re-creates the type, then retypes back with `USING column::enum`. A `DEFAULT` on that column fails the retype-to-text step (`default for column … cannot be cast automatically`). Drop the default before the first `dropEnumValue` and re-establish it after.
+
+**A fully-restoring rollback must be split across the pair, exactly like the forward pass.** The minimal `down()` above only re-adds the dropped value, which is safe. But a `down()` that also maps rows back with `dropEnumValue` can't re-`addEnumValue` and `dropEnumValue` in one file (same one-transaction constraint as the forward pass). Mirror the split: re-`addEnumValue`s in Migration 2's `down()`, row-mapping `dropEnumValue`s in Migration 1's `down()`. The pair rolls back together (`--steps 2`).
+
 ### Forcing a New Transaction in Migrations
 
 Dream runs all pending migrations in a single transaction by default. If a migration file contains the string `DreamMigrationHelpers.dropEnumValue` or `DreamMigrationHelpers.newTransaction()`, Dream runs that file in its own transaction, separate from the migrations before and after it.

@@ -1073,6 +1073,8 @@ await user.transaction(async (txn) => {
 })
 ```
 
+**`instance.txn(txn).update(attrs)` mutates that same in-memory instance** — it assigns the attributes to the instance before saving, exactly like non-txn `instance.update()`. So the caller's reference is current after the call and can be handed onward (to a service, a serializer) without re-querying. The catch: only *that* instance is updated. If a helper loaded a *different* instance of the same row (e.g. `Place.txn(txn).findBy(...)`) and updated it, the caller's original instance is now stale; `await original.reload()` before reading from it.
+
 ### Optional transaction participation with `.txn(null)`
 
 `.txn()` accepts `null` as well as a `DreamTransaction`. When `null` is passed, the operation runs without a transaction — it's a no-op. This lets methods that _optionally_ participate in a transaction use a single code path instead of branching:
@@ -1222,3 +1224,32 @@ Each Dream date/time class maps to exactly one Postgres column type, and `pnpm p
 A `ClockTimeTz` parsed from SQL is interpreted as UTC. These four classes are what `castParam` / `extractParams` return for date/time params and columns, and what Dream hydrates from the database — so any code touching those values already holds them; there is never a JS `Date` to reach for in the first place.
 
 These classes carry **microsecond precision** — unusual for a TypeScript framework, and worth knowing: the fractional second is six digits (first three milliseconds, next three microseconds). Microseconds are preserved when a value is supplied via the API (`fromISO`, etc.) or hydrated from the database. `.now()` is backed by JavaScript `Date` and is therefore millisecond-only *at the moment of creation*; if you need sub-millisecond values, set them explicitly via `plus` / `set` after construction.
+
+### Parsers throw on invalid input — all four classes
+
+Every parser on every one of these classes — `fromISO`, `fromSQL`, `fromFormat`, `fromObject` — **throws on unparsable or calendar-impossible input** rather than returning a value or a null-ish sentinel. There is no "invalid instance" to inspect: `DateTime.fromISO('garbage')` throws immediately, so the probe idiom `if (!DateTime.fromISO(v).toISODate()) …` never reaches its guard. The thrown error is class-specific, all exported from `@rvoh/dream/errors`:
+
+| Class | Error thrown |
+|---|---|
+| `DateTime` | `InvalidDateTime` |
+| `CalendarDate` | `InvalidCalendarDate` |
+| `ClockTime` | `InvalidClockTime` |
+| `ClockTimeTz` | `InvalidClockTimeTz` |
+
+A calendar-clean-but-impossible string (`'2026-02-31'`) throws just like `'garbage'` does. To validate an untrusted date string (an LLM-emitted value, a query param), just parse it and catch the specific error:
+
+```typescript
+import { DateTime } from '@rvoh/dream'
+import { InvalidDateTime } from '@rvoh/dream/errors'
+
+function parseISODateOrNull(v: string): DateTime | null {
+  try {
+    return DateTime.fromISO(v)
+  } catch (e) {
+    if (e instanceof InvalidDateTime) return null
+    throw e
+  }
+}
+```
+
+Catch only the specific parse error you expect, not every error. Left unguarded, an unparsable date reaching `fromISO` becomes an uncaught 500 the first time real untrusted input arrives.
