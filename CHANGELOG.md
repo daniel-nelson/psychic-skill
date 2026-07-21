@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.72.0 — 2026-07-21
+
+### Added
+
+- **`testing.md`** — an error status an action answers by hand must be added to its `@OpenAPI` `responses` and synced before a spec can assert that status.
+
 ## 0.71.0 — 2026-07-21
 
 ### Added
