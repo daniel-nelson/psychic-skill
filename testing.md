@@ -423,7 +423,7 @@ await request.post('/v1/host/places', 201, {
 })
 ```
 
-The status argument is typed the same way, so an error status the action answers by hand — a `422` from `this.unprocessableContent(...)` — has to be added to the action's `@OpenAPI` `responses` and picked up by `pnpm psy sync` before a spec can assert it; declare only error statuses there, since a `200`/`201`/`204` in `responses` replaces the serializer-derived success response.
+The status argument is typed the same way, so an error status the action answers by hand — a `422` from `this.unprocessableContent(...)` — has to be added to the action's `@OpenAPI` `responses` (or conf `defaults.responses`) and picked up by `pnpm psy sync` before a spec can assert it; declare only error statuses there, since a `200`/`201`/`204` in `responses` suppresses the serializer-derived success response.
 
 The types resolve against the `tests` spec because every surface includes `'tests'` in its `openapiNames`; see [openapi.md](openapi.md#the-tests-spec). Any `openapiNames` override you write must keep `'tests'` in the list — an endpoint left out of the tests spec has no generated types, so its controller spec can't type-check (see [controllers.md](controllers.md#opting-controllers-into-an-openapi-namespace)).
 
