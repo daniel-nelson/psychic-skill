@@ -196,6 +196,19 @@ raw bulk SQL update with no hooks or validations. This distinction matters in bo
 directions: hook-enforced invariants are still enforced by default query updates, and
 large "bulk" updates can be N+1 unless you explicitly choose `skipHooks`.
 
+`.update()` resolves to the number of rows it updated. Under `{ skipHooks: true }` the filter
+and the write are one `UPDATE ... WHERE` statement, so a filtered update is a compare-and-set
+claim: a `0` return means another writer got there first. The default form updates each matched
+record separately, so its count says how many rows changed, not that you won a race.
+
+```typescript
+// Claim a pending booking exactly once, even under concurrent requests
+const claimed = await Booking.where({ id: booking.id, status: 'pending' })
+  .update({ status: 'confirmed' }, { skipHooks: true })
+
+if (claimed === 0) return this.conflict()   // someone else already confirmed it
+```
+
 ### Range Predicates
 
 Dream's `range` helper from `@rvoh/dream/utils` is accepted in `where` clauses for bounded comparisons on supported scalar columns, including `CalendarDate`, `DateTime`, `ClockTime`, and `ClockTimeTz` columns. Use it when a single column has a natural lower and/or upper bound. If named comparison operators make the query easier to read, use `ops` instead.

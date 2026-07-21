@@ -443,6 +443,24 @@ export const PlaceWithNearbySerializer = (place: Place, nearby: Place[]) =>
 
 The action is then `@OpenAPI(PlaceWithNearbySerializer, { status: 200 })` over `this.ok(PlaceWithNearbySerializer(place, nearby))`. The schema is derived and validated under test, with no hand-maintained JSON Schema to drift. Even a one-off envelope is worth this — a composing serializer stays the single source of truth where a hand-written `responses` block does not.
 
+### Rendering an async-computed shape on the model
+
+`rendersOne` / `rendersMany` accept any declared property, not only associations, so a shape that must be computed asynchronously can be assigned in the controller and rendered as a field of the model itself. Prefer the compound envelope above; reach for this only when the computed shape has to sit *inside* the model's own object — typically when those models render as a collection, where an envelope cannot reach individual items. Either way, don't hand-write `openapi` for the nested shape ([Critical Rule 21](SKILL.md#critical-rules)).
+
+```typescript
+// Place.ts — a declared property, not a column (columns stay bare — see models.md)
+public availabilitySummary: PlaceAvailabilitySummaryView | null = null
+
+// PlaceSerializer.ts — `serializer` is required for a non-Dream, non-ViewModel value
+.rendersOne('availabilitySummary', { serializer: PlaceAvailabilitySummaryViewSerializer, optional: true })
+
+// PlacesController.ts
+place.availabilitySummary = await PlaceAvailabilityService.summarize(place)
+this.ok(place)
+```
+
+`optional: true` keeps actions that leave it unassigned from failing response validation. Export the nested ObjectSerializer so it registers as a named OpenAPI component.
+
 ## STI Serializers
 
 For Single Table Inheritance, use generic type parameter:

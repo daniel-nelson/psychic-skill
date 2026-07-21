@@ -43,6 +43,41 @@ When correcting outdated or incorrect skill guidance, remove the stale pattern w
 
 The same rule applies to the framework itself, not just to the skill's own prior wording: **do not document past or changed behaviors in the Dream/Psychic ecosystem.** The skill always teaches the current (or imminent) state, never narrates what the framework used to do or that a behavior changed. State the behavior as it is now; never write "an older version did X; current tooling does Y," "this used to…," or "X disappears on regen — that's a correction." A reader on an older package version is served by the "Ecosystem versions & staleness policy" baseline ("upgrade if reality disagrees"), not by historical narration in the skill. The one exception is a breaking change that genuinely needs migration steps — that belongs in a dedicated `upgrade.md` (or similar) with explicit version-to-version guidance, not woven into the feature docs.
 
+## Does this earn its place? Evaluating a candidate addition
+
+Being true is not sufficient. Every added word costs context and dilutes what surrounds it, so the test for any candidate addition is **what an agent building a Psychic app would have to go through to learn this without the skill.** Guidance an agent would discover in seconds on their own is a net negative: it spends context and buries the guidance that isn't discoverable.
+
+Run this before adding anything — a processed learning, a new section, an expansion of an existing one.
+
+### The rubric
+
+1. **Failure mode.** If an agent doesn't know this, what happens?
+   - Silent wrong behavior, data corruption, or a production 500 that specs pass over — highest value.
+   - A long confusing debugging loop — high.
+   - A runtime error whose own message states the rule — low. Dream's error messages are unusually explicit; several name the whole rule (`Can only pass BelongsTo associated models as params`).
+   - An immediate TypeScript error at the call site — very low, and lower still because `pnpm build:spec` typechecks `spec/` too.
+2. **Discoverability elsewhere.** Would the agent hit this first in the TSDoc on the method or decorator they are already calling, in the error text, in the guides at `~/work/psychic-guides`, or in `pnpm psy <cmd> --help`? Go read those and quote what you find. A `@returns` line on the exact method being documented means the skill does not need to restate it.
+3. **Duplication.** Grep every `*.md` in this repo. Guidance stated twice competes with itself, and the second statement is usually the one that drifts.
+4. **Frequency.** Does a typical Psychic app hit this, or does it need an uncommon column type, a rare refactor, or a horizontally-scaled fleet?
+5. **Word cost.** Count the words. Would the same value survive at a third of the length? Usually yes.
+
+A candidate that clears (1) and (2) earns its place. One that fails (2) does not, no matter how true it is.
+
+### How to run the evaluation
+
+Spawn one adversarial reviewer per file being changed, in parallel, and tell each one the facts are already verified so it spends its whole budget on the value question. Require of each verdict:
+
+- `KEEP AS IS` / `TRIM` / `CUT` / `REFRAME`, with word counts now and proposed.
+- Evidence bullets that **quote something concrete** — the error string, the TSDoc line, the guides passage, the existing skill line that already says it. A verdict without quotes is an opinion.
+- The exact replacement markdown when trimming, in this repo's conventions.
+- The strongest argument against its own verdict.
+
+Reviewers are advisory. Nothing gets edited until a human has seen the verdicts, and a reviewer that keeps everything has told you nothing.
+
+### Prescriptions get a second test
+
+When a candidate tells an agent what to *do* rather than what the framework *does*, also check: does the framework's own scaffold or the guides prescribe something different, is the claimed benefit real or a micro-optimization, and what does the recommendation cost in exchange? State the honest claim. If the real content is "you must do this at all" rather than "do it here instead of there", write that instead — the comparison is usually the weaker half.
+
 ## What this skill deliberately does not document
 
 ### `@rvoh/dream-plugin-json-snapshot`

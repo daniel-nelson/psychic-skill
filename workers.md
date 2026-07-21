@@ -332,6 +332,24 @@ export default class ScheduledJobs extends ApplicationScheduledService {
 }
 ```
 
+### Call `scheduleAllJobs()` yourself, from `db/seed.ts`
+
+Nothing registers your schedules for you. A service that defines `scheduleAllJobs()` and never has it called registers nothing, and every cron job silently never runs. Call it from `db/seed.ts`:
+
+```typescript
+// db/seed.ts
+import ScheduledJobs from '@services/ScheduledJobs.js'
+
+export default async function seed() {
+  if (AppEnv.isTest) return
+  await ScheduledJobs.scheduleAllJobs()
+}
+```
+
+`schedule()` upserts (keyed `` `${globalName}:${method}` ``), so registration is idempotent and belongs wherever a deploy already reconciles the database to the code — which is why seed runs immediately after migrations in every environment ([deploying.md](deploying.md#combine-dbmigrate--dbseed-in-one-invocation)). A pipeline that migrates without seeding leaves Redis holding the previous schedule set, so pair the two commands everywhere they run.
+
+The seed process must reach the jobs Redis; with `enableOfflineQueue: false` an unreachable Redis fails the seed task loudly rather than buffering. Locally, run `pnpm psy db:seed` (or `pnpm psy db:reset`, which seeds last) before expecting a schedule to exist.
+
 ### Scheduled services are thin orchestrators, not workers
 
 A scheduled method should do almost nothing itself: select what needs to happen now and **fan out to backgrounded services** that do the real work. Heavy lifting inside a scheduled method is a design smell. The goal is to keep the number of permanently-registered schedulers in the BullMQ "Delayed" queue to a small fixed set — typically just `hourly`, `daily`, and `weekly` — each of which kicks off whatever backgrounded jobs that cadence requires. Three clean schedulers fanning out to dedicated services is the target shape; a sprawling list of per-task schedulers is not.

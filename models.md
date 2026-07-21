@@ -128,6 +128,7 @@ public placeId: DreamColumn<Booking, 'placeId'>
 `optional` is the single source of truth for whether a `BelongsTo` can be null. A non-optional `BelongsTo` (the default) is typed non-null and serializes to a non-nullable OpenAPI field — "required" means "always present" — and Dream defends that contract at both ends:
 
 - **You may not conditionally load it.** A trailing constraint on a non-optional `BelongsTo` in `preload` / `load` / `leftJoinPreload` / `leftJoinLoad` is a **compile error** — the constraint could filter the parent out and null a field the spec declares non-nullable. (`innerJoin` / `leftJoin` are exempt; they don't hydrate a value.) See [querying.md — Conditions on associations in the chain](querying.md).
+- **It registers a `requiredBelongsTo` validation for you.** Saving without the parent fails Dream validation before Postgres sees it, and `.errors` is keyed by the *association* name (`{ place: ['requiredBelongsTo'] }`), not the foreign key column. Never declare `@deco.Validates('requiredBelongsTo')` yourself.
 - **Accessing it when null throws `MissingRequiredBelongsToAssociation`.** When an *internal* mechanism nulls a required parent — a default scope (e.g. soft-delete) filtered it out, an `and`/`on` baked into the association definition excluded it, or the parent row was hard-deleted leaving a dangling FK — the getter throws this error instead of returning a null the types say is impossible.
 
 The runtime error is a modeling bug, so the fix is a model change, not a looser spec:
@@ -276,6 +277,10 @@ public host: Host
 `host` is now one association name on `Booking`, usable with `preload`, `associationQuery`, `association`, or a serializer, replacing a per-hop preload of `room` and `place` and the `booking.room?.place?.host` walk. A chain over an optional `BelongsTo` is nullable — type it `Host | null`. Condition and shaping clauses work on `through` associations too (`and`, `andNot`, `andAny`, `selfAnd`, `selfAndNot`, `order`, `distinct`), at any position in a chain — on the association you load directly, on an intermediate that a further through reaches across, and whether the hop's source is a concrete association or itself another `through`. Each hop's clauses shape the join of that hop's own target model (the model its property is typed as), referencing the target's columns, never an intermediate join table's; for `selfAnd`/`selfAndNot`, the "self" columns come from the model the clause is declared on. Multiple hops' `order`s compose rather than override — each is appended to the ORDER BY in join order. Two limits: a hop whose `and` uses `DreamConst.required` cannot be bridged across (see [DreamConst in Association Conditions](#dreamconst-in-association-conditions)), and a `distinct`-carrying through association loads with `preload` or `innerJoin` but not `leftJoinPreload` (Postgres rejects `leftJoinPreload`'s hydration `ORDER BY` alongside the association's `DISTINCT ON`).
 
 **`source` defaults to the association's own name, matched by name (not by target model).** In each hop above, `source` is omitted because the next model's association is also named `host`; Dream looks up an association literally named after the property. This is what disambiguates an intermediate that has two associations of the *same* target model (e.g. a `Room` with both `host` and `substituteHost`, both `BelongsTo('Host')`) — the name match picks the right one. Pass `source: '...'` only when the intermediate's association name differs from the name you want on this model (as in the `through: 'bookings', source: 'guest'` example above).
+
+#### Every hop applies its own default scopes, including soft delete
+
+A `through` chain joins each intermediate under that model's default scopes, so a soft-deleted intermediate makes the chain resolve `null` (`HasOne`) or `[]` (`HasMany`) with no error — as if the row never existed. `through` cannot take `withoutDefaultScopes`, so when you need to traverse one, walk the hops as explicit queries under `removeDefaultScope('dream:SoftDelete')`.
 
 #### Where a hop belongs: compose across models, or stack on the origin
 
@@ -577,9 +582,6 @@ public email: DreamColumn<User, 'email'>
 @deco.Validates('numericality', { min: 0, max: 100 })
 public volume: DreamColumn<User, 'volume'>
 
-@deco.Validates('requiredBelongsTo')
-public user: User  // Validates the association exists
-
 // Custom validation method
 @deco.Validate()
 public validateWeightConsistency(this: Sandbag) {
@@ -588,6 +590,8 @@ public validateWeightConsistency(this: Sandbag) {
   }
 }
 ```
+
+The presence of a non-optional `BelongsTo` is validated for you — see [A required `BelongsTo` is a two-way non-nullable contract](#a-required-belongsto-is-a-two-way-non-nullable-contract).
 
 Checking validity:
 ```typescript
@@ -702,7 +706,8 @@ ops.any(5)  // Array contains value
 
 // NULL checks
 await Model.where({ field: null }).all()      // IS NULL
-await Model.whereNot({ field: null }).all()    // IS NOT NULL
+await Model.whereNot({ field: null }).all()    // IS NOT NULL — also the form to use on array
+                                               // columns, which take no ops comparison but ops.any
 ```
 
 **`ops.like` vs `ops.ilike` — column-type-dependent behavior.** Against a regular `text` / `varchar` column, `ops.like` is case-sensitive and `ops.ilike` is case-insensitive — the operators differ. Against a `citext` column (case-insensitive text — see [migrations.md "citext"](migrations.md)), both operators match case-insensitively because the type itself ignores case; equality (`where({ name: 'sally' })`) on citext is case-insensitive for the same reason.
@@ -923,6 +928,8 @@ In a **controller this is effectively absolute** (see [controllers.md — `extra
 - An **array of ids** (bulk filter): `Booking.where({ placeId: placeIds })` where `placeIds` came from a prior query. (Use the plain array — `where({ col: [...] })` — not `ops.in([...])`.)
 - A **cross-type polymorphic batch load**, where two types cannot be expressed in one `where` and you fall back to `whereAny` with explicit `localizableType`/`localizableId` groups (see [serializers.md](serializers.md)).
 - **Background-job arguments**, which must serialize to Redis and therefore pass IDs, not instances — this is the deliberate opposite rule for the worker boundary ([workers.md](workers.md)), where the implementation method re-hydrates the model from the id.
+
+Only `BelongsTo` associations are assignable through `create` / `update` params — the write path is the model holding the foreign key, so a `HasOne`/`HasMany` (including `through`) is neither in the param type nor accepted at runtime.
 
 ## Dirty Tracking
 

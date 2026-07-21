@@ -333,7 +333,7 @@ Associations declare how models relate — `BelongsTo`, `HasMany`, `HasOne`, `th
 
 - **A `BelongsTo` lives on the model holding the foreign key, and you must declare the FK column too** (`public userId: DreamColumn<...>` beside the `@deco.BelongsTo('User')`).
 - **A non-optional `BelongsTo` is a non-nullable contract on both ends** — it can't be conditionally loaded (compile error) and throws `MissingRequiredBelongsToAssociation` if an internal mechanism nulls it. The fix is a model change (`dependent: 'destroy'` on the inverse, or `optional: true`), not a looser serializer.
-- **`through` associations cannot use** `dependent`, `primaryKeyOverride`, `withoutDefaultScopes`, `on`, or `polymorphic`.
+- **`through` associations cannot use** `dependent`, `primaryKeyOverride`, `withoutDefaultScopes`, `on`, or `polymorphic`. Each hop applies its own default scopes, so a soft-deleted intermediate makes the whole chain resolve empty.
 
 **Before you add or change an association, read the full reference in [models.md](models.md)** — every option, the conditions (`and` / `andAny` / `andNot`), `selfAnd` / `selfAndNot`, `DreamConst.passthrough` / `required`, and polymorphism. Run `pnpm psy sync` after any association change.
 
@@ -349,6 +349,7 @@ Background jobs (BullMQ / Redis) offload slow, costly, or failure-prone work off
 
 - **Never pass model data as job arguments — pass IDs only** and re-look-up inside the implementation. Model payloads bloat Redis, lose type information through JSON, and go stale.
 - **Use `find` (not `findOrFail`) in implementations and return early on null** — the record may have been deleted before the worker runs, and `findOrFail` would retry for ~6 days.
+- **Nothing calls `scheduleAllJobs()` for you** — call it from `db/seed.ts`, which every deploy runs immediately after `db:migrate`. A scheduled service nobody registers silently never runs.
 - **Enqueue only after the transaction commits** — any lifecycle hook that queues background work must use a `Commit` variant (`@deco.AfterCreateCommit`, `@deco.AfterUpdateCommit`, `@deco.AfterSaveCommit`). This applies whether the hook calls a backgrounded service or backgrounds a model method, and whether the worker needs a newly-created row or newly-updated persisted data. Never call `background(...)` from inside an open `txn`, or the worker races the commit and silently strands the record.
 
 **Before you write a backgrounded service, a scheduled job, or a model hook that enqueues work, read [workers.md](workers.md).** It owns the two-method service pattern, priorities / workstreams, the scheduled-vs-backgrounded split, large-set fan-out, and why a `try/catch` inside a job (which fakes success and kills retry) is almost always a bug.

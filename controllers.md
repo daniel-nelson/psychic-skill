@@ -702,6 +702,7 @@ this.badRequest()          // 400
 this.unauthorized()        // 401
 this.forbidden()           // 403
 this.notFound()            // 404
+this.conflict()            // 409
 this.unprocessableContent() // 422
 
 // Server errors
@@ -1003,6 +1004,30 @@ await place.save()
 ```
 
 Without the explicit check, an invalid `save()` / `create()` still returns 400, but with no body — the framework logs the errors rather than sending them. Conveying the error shape to the client is therefore an explicit, deliberate act.
+
+### 409 from a database constraint
+
+Some invariants live only in the database — a unique index, or an `ON DELETE` action that blocks a delete. Turning one into a status is the narrow, specific catch [Critical Rule 14](SKILL.md#critical-rules) allows: `pgErrorType` maps a `pg.DatabaseError` to a string literal, so the match is on a constant rather than message text.
+
+```typescript
+import { pgErrorType } from '@rvoh/dream/errors'
+
+try {
+  await city.destroy()
+} catch (error) {
+  switch (pgErrorType(error)) {
+    case 'RESTRICT_VIOLATION':
+    case 'FOREIGN_KEY_VIOLATION':
+      return this.conflict()   // Places still reference this City
+    default:
+      throw error
+  }
+}
+
+this.noContent()
+```
+
+**A delete guard must accept both literals.** Postgres raises `'RESTRICT_VIOLATION'` under `.onDelete('restrict')` and `'FOREIGN_KEY_VIOLATION'` under `no action`. Since `restrict` is the recommended foreign key action (see [soft delete](soft-delete.md)), a guard written for `'FOREIGN_KEY_VIOLATION'` alone never fires and the endpoint 500s — and only a spec that creates the referencing `Place` first reaches the branch. `'UNIQUE_VIOLATION'` on create is the same pattern.
 
 ## Rate Limiting
 

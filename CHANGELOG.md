@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.71.0 — 2026-07-21
+
+### Added
+
+- **`models.md`** — the required-`BelongsTo` contract now covers the save side: a non-optional `BelongsTo` registers a `requiredBelongsTo` validation for you, so saving without the parent fails Dream validation before Postgres sees it, keyed by the association name (`{ place: ['requiredBelongsTo'] }`) rather than the foreign key column. Never declare `@deco.Validates('requiredBelongsTo')` yourself; the example of doing so is removed from the Validations section.
+- **`models.md`** — new "Every hop applies its own default scopes, including soft delete" subsection: a soft-deleted intermediate makes a `through` chain resolve `null`/`[]` with no error, and because `through` cannot take `withoutDefaultScopes` the only way to traverse one is walking the hops as explicit `removeDefaultScope('dream:SoftDelete')` queries. Adds a one-line note that only `BelongsTo` associations are assignable through `create`/`update` params, and annotates the `IS NOT NULL` form as the one to use on array columns (which take no `ops` comparison but `ops.any`).
+- **`querying.md`** — query-level `.update()` resolves to the number of updated rows; under `{ skipHooks: true }` the filter and the write are one `UPDATE ... WHERE` statement, making a filtered update a compare-and-set claim (a `0` return means another writer won the race), while the default form's count says how many rows changed rather than that you won a race.
+- **`controllers.md`** — new "409 from a database constraint" section: `pgErrorType` as the narrow, specific catch Critical Rule 14 allows, and the rule that a blocked delete arrives as `'RESTRICT_VIOLATION'` under `.onDelete('restrict')` but `'FOREIGN_KEY_VIOLATION'` under `no action`, so a delete guard must accept both or the endpoint 500s. Adds `this.conflict()` (409) to the Response Methods list.
+- **`serializers.md`** — new "Rendering an async-computed shape on the model" subsection: `rendersOne`/`rendersMany` accept any declared property, so an asynchronously computed shape can be assigned in the controller and rendered as a field of the model, with `optional: true` keeping actions that skip it from failing response validation. Prefer the compound envelope; this is for shapes that must sit inside the model's own object, such as models rendered as a collection.
+- **`workers.md`** — new "Call `scheduleAllJobs()` yourself, from `db/seed.ts`" subsection: nothing registers schedules for you, so a scheduled service nobody calls silently never runs. `schedule()` upserts, so registration belongs where a deploy already reconciles the database to the code — seed, which runs immediately after migrations. Notes the jobs-Redis reachability requirement and the local `db:seed` step.
+
 ## 0.70.0 — 2026-07-17
 
 ### Changed
