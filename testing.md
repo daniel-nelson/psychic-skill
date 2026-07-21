@@ -423,6 +423,8 @@ await request.post('/v1/host/places', 201, {
 })
 ```
 
+The status argument is typed the same way: it accepts only the statuses the endpoint declares in the generated spec, which is the action's success `status:` plus the [default error set](openapi.md#customizing-default-error-responses). An action that answers any other status by hand — commonly a `422` from `this.unprocessableContent(...)` when a `Booking` can't be destroyed mid-stay — must declare that response in its `@OpenAPI` `responses` block first, or the spec asserting it won't compile, and the error names a generic type rather than the decorator that needs changing. Declare the response, run `pnpm psy sync`, then `pnpm build:spec`.
+
 The types resolve against the `tests` spec because every surface includes `'tests'` in its `openapiNames`; see [openapi.md](openapi.md#the-tests-spec). Any `openapiNames` override you write must keep `'tests'` in the list — an endpoint left out of the tests spec has no generated types, so its controller spec can't type-check (see [controllers.md](controllers.md#opting-controllers-into-an-openapi-namespace)).
 
 ### Generate resourceful controllers first
