@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.72.0 — 2026-07-21
+
+### Added
+
+- **`testing.md`** — the "Request and response types come from the `tests` spec" section now covers the status argument to the typed `request` helpers: it accepts only the statuses the endpoint declares in the generated spec, which is the action's success `status:` plus the default error set. An action that answers any other status by hand — commonly a `422` from `this.unprocessableContent(...)` — has to declare that response in its `@OpenAPI` `responses` block before a spec can assert it, and the compile error names a generic type rather than the decorator that needs changing. Gives the ordering: declare the response, `pnpm psy sync`, then `pnpm build:spec`.
+
 ## 0.71.0 — 2026-07-21
 
 ### Added
