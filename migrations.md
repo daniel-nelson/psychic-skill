@@ -464,6 +464,29 @@ await db.schema
   .execute()
 ```
 
+### Dropping a column: declare it ignored one deploy ahead
+
+In a rolling deploy the migration finishes while containers built from the previous image are still serving, and those containers still name the dropped column in the SQL `leftJoinPreload`/`leftJoinLoad` generate — so every joined read of that model fails with `42703 column "..." does not exist` until the last old container drains. A spec suite runs against a single schema and cannot catch this.
+
+Drop a column across two deploys, using the model's `ignoredColumns` getter:
+
+```typescript
+export default class Place extends ApplicationModel {
+  public override get ignoredColumns() {
+    return ['legacyNightlyRateCents'] as const
+  }
+
+  // ...
+}
+```
+
+**Deploy 1:** remove every code reference to the column, declare it ignored, and run `pnpm psy sync`. The column is omitted from both generated types files, so it disappears from `Place.columns()` and every select list derived from it, and any reference left behind becomes a type error. **Deploy 2:** ship the `dropColumn` migration. No image carrying the declaration ever names the column, so the drop is safe on every code path — and rolling back to a declaration-carrying image stays safe afterward.
+
+Two preconditions:
+
+- **`ignoredColumns` is consumed by `sync`, not at runtime.** A model that declares it without a regenerated types file is not protected — have CI verify `pnpm psy sync` produces no diff.
+- **The column must be nullable or carry a database default before deploy 1 ships.** An image built with the declaration never puts the column in an `INSERT` column list, so a `NOT NULL` column with no default fails every create.
+
 ## Extensions
 
 ```typescript

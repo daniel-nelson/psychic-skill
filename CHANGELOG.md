@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.73.0 — 2026-07-21
+
+### Added
+
+- **`migrations.md`** — new "Dropping a column: declare it ignored one deploy ahead" subsection: a rolling deploy runs the `dropColumn` migration while containers built from the previous image are still serving, and those containers still name the column in the SQL `leftJoinPreload`/`leftJoinLoad` generate, so joined reads fail with `42703` until the last old container drains — a failure a single-schema spec suite cannot catch. Documents the model's `ignoredColumns` getter and the two-deploy process (deploy 1 removes references, declares the column ignored, and syncs; deploy 2 ships the migration), plus the two preconditions: the declaration is consumed by `sync` rather than at runtime, and the column must be nullable or carry a database default before deploy 1 ships.
+- **`deploying.md`** — a "Dropping a column takes two deploys" pointer under "Migrations in Production Deploys", cross-referencing the migrations.md section.
+
+### Changed
+
+- **`SKILL.md`** — ecosystem version baseline moves `@rvoh/dream` to 2.20.x.
+
 ## 0.72.0 — 2026-07-21
 
 ### Added

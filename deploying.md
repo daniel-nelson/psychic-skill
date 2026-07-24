@@ -146,6 +146,10 @@ sh -c "node ./dist/src/conf/system/cli.js db:migrate && node ./dist/src/conf/sys
 
 If migrate fails, seed never runs and the task exits non-zero. If migrate succeeds and seed fails, the task exits non-zero with seed's error — the same shape your deploy script would see from a separate seed invocation.
 
+### Dropping a column takes two deploys
+
+A rolling deploy runs the migration while containers built from the previous image are still serving. Dropping a column is therefore a two-deploy process gated on the model's `ignoredColumns` getter — see [migrations.md — Dropping a column](migrations.md#dropping-a-column-declare-it-ignored-one-deploy-ahead).
+
 ## Debugging a Deployed Psychic Service
 
 When a deployed Psychic service is not responding correctly:
