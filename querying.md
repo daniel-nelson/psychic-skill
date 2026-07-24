@@ -248,6 +248,10 @@ Use `ops.lessThan` / `ops.lessThanOrEqualTo` and `ops.greaterThan` / `ops.greate
 
 Query-side overlap validation is not race-safe by itself. Prevent double booking with a database constraint, such as a PostgreSQL exclusion constraint, when concurrent writes can violate the invariant.
 
+### Array column containment
+
+Dream's `where()` array-value dispatch (`where({ status: [...] })` → `IN`) is scoped to non-array columns. For a Postgres array-typed column like `Room.tags: text[]`, use `ops.any(value)` to check whether the column contains a given element: `where({ tags: ops.any('quiet') })`. `ops.any` throws `AnyRequiresArrayColumn` if the target column isn't an array type.
+
 ### Ordering
 
 ```typescript
