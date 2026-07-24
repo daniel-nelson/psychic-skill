@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.74.0 — 2026-07-24
+
+### Added
+
+- **`querying.md`** — new "Array column containment" subsection: `where()`'s bare-array dispatch (`IN` over elements) is scoped to non-array columns, so use `ops.any(value)` to check whether a Postgres array-typed column contains a given element.
+
 ## 0.73.0 — 2026-07-21
 
 ### Added
