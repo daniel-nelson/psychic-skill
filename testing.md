@@ -558,6 +558,8 @@ Keep this separate from **specificity**. Case-insensitivity does not make a matc
 
 **Split label/value markup matches contiguously.** Because per-element text is joined with spaces, `<dt>Sleeps</dt><dd>4</dd>` lands in the matched string as `Sleeps 4`. So `toMatchTextContent('Sleeps 4')` matches a label/value split with no `page.$eval` workaround.
 
+A more complex layout — a flex container around the `<dt>`/`<dd>` pair, for instance — can break that contiguity, landing extra whitespace between what look like adjacent elements in the source. If a literal contiguous match fails unexpectedly on markup that looks equivalent to the example above, fall back to a whitespace-tolerant regex (`/Sleeps\s+4/`) rather than assuming the assertion itself is broken.
+
 ### Full Example
 
 ```typescript
