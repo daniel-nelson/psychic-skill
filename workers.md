@@ -51,6 +51,37 @@ await IntercomSyncService.syncUser(user)
 
 **Key rules:**
 - **NEVER pass model data as background job arguments.** Almost always pass only the model's ID and look up the record in the implementation method. This applies to any data stored in a Dream model. Passing model data as arguments has serious downsides: it bloats Redis memory (a full JSON payload vs. a single ID string), loses all type information when serialized to JSON (e.g., Dream date/time objects become plain strings, enums become untyped values), and creates a snapshot that is immediately stale if the record is updated after the job is queued. The only arguments to `this.background(...)` should be IDs and simple scalar values (strings, numbers, booleans) that are not sourced from model columns. For model instance methods, `ApplicationBackgroundedModel` handles this automatically by storing only the primary key.
+- **A composed scalar argument is still model-sourced data if a secret is baked into it.** A string that embeds a live credential — a bearer token, a signed URL, a password-reset link — passes the letter of "simple scalar value" while still writing that secret into every place a job argument lands: BullMQ/Redis job retention, and any queue dashboard or error-monitoring tool that logs job arguments on failure. Defer minting the sensitive part to the implementation method instead: pass only the id(s) needed to look the record up, and construct the token or link from inside the backgrounded method, where it is never serialized as a job argument.
+
+  ```typescript
+  // Wrong — the signed URL (with its embedded token) is stored as a job argument
+  export class BookingMailerService extends ApplicationBackgroundedService {
+    public static async sendConfirmation(booking: Booking) {
+      const confirmationUrl = await booking.mintConfirmationUrl()
+      await this.background('_sendConfirmation', booking.guestId, confirmationUrl)
+    }
+
+    public static async _sendConfirmation(guestId: string, confirmationUrl: string) {
+      const guest = await Guest.find(guestId)
+      if (!guest) return
+      // ...email guest the confirmationUrl
+    }
+  }
+
+  // Right — only the booking id crosses the queue; the token is minted inside the job
+  export class BookingMailerService extends ApplicationBackgroundedService {
+    public static async sendConfirmation(booking: Booking) {
+      await this.background('_sendConfirmation', booking.id)
+    }
+
+    public static async _sendConfirmation(bookingId: string) {
+      const booking = await Booking.find(bookingId)
+      if (!booking) return
+      const confirmationUrl = await booking.mintConfirmationUrl()
+      // ...email booking.guest the confirmationUrl
+    }
+  }
+  ```
 - **Use `find` (not `findOrFail`) in background job implementations**, and return early when the record is not found. Model deletion is a normal part of many application flows — a record may be deleted between when the job was queued and when the worker picks it up. Using `findOrFail` would throw an error, causing the job to be retried repeatedly for ~6 days before finally failing, wasting resources on a record that will never exist again.
 - Always call the public entry method from application code, not `this.background(...)` directly from outside the service.
 
