@@ -708,8 +708,7 @@ ops.not.equal(['a', 'b'])
 
 // NULL checks
 await Model.where({ field: null }).all()      // IS NULL
-await Model.whereNot({ field: null }).all()    // IS NOT NULL — also the form to use on array
-                                               // columns, which take no bare-array comparison
+await Model.whereNot({ field: null }).all()    // IS NOT NULL
 ```
 
 **`ops.like` vs `ops.ilike` — column-type-dependent behavior.** Against a regular `text` / `varchar` column, `ops.like` is case-sensitive and `ops.ilike` is case-insensitive — the operators differ. Against a `citext` column (case-insensitive text — see [migrations.md "citext"](migrations.md)), both operators match case-insensitively because the type itself ignores case; equality (`where({ name: 'sally' })`) on citext is case-insensitive for the same reason.
