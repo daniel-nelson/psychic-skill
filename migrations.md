@@ -357,6 +357,29 @@ export async function up(db: Kysely<any>): Promise<void> {
 }
 ```
 
+## Raw Kysely Data Queries in Migrations
+
+A migration's `db` handle is the same Kysely instance Dream builds everywhere else, with `CamelCasePlugin` applied — so a raw `selectFrom` returns camelCased keys even though the migration itself is written against snake_case column names ([SKILL.md — Naming Conventions](SKILL.md#naming-conventions)). Alias the select to the camelCase name you intend to read, then use that same casing when writing the data back:
+
+```typescript
+export async function up(db: Kysely<any>): Promise<void> {
+  const rooms = await db
+    .selectFrom('rooms')
+    .select(['id', 'host_id as hostId'])
+    .execute()
+
+  for (const room of rooms) {
+    await db
+      .updateTable('bookings')
+      .set({ hostId: room.hostId })
+      .where('room_id', '=', room.id)
+      .execute()
+  }
+}
+```
+
+Kysely silently drops `undefined` values from `.set()`/`.values()` rather than raising an error. If the alias above is misspelled, or the source column is unexpectedly `null`, `room.hostId` is still a defined value (`null`), but a genuinely `undefined` field in the object passed to `.set()` is dropped from the generated `UPDATE` entirely — the query still runs, and silently leaves `host_id` unchanged on every row instead of failing.
+
 ## Foreign Keys
 
 ```typescript
