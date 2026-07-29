@@ -380,6 +380,27 @@ export async function up(db: Kysely<any>): Promise<void> {
 
 Kysely silently drops `undefined` values from `.set()`/`.values()` rather than raising an error. If the alias above is misspelled, or the source column is unexpectedly `null`, `room.hostId` is still a defined value (`null`), but a genuinely `undefined` field in the object passed to `.set()` is dropped from the generated `UPDATE` entirely — the query still runs, and silently leaves `host_id` unchanged on every row instead of failing.
 
+A migration-local Kysely schema interface backing an `.insertInto()` has no way to express a DB-level column default — there's no `Generated<T>` marker to borrow, since the interface only describes the raw table shape for this one migration. That means Kysely's types require a value for every column, including `id`, even though Postgres would otherwise generate it from the column's own default. Supply it explicitly, using the same raw SQL the default uses:
+
+```typescript
+interface BookingsTable {
+  id: string
+  room_id: string
+  guest_id: string
+}
+
+export async function up(db: Kysely<{ bookings: BookingsTable }>): Promise<void> {
+  await db
+    .insertInto('bookings')
+    .values({
+      id: sql`uuidv7()`,
+      room_id: roomId,
+      guest_id: guestId,
+    })
+    .execute()
+}
+```
+
 ## Foreign Keys
 
 ```typescript
