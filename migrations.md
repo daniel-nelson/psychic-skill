@@ -285,7 +285,7 @@ await DreamMigrationHelpers.dropEnumValue(db, {
 
 ### Renaming an Enum Value (Two-Migration Pattern)
 
-PostgreSQL cannot add and use a new enum value in the same transaction, and Dream runs all pending migrations in a single transaction by default. To rename an enum value (add the new name, migrate data from old to new, drop the old name), you must use **two separate migration files**.
+PostgreSQL cannot add and use a new enum value in the same transaction, and Dream runs all pending migrations in a single transaction by default. This isn't specific to renaming — **any** migration that adds an enum value and then uses that value (an `INSERT`, an `UPDATE`, a `dropEnumValue` replacement) needs the addition committed in its own transaction before a later migration can use it, per [Forcing a New Transaction in Migrations](#forcing-a-new-transaction-in-migrations) below. A rename is just the most common shape of this, and it's the one worked through here. To rename an enum value (add the new name, migrate data from old to new, drop the old name), you must use **two separate migration files**.
 
 **Migration 1** — add the new enum value:
 
