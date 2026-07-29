@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.75.0 — 2026-07-29
+
+### Added
+
+- **`migrations.md`** — new "Raw Kysely Data Queries in Migrations" section: a raw `select` inside a migration returns camelCased keys (Dream applies `CamelCasePlugin` to every Kysely instance it builds, including a migration's `db` handle), so alias selects to the camelCase name you intend to read; also notes Kysely silently drops `undefined` from `.set()`/`.values()`, turning a still-undefined aliased value into a silent no-op write rather than an error. A second callout covers `.insertInto()`: a migration-local Kysely schema interface has no way to express a DB-level column default, so Kysely's types require supplying a column like `id` explicitly even when Postgres would generate it — pass the same raw SQL the default uses (e.g. `id: sql\`uuidv7()\``).
+- **`workers.md`** — extends the "NEVER pass model data as background job arguments" rule: a plain scalar argument (e.g. a confirmation-link string) can still leak sensitive, model-sourced data if a secret or token is baked into it before enqueueing. Defer minting the sensitive part to the backgrounded method itself — pass only the id(s) needed to look the record up, not a pre-composed value carrying a credential into queue/dashboard retention or error-monitoring forwarding.
+- **`testing.md`** — the "split label/value markup matches contiguously" example gets a caveat: a more complex layout (e.g. a flex container) can break contiguity between what look like adjacent elements, with a whitespace-tolerant regex (`/label\s+value/`) as the fallback when a literal contiguous match fails unexpectedly.
+- **`querying.md`** — "Array column containment" is retitled "Array column containment and equality" and corrected: `where()`'s array dispatch is unconditional (it branches on `Array.isArray(value)` before consulting the schema), not scoped to non-array columns — that's why a bare array fails against an array column. Adds `ops.equal(value)` as the exact, order-sensitive array-equality tool (element types constrained by the column; `json[]` unsupported, only `jsonb[]`) alongside `ops.any` for containment, with a comparison table.
+- **`soft-delete.md`** — new "Guarded (compare-and-set) destroy" subsection: `destroy({ lock: true })` / `reallyDestroy({ lock: true })` claim rows via per-batch row locking (`FOR UPDATE OF`), returning the count of records actually claimed; `batchSize` defaults to 10 under `lock` (versus 1000 otherwise) since every record in a batch stays locked for its full destroy-hook/cascade duration. The guarantee is per-batch, not set-wide — wrap in `ApplicationModel.transaction(...)` for an all-or-nothing destroy. Framed as the opposite of a bulk-delete accelerator.
+- **`models.md`** — the `ops` reference table gains `ops.equal`/`ops.not.equal` rows for array columns, and the `ops.any`-only note beside it is corrected. The Batch Processing section's `findEach` example is fixed to the real `findEach(cb, opts)` argument order, translated to `Booking`/`Guest`, and now states plainly that `findEach` always iterates in ascending primary-key order and discards any `order` applied to the query.
+
+### Changed
+
+- **`migrations.md`** — the "Renaming an Enum Value (Two-Migration Pattern)" section's intro now states the two-file split applies to any migration that adds an enum value and then uses it (an `INSERT`/`UPDATE` reconciliation, not just a rename/`dropEnumValue`-based replacement), cross-referencing "Forcing a New Transaction in Migrations" for the general escape hatch.
+- **`SKILL.md`** — ecosystem version baseline corrected: `@rvoh/dream` to 2.22.x, `@rvoh/psychic-websockets` to 3.4.x, `@rvoh/psychic-spec-helpers` to 3.4.x (`@rvoh/psychic` and `@rvoh/psychic-workers` unchanged).
+- **`CLAUDE.md`** — "Delete stale guidance cleanly" now states a change verified against real (even unmerged) upstream source may be documented as current, matter-of-fact, once the maintainer confirms it — narrating only genuinely *past* behavior remains off-limits. "Keep the ecosystem version baseline current" gains a cross-referencing sentence permitting the baseline to lead the actual published `origin/main` version in that case.
+
 ## 0.74.0 — 2026-07-24
 
 ### Added
