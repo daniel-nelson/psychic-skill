@@ -701,13 +701,15 @@ ops.similarity('search term')
 ops.wordSimilarity('search term')
 ops.similarity('term', { score: 0.2 })
 
-// Array containment
-ops.any(5)  // Array contains value
+// Array columns
+ops.any(5)                    // Array contains value
+ops.equal(['a', 'b'])         // Array equals exactly this array, in this order
+ops.not.equal(['a', 'b'])
 
 // NULL checks
 await Model.where({ field: null }).all()      // IS NULL
 await Model.whereNot({ field: null }).all()    // IS NOT NULL — also the form to use on array
-                                               // columns, which take no ops comparison but ops.any
+                                               // columns, which take no bare-array comparison
 ```
 
 **`ops.like` vs `ops.ilike` — column-type-dependent behavior.** Against a regular `text` / `varchar` column, `ops.like` is case-sensitive and `ops.ilike` is case-insensitive — the operators differ. Against a `citext` column (case-insensitive text — see [migrations.md "citext"](migrations.md)), both operators match case-insensitively because the type itself ignores case; equality (`where({ name: 'sally' })`) on citext is case-insensitive for the same reason.
@@ -950,18 +952,20 @@ user.hasChanges('email')          // false
 
 ```typescript
 // Process records in batches (default batch size: 1000)
-await User.findEach(async (user) => {
-  await user.update({ processedAt: DateTime.now() })
+await Booking.findEach(async (booking) => {
+  await booking.update({ processedAt: DateTime.now() })
 })
 
-// With custom batch size
-await User.findEach({ batchSize: 100 }, async (user) => { ... })
+// With custom batch size — callback first, options second
+await Booking.findEach(async (booking) => { ... }, { batchSize: 100 })
 
 // Pluck in batches
-await User.pluckEach('email', async (email) => {
+await Guest.pluckEach('email', async (email) => {
   await sendEmail(email)
 })
 ```
+
+`findEach` always iterates in ascending primary-key order and discards any `order` applied to the query — it delivers its exactly-once guarantee via keyset pagination (`WHERE id > lastId LIMIT n`), which only holds over a stable, unique key. If records must be visited in a particular order, load them with a regular ordered query instead of reaching for `findEach`.
 
 ## Find-or-Create and Upsert Methods
 
