@@ -252,7 +252,7 @@ Query-side overlap validation is not race-safe by itself. Prevent double booking
 
 ### Array column containment and equality
 
-Dream's `where()` array-value dispatch (`where({ status: [...] })` → `IN`) is unconditional — it branches on `Array.isArray(value)` before it ever consults the schema. That is why a bare array against a Postgres array-typed column like `Room.tags: text[]` doesn't work as containment; it's still interpreted as `IN` and the database rejects it. Array columns need `ops` instead:
+A bare array in `where()` (`where({ status: [...] })` → `IN`) means the same thing for every column, array-typed or not — Dream never special-cases it into containment or array equality. "The column contains this array" is ambiguous on its own (does order matter? duplicates?), so rather than guess, Dream leaves a bare array meaning `IN` everywhere and requires `ops` to say which array comparison you actually want:
 
 | What you want | How you write it | SQL |
 | --- | --- | --- |
