@@ -713,6 +713,8 @@ Feature specs start the `PsychicServer` inside the same Vitest worker as the tes
 
 This matters because a common (wrong) assumption is "a feature spec runs a real server I can't reach into, so I must use a live API key or record HTTP." Not so. To make a feature spec deterministic and offline, stub the backend boundary — an external API gateway, the clock, a third-party client — with `vi.spyOn` in the feature spec, the same way you would anywhere else. Reserve HTTP recording (Polly) for cases where you genuinely want to exercise the real client code path.
 
+For a spy shared across specs (a `let` assigned in `beforeEach`, restored in `afterEach`), type it `MockInstance<typeof Obj.method>` (`import type { MockInstance } from 'vitest'`), not `ReturnType<typeof vi.spyOn>` — the latter resolves to `any` and passes `pnpm build:spec` but fails `no-unsafe-call`/`no-unsafe-member-access` at `pnpm lint`.
+
 ### Running a real external service: wrap the command, don't touch the harness
 
 Occasionally a feature spec needs a real external dependency running rather than a stub — most often an emulator the front end and API both talk to (e.g. a Firebase Auth emulator). The harness assumes any such dependency is already listening: `globalSetup` launches the front-end dev servers (`PsychicDevtools.launchDevServer`), then `hooks.ts` `beforeAll` starts the in-process `PsychicServer` and the browser. None of that starts external services, and all of it may depend on them being up.
