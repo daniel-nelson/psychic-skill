@@ -47,7 +47,7 @@ await db.schema
 
 The temporary default backfills existing rows; dropping it afterward keeps the "no silent default in caller code" guarantee for everything written from here on. (If a permanent default genuinely fits the domain, keep it and skip the drop — that's the `col.defaultTo(value).notNull()` case above.) Column-shorthand generators omit the default by design, since they can't know whether the table is populated — this is expected generate-then-edit territory, not a generator bug.
 
-`pnpm psy db:migrate` runs migrations then sync. If post-sync fails (e.g., a model references an old table name), the migration itself is not reverted — `db.ts` has already been regenerated from the current database state. Fix the problem and run `pnpm psy sync` to complete the process.
+`pnpm psy db:migrate` runs migrations then sync. If post-sync fails (e.g., a model references an old table name), Dream reverts `db.ts`, `dream.ts`, and the other generated type files back to their pre-sync content. The migration itself and the database schema it applied are unaffected by this revert — the migration is recorded and its schema change is committed before sync ever starts, so there's no need to `db:rollback` on the assumption the ledger is out of sync. Fix the problem and run `pnpm psy sync` to regenerate the types.
 
 ### Generating column-only migrations
 
