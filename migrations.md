@@ -16,6 +16,8 @@ This reset is especially important after hand-editing Kysely DDL fragments such 
 
 Use `git diff --name-only origin/main -- api/src/db/migrations/` to confirm a migration is still on your branch before editing.
 
+Every `pnpm psy` command boots the full app — importing all models — before it does anything else, including any type-regeneration step. If `src/types/db.ts` is stale enough that a model fails to import against it (a column referenced in a model no longer exists in the generated types, for example), the CLI crashes at that import before it can reach the `sync` step that would fix it — even `pnpm psy db:reset` and `pnpm psy sync` fail the same way, since they boot the app too. Recover by checking out the last known-good generated types and resyncing from there: `git checkout HEAD -- src/types/db.ts src/types/dream.ts`, then `pnpm psy db:reset` (or `pnpm psy sync`) to regenerate everything from a clean, importable baseline.
+
 ### NOT NULL columns and defaults
 
 When a NOT NULL column has a single obvious domain default (`'normal'`, `'pending'`, `false`, `0`), encode it at the migration layer with `col.defaultTo(value).notNull()`. This:
