@@ -146,7 +146,16 @@ pnpm psy setup:sync:openapi-zustand \
   --export-name=bearbnbApi
 ```
 
-`--client-config-file` must live outside `--output-dir`. `@hey-api/openapi-ts` recursively deletes and regenerates the whole `--output-dir` on every sync, so a config file placed inside it is deleted the next time `pnpm psy sync` runs — keep it as a sibling of the output directory instead.
+`--client-config-file` must live outside `--output-dir`. `@hey-api/openapi-ts` recursively deletes and regenerates the whole `--output-dir` on every sync, so a config file placed inside it is deleted the next time `pnpm psy sync` runs — keep it as a sibling of the output directory instead. This is a deliberate deviation from the command's own default: both the `--help` example and the interactive prompt's default path place `--client-config-file` inside `--output-dir`. That default doesn't survive the clean-on-generate, which is why this guide places it outside instead.
+
+Placing it outside `--output-dir` breaks the generated stub's import, though: the generator always writes `import { client } from './client.gen'` in the config file, which only resolves when the config file sits next to `client.gen.ts` (i.e., inside `--output-dir`). After the first generate, open the config file and fix that import to point into the output directory instead, using the `--output-dir` basename — for the command above, `./bearbnb/client.gen`:
+
+```typescript
+// ../client/app/api/bearbnbClient.ts
+import { client } from './bearbnb/client.gen'
+```
+
+The generator only writes this stub once — it early-returns if the config file already exists — so this fix survives every future `pnpm psy sync`.
 
 `--export-name` only names the initializer function and its log labels, not the generated SDK or store code, which is derived entirely from the OpenAPI spec.
 
