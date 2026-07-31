@@ -949,6 +949,8 @@ user.hasChanges('email')          // false
 
 For an `@deco.Encrypted()` field, `changedAttributes()` reports the persisted `encrypted<Name>` key, not the plaintext virtual property. `getAttribute('<plaintext>')` returns `undefined` — it isn't the decrypting accessor; `getAttribute('encrypted<Name>')` returns ciphertext. Read the decrypted value via the instance property (`instance.<plaintext>`) — see [Encrypted](#special-decorators) above.
 
+To force a write against the row's current database state regardless of the loaded instance's in-memory value (for example, resetting a field that another writer may have changed), use a query-level update (`Booking.where({ id }).update({ ... })`, which reloads before writing) or call `instance.reload()` first.
+
 ## Batch Processing
 
 ```typescript
