@@ -43,6 +43,8 @@ pnpm fspec:visible                            # Feature specs (visible browser)
 
 **Never run `uspec` and `fspec` at the same time.** Both suites share the same test database lifecycle. Run them sequentially. It is fine to pass multiple file patterns to a single `pnpm uspec` or `pnpm fspec` invocation — the runner manages that suite's lifecycle internally.
 
+**Path filters match by prefix, not by directory.** vitest's positional path filters (including `pnpm fspec <path>`) match by prefix/substring against file paths, not real path-scoping — `pnpm fspec spec/features/host` also runs a sibling directory like `spec/features/host-verification/` (prefix collision). Check the reported file count rather than assuming a filter scoped the run to what its path implies.
+
 **Feature spec server management:** `pnpm fspec` automatically starts AND stops the frontend servers (client, admin, internal). Do NOT manually start them before running fspec — that will cause fspec to fail because it can't bind the ports.
 
 **Run specific specs within a file** using `.only` or `.skip`:
