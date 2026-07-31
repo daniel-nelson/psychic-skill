@@ -732,6 +732,7 @@ export default class Place extends ApplicationModel { ... }
 @deco.Sortable({ scope: 'place' })
 public position: DreamColumn<Room, 'position'>
 // Requires deferrable unique constraint in migration
+// Under @SoftDelete, the position column must be nullable — see soft-delete.md#sortable-position-columns
 
 // Encrypted - auto encrypt/decrypt
 @deco.Encrypted()

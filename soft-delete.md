@@ -85,6 +85,19 @@ await db.schema
 
 Without the predicate, soft-deleting a Place with `slug: 'cozy-cabin'` and then creating a new one with the same slug fails on the unique constraint, even though no *live* row holds it. The `sql<SqlBool>` cast on the predicate is required (see [migrations.md](migrations.md#alter-table)). One consequence to expect: `undestroy()` can now fail if a live row claimed the natural key while the row was soft-deleted — restoring would create two live rows with the same key, which the partial index correctly rejects.
 
+### Sortable position columns
+
+When you add `@SoftDelete()` to a model that also has `@deco.Sortable()` (see [models.md](models.md#special-decorators)), make the position column nullable. Soft-deleting a record sets every `@Sortable` field's position column to `null` in the same `UPDATE` as `deletedAt`, clearing the record's slot in its sortable scope. A `NOT NULL` position column throws a not-null violation — including when the sortable model is only a `dependent: 'destroy'` cascade target of a parent being destroyed, not just on a direct `destroy()` call.
+
+```typescript
+await db.schema
+  .alterTable('rooms')
+  .alterColumn('position', col => col.dropNotNull())
+  .execute()
+```
+
+Retrofitting `@SoftDelete()` onto an existing `@Sortable` model requires dropping the `NOT NULL` constraint on the position column in the same migration.
+
 ## Destroying and Restoring
 
 ### Soft delete (default)
