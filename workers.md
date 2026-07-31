@@ -112,6 +112,8 @@ Use `backgroundWithDelay` when:
 
 `backgroundWithDelay` supports debounce behavior via `jobId`. If a job with the same `jobId` is already queued with a delay, re-backgrounding with that `jobId` overwrites the previous job but resets the delay timer from the current time. This reduces duplicate work when events fire in quick succession.
 
+The dedup key's TTL equals the delay, so it has expired by the time the delayed job fires — re-arming the same `jobId` from inside the job's own running handler is safe. A delay of `0` seconds attaches no dedup key at all, so if debouncing matters, floor the delay at 1 second or higher.
+
 ```typescript
 export class IntercomSyncService extends ApplicationBackgroundedService {
   public static async syncUser(user: User) {
