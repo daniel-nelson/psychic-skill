@@ -148,6 +148,8 @@ await place.reallyDestroyAssociation('rooms')
 await place.reallyDestroyAssociation('rooms', { and: { name: 'my room' } })
 ```
 
+`reallyDestroy()` cascades through this record's `dependent: 'destroy'` associations, hard-deleting each one (depth-first, children before the parent) rather than soft-deleting it — and it bypasses the `dream:SoftDelete` default scope while loading that cascade, so children already soft-deleted are loaded and hard-deleted too. A `restrict`-FK child that isn't reachable through a `dependent: 'destroy'` association is never loaded or touched by the cascade: if such a row still references the parent, `reallyDestroy()` throws a foreign-key violation rather than deleting it.
+
 ### Guarded (compare-and-set) destroy
 
 Plain `destroy()`/`reallyDestroy()` on a query read the matching records and then destroy each one. A concurrent writer can change a record in that window — moving it out of the set the query originally matched — and it gets destroyed anyway. Pass `lock: true` to close that window:
