@@ -1059,6 +1059,8 @@ const user = await User.updateOrCreateBy(
 | `updateOrCreateBy` | find, then upsert | No | Yes | Need to update existing or create new |
 | `createOrUpdateBy` | create, then update | **Yes** | **No** | Concurrent requests may race on the same lookup |
 
+Without a real unique index on the lookup attribute(s), `createOrFindBy`/`createOrUpdateBy` can silently insert duplicate rows — they only detect an existing record via a uniqueness violation on the insert, and have no lookup attributes indexed to violate.
+
 ## Transactions
 
 Two ways to start a transaction:
