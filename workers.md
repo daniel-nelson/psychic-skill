@@ -473,7 +473,7 @@ End-of-week works the same way, with the user's chosen end-of-week day folded in
 
 ### Scheduled and backgrounded methods run inline in tests
 
-In `NODE_ENV=test`, both `schedule(...)` and `background(...)` invoke the underlying method immediately and synchronously (see the [Testing Workers](#testing-workers) section). A spec that calls either executes the work with no queue flush needed. The flip side: any environment guard inside the method (e.g. `if (serverEnvironment !== 'production') return`) also fires in tests, so a guarded method needs a `force`-style override to be exercised in a spec.
+In `NODE_ENV=test`, `schedule(...)`, `background(...)`, and `backgroundWithDelay(...)` all invoke the underlying method immediately and synchronously — the delay is ignored (see the [Testing Workers](#testing-workers) section). A spec that calls any of them executes the work with no queue flush needed. The flip side: any environment guard inside the method (e.g. `if (serverEnvironment !== 'production') return`) also fires in tests, so a guarded method needs a `force`-style override to be exercised in a spec.
 
 ## Named Workstreams
 
