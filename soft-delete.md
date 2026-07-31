@@ -98,6 +98,8 @@ await db.schema
 
 Retrofitting `@SoftDelete()` onto an existing `@Sortable` model requires dropping the `NOT NULL` constraint on the position column in the same migration.
 
+`undestroy()` sets the position column back to `MAX(position) + 1` within its sortable scope, in the same `UPDATE` that clears `deletedAt` — the record is re-appended to the *end* of its sortable scope, not restored to its original position. A caller that needs the original ordering back (e.g. a `Room` undestroyed within a `Place`) must re-position it explicitly after undestroying.
+
 ## Destroying and Restoring
 
 ### Soft delete (default)
