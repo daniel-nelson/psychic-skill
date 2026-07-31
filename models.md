@@ -947,6 +947,8 @@ user.hasChanges('email')          // false
 
 `changedAttributes()` works before the first save too. `User.new({ name: 'Alice' })` marks `name` dirty immediately, so `changedAttributes()` is populated on the unpersisted instance.
 
+For an `@deco.Encrypted()` field, `changedAttributes()` reports the persisted `encrypted<Name>` key, not the plaintext virtual property. `getAttribute('<plaintext>')` returns `undefined` — it isn't the decrypting accessor; `getAttribute('encrypted<Name>')` returns ciphertext. Read the decrypted value via the instance property (`instance.<plaintext>`) — see [Encrypted](#special-decorators) above.
+
 ## Batch Processing
 
 ```typescript
