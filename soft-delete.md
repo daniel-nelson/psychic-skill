@@ -89,15 +89,6 @@ Without the predicate, soft-deleting a Place with `slug: 'cozy-cabin'` and then 
 
 When you add `@SoftDelete()` to a model that also has `@deco.Sortable()` (see [models.md](models.md#special-decorators)), make the position column nullable. Soft-deleting a record sets every `@Sortable` field's position column to `null` in the same `UPDATE` as `deletedAt`, clearing the record's slot in its sortable scope. A `NOT NULL` position column throws a not-null violation — including when the sortable model is only a `dependent: 'destroy'` cascade target of a parent being destroyed, not just on a direct `destroy()` call.
 
-```typescript
-await db.schema
-  .alterTable('rooms')
-  .alterColumn('position', col => col.dropNotNull())
-  .execute()
-```
-
-Retrofitting `@SoftDelete()` onto an existing `@Sortable` model requires dropping the `NOT NULL` constraint on the position column in the same migration.
-
 `undestroy()` sets the position column back to `MAX(position) + 1` within its sortable scope, in the same `UPDATE` that clears `deletedAt` — the record is re-appended to the *end* of its sortable scope, not restored to its original position. A caller that needs the original ordering back (e.g. a `Room` undestroyed within a `Place`) must re-position it explicitly after undestroying.
 
 ## Destroying and Restoring
