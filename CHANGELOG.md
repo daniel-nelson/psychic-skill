@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.76.0 — 2026-08-06
+
+### Changed
+
+- **`SKILL.md`** — ecosystem version baseline: `@rvoh/psychic-websockets` to 3.5.x (the other four packages unchanged).
+
 ## 0.75.0 — 2026-07-29
 
 ### Added
