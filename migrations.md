@@ -16,6 +16,8 @@ This reset is especially important after hand-editing Kysely DDL fragments such 
 
 Use `git diff --name-only origin/main -- api/src/db/migrations/` to confirm a migration is still on your branch before editing.
 
+Every `pnpm psy` command boots the full app, importing all models, before any type-regeneration step — so a stale `src/types/db.ts` (referencing a column the model no longer has, for example) crashes the CLI at import, before even `pnpm psy db:reset` or `pnpm psy sync` can reach the fix. Recover with `git checkout HEAD -- src/types/db.ts src/types/dream.ts`, then `pnpm psy db:reset` (or `sync`) to regenerate from a clean baseline. This only helps when `db.ts`/`dream.ts` themselves regressed — overwritten by a fresh scaffold's version, for example. If the real cause is a model referencing a column that was never migrated, `HEAD`'s version is equally stale and the checkout is a no-op — run the missing migration (or revert the model edit) first, then sync.
+
 ### NOT NULL columns and defaults
 
 When a NOT NULL column has a single obvious domain default (`'normal'`, `'pending'`, `false`, `0`), encode it at the migration layer with `col.defaultTo(value).notNull()`. This:
@@ -45,7 +47,7 @@ await db.schema
 
 The temporary default backfills existing rows; dropping it afterward keeps the "no silent default in caller code" guarantee for everything written from here on. (If a permanent default genuinely fits the domain, keep it and skip the drop — that's the `col.defaultTo(value).notNull()` case above.) Column-shorthand generators omit the default by design, since they can't know whether the table is populated — this is expected generate-then-edit territory, not a generator bug.
 
-`pnpm psy db:migrate` runs migrations then sync. If post-sync fails (e.g., a model references an old table name), the migration itself is not reverted — `db.ts` has already been regenerated from the current database state. Fix the problem and run `pnpm psy sync` to complete the process.
+`pnpm psy db:migrate` runs migrations then sync. If post-sync fails (e.g., a model references an old table name), Dream reverts `db.ts`, `dream.ts`, and any other generated type files that already existed before this sync began back to their pre-sync content. The migration itself and the database schema it applied are unaffected by this revert — the migration is recorded and its schema change is committed before sync ever starts, so there's no need to `db:rollback` on the assumption the ledger is out of sync. Fix the problem and run `pnpm psy sync` to regenerate the types.
 
 ### Generating column-only migrations
 

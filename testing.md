@@ -43,6 +43,8 @@ pnpm fspec:visible                            # Feature specs (visible browser)
 
 **Never run `uspec` and `fspec` at the same time.** Both suites share the same test database lifecycle. Run them sequentially. It is fine to pass multiple file patterns to a single `pnpm uspec` or `pnpm fspec` invocation — the runner manages that suite's lifecycle internally.
 
+**Path filters match by prefix, not by directory.** vitest's positional path filters (including `pnpm fspec <path>`) match by prefix/substring against file paths, not real path-scoping — `pnpm fspec spec/features/host` also runs a sibling directory like `spec/features/host-verification/` (prefix collision). Check the reported file count rather than assuming a filter scoped the run to what its path implies.
+
 **Feature spec server management:** `pnpm fspec` automatically starts AND stops the frontend servers (client, admin, internal). Do NOT manually start them before running fspec — that will cause fspec to fail because it can't bind the ports.
 
 **Run specific specs within a file** using `.only` or `.skip`:
@@ -710,6 +712,8 @@ describe('Host creates a Place', () => {
 Feature specs start the `PsychicServer` inside the same Vitest worker as the test (the generated `spec/features/setup/hooks.ts` calls `server.start(...)` in `beforeAll`, then launches the browser). The browser talks to that server over `localhost:<port>`, but the server runs the *same module instances* the spec can see. So `vi.spyOn(SomeService, 'method')` and `vi.mock(...)` on backend modules intercept server-side code that runs while the browser drives the front end — exactly as in a unit or controller spec. There's no separate process and no IPC barrier.
 
 This matters because a common (wrong) assumption is "a feature spec runs a real server I can't reach into, so I must use a live API key or record HTTP." Not so. To make a feature spec deterministic and offline, stub the backend boundary — an external API gateway, the clock, a third-party client — with `vi.spyOn` in the feature spec, the same way you would anywhere else. Reserve HTTP recording (Polly) for cases where you genuinely want to exercise the real client code path.
+
+For a spy shared across specs (a `let` assigned in `beforeEach`, restored in `afterEach`), type it `MockInstance<typeof Obj.method>` (`import type { MockInstance } from 'vitest'`), not `ReturnType<typeof vi.spyOn>` — the latter resolves to `any` and passes `pnpm build:spec` but fails `no-unsafe-call`/`no-unsafe-member-access` at `pnpm lint`.
 
 ### Running a real external service: wrap the command, don't touch the harness
 

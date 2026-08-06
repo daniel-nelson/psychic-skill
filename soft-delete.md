@@ -85,6 +85,21 @@ await db.schema
 
 Without the predicate, soft-deleting a Place with `slug: 'cozy-cabin'` and then creating a new one with the same slug fails on the unique constraint, even though no *live* row holds it. The `sql<SqlBool>` cast on the predicate is required (see [migrations.md](migrations.md#alter-table)). One consequence to expect: `undestroy()` can now fail if a live row claimed the natural key while the row was soft-deleted — restoring would create two live rows with the same key, which the partial index correctly rejects.
 
+### Sortable position columns
+
+When you add `@SoftDelete()` to a model that also has `@deco.Sortable()` (see [models.md](models.md#special-decorators)), make the position column nullable. Soft-deleting a record sets every `@Sortable` field's position column to `null` in the same `UPDATE` as `deletedAt`, clearing the record's slot in its sortable scope. A `NOT NULL` position column throws a not-null violation — including when the sortable model is only a `dependent: 'destroy'` cascade target of a parent being destroyed, not just on a direct `destroy()` call.
+
+```typescript
+await db.schema
+  .alterTable('rooms')
+  .alterColumn('position', col => col.dropNotNull())
+  .execute()
+```
+
+Retrofitting `@SoftDelete()` onto an existing `@Sortable` model requires dropping the `NOT NULL` constraint on the position column in the same migration.
+
+`undestroy()` sets the position column back to `MAX(position) + 1` within its sortable scope, in the same `UPDATE` that clears `deletedAt` — the record is re-appended to the *end* of its sortable scope, not restored to its original position. A caller that needs the original ordering back (e.g. a `Room` undestroyed within a `Place`) must re-position it explicitly after undestroying.
+
 ## Destroying and Restoring
 
 ### Soft delete (default)
@@ -134,6 +149,8 @@ For associations:
 await place.reallyDestroyAssociation('rooms')
 await place.reallyDestroyAssociation('rooms', { and: { name: 'my room' } })
 ```
+
+`reallyDestroy()` cascades through this record's `dependent: 'destroy'` associations, hard-deleting each one (depth-first, children before the parent) rather than soft-deleting it — and it bypasses the `dream:SoftDelete` default scope while loading that cascade, so children already soft-deleted are loaded and hard-deleted too. A `restrict`-FK child that isn't reachable through a `dependent: 'destroy'` association is never loaded or touched by the cascade: if such a row still references the parent, `reallyDestroy()` throws a foreign-key violation rather than deleting it.
 
 ### Guarded (compare-and-set) destroy
 

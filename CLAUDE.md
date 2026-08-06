@@ -60,6 +60,7 @@ Run this before adding anything — a processed learning, a new section, an expa
    - A long confusing debugging loop — high.
    - A runtime error whose own message states the rule — low. Dream's error messages are unusually explicit; several name the whole rule (`Can only pass BelongsTo associated models as params`).
    - An immediate TypeScript error at the call site — very low, and lower still because `pnpm build:spec` typechecks `spec/` too.
+   - A lint error whose rule name states the problem — also very low, for the same reason. Example: a generated migration from `pnpm psy g:migration` can fail `no-unused-vars` on a stray `sql` import; the rule name names the defect and the fix is a one-line delete, so it doesn't need a skill entry any more than a TypeScript error at the call site would.
 2. **Discoverability elsewhere.** Would the agent hit this first in the TSDoc on the method or decorator they are already calling, in the error text, in the guides at `~/work/psychic-guides`, or in `pnpm psy <cmd> --help`? Go read those and quote what you find. A `@returns` line on the exact method being documented means the skill does not need to restate it.
 3. **Duplication.** Grep every `*.md` in this repo. Guidance stated twice competes with itself, and the second statement is usually the one that drifts.
 4. **Frequency.** Does a typical Psychic app hit this, or does it need an uncommon column type, a rare refactor, or a horizontally-scaled fleet?

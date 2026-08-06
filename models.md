@@ -732,6 +732,7 @@ export default class Place extends ApplicationModel { ... }
 @deco.Sortable({ scope: 'place' })
 public position: DreamColumn<Room, 'position'>
 // Requires deferrable unique constraint in migration
+// Under @SoftDelete, the position column must be nullable — see soft-delete.md#sortable-position-columns
 
 // Encrypted - auto encrypt/decrypt
 @deco.Encrypted()
@@ -947,6 +948,10 @@ user.hasChanges('email')          // false
 
 `changedAttributes()` works before the first save too. `User.new({ name: 'Alice' })` marks `name` dirty immediately, so `changedAttributes()` is populated on the unpersisted instance.
 
+For an `@deco.Encrypted()` field, `changedAttributes()` reports the persisted `encrypted<Name>` key, not the plaintext virtual property. `getAttribute('<plaintext>')` returns `undefined` — it isn't the decrypting accessor; `getAttribute('encrypted<Name>')` returns ciphertext. Read the decrypted value via the instance property (`instance.<plaintext>`) — see [Encrypted](#special-decorators) above.
+
+To force a write against the row's current database state regardless of the loaded instance's in-memory value (for example, resetting a field that another writer may have changed), use a query-level update (`Booking.where({ id }).update({ ... })`) or call `instance.reload()` *before* assigning the field(s) you're about to force-write — `reload()` overwrites every attribute on the instance from the database, so calling it after other unsaved changes on the same instance discards them too. The default (non-`skipHooks`) query-level `.update()` isn't a single bulk `UPDATE`: it loads and updates matching rows one at a time via `findEach`, running model hooks per row — fine when the `where` matches one row, as above, but an N+1 pattern if applied more broadly; pass `{ skipHooks: true }` for the actual single-statement bulk path. Either form is still a read-then-write with an open race window, not a compare-and-set guarantee — if genuine concurrency safety against another writer is the goal, see the `lock: true` pattern in [soft-delete.md's "Guarded (compare-and-set) destroy"](soft-delete.md#guarded-compare-and-set-destroy).
+
 ## Batch Processing
 
 ```typescript
@@ -1053,6 +1058,8 @@ const user = await User.updateOrCreateBy(
 | `createOrFindBy` | create, then find | **Yes** | **No** | Concurrent requests may race on the same lookup |
 | `updateOrCreateBy` | find, then upsert | No | Yes | Need to update existing or create new |
 | `createOrUpdateBy` | create, then update | **Yes** | **No** | Concurrent requests may race on the same lookup |
+
+Without a real unique index on the lookup attribute(s), `createOrFindBy`/`createOrUpdateBy` can silently insert duplicate rows — they only detect an existing record via a uniqueness violation on the insert, and have no lookup attributes indexed to violate.
 
 ## Transactions
 
