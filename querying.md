@@ -196,6 +196,8 @@ raw bulk SQL update with no hooks or validations. This distinction matters in bo
 directions: hook-enforced invariants are still enforced by default query updates, and
 large "bulk" updates can be N+1 unless you explicitly choose `skipHooks`.
 
+Because it goes through `findEach`, a default (non-`skipHooks`) query update always visits matched records in ascending primary-key order and ignores any `order` you applied to the query — see [Batch Processing](models.md#batch-processing) for why `findEach` can't honor an arbitrary order.
+
 `.update()` resolves to the number of rows it updated. Under `{ skipHooks: true }` the filter
 and the write are one `UPDATE ... WHERE` statement, so a filtered update is a compare-and-set
 claim: a `0` return means another writer got there first. The default form updates each matched
@@ -248,9 +250,16 @@ Use `ops.lessThan` / `ops.lessThanOrEqualTo` and `ops.greaterThan` / `ops.greate
 
 Query-side overlap validation is not race-safe by itself. Prevent double booking with a database constraint, such as a PostgreSQL exclusion constraint, when concurrent writes can violate the invariant.
 
-### Array column containment
+### Array column containment and equality
 
-Dream's `where()` array-value dispatch (`where({ status: [...] })` → `IN`) is scoped to non-array columns. For a Postgres array-typed column like `Room.tags: text[]`, use `ops.any(value)` to check whether the column contains a given element: `where({ tags: ops.any('quiet') })`. `ops.any` throws `AnyRequiresArrayColumn` if the target column isn't an array type.
+A bare array in `where()` (`where({ status: [...] })` → `IN`) means the same thing for every column, array-typed or not — Dream never special-cases it into containment or array equality. "The column contains this array" is ambiguous on its own (does order matter? duplicates?), so rather than guess, Dream leaves a bare array meaning `IN` everywhere and requires `ops` to say which array comparison you actually want:
+
+| What you want | How you write it | SQL |
+| --- | --- | --- |
+| The column contains this element | `where({ tags: ops.any('quiet') })` | `"tags" @> ARRAY[$1]::text[]` |
+| The column is exactly this array | `where({ tags: ops.equal(['quiet', 'walkable']) })` | `"tags" = $1` |
+
+`ops.any` throws `AnyRequiresArrayColumn` if the target column isn't an array type. `ops.equal` is order-sensitive — `ops.equal(['quiet', 'walkable'])` does not match a `tags` value of `['walkable', 'quiet']` — and its element types are constrained by the column, so `ops.equal(['red', 'notacolor'])` against an enum array column is a compile-time error. `ops.equal` doesn't support `json[]` columns (Postgres defines no equality operator for `json`, only `jsonb`); use `jsonb[]` if you need array equality on JSON data.
 
 ### Ordering
 

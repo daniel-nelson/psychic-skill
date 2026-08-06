@@ -51,6 +51,37 @@ await IntercomSyncService.syncUser(user)
 
 **Key rules:**
 - **NEVER pass model data as background job arguments.** Almost always pass only the model's ID and look up the record in the implementation method. This applies to any data stored in a Dream model. Passing model data as arguments has serious downsides: it bloats Redis memory (a full JSON payload vs. a single ID string), loses all type information when serialized to JSON (e.g., Dream date/time objects become plain strings, enums become untyped values), and creates a snapshot that is immediately stale if the record is updated after the job is queued. The only arguments to `this.background(...)` should be IDs and simple scalar values (strings, numbers, booleans) that are not sourced from model columns. For model instance methods, `ApplicationBackgroundedModel` handles this automatically by storing only the primary key.
+- **A composed scalar argument is still model-sourced data if a secret is baked into it.** A string that embeds a live credential — a bearer token, a signed URL, a password-reset link — passes the letter of "simple scalar value" while still writing that secret into every place a job argument lands: BullMQ/Redis job retention, and any queue dashboard or error-monitoring tool that logs job arguments on failure. Defer minting the sensitive part to the implementation method instead: pass only the id(s) needed to look the record up, and construct the token or link from inside the backgrounded method, where it is never serialized as a job argument.
+
+  ```typescript
+  // Wrong — the signed URL (with its embedded token) is stored as a job argument
+  export class BookingMailerService extends ApplicationBackgroundedService {
+    public static async sendConfirmation(booking: Booking) {
+      const confirmationUrl = await booking.mintConfirmationUrl()
+      await this.background('_sendConfirmation', booking.guestId, confirmationUrl)
+    }
+
+    public static async _sendConfirmation(guestId: string, confirmationUrl: string) {
+      const guest = await Guest.find(guestId)
+      if (!guest) return
+      // ...email guest the confirmationUrl
+    }
+  }
+
+  // Right — only the booking id crosses the queue; the token is minted inside the job
+  export class BookingMailerService extends ApplicationBackgroundedService {
+    public static async sendConfirmation(booking: Booking) {
+      await this.background('_sendConfirmation', booking.id)
+    }
+
+    public static async _sendConfirmation(bookingId: string) {
+      const booking = await Booking.find(bookingId)
+      if (!booking) return
+      const confirmationUrl = await booking.mintConfirmationUrl()
+      // ...email booking.guest the confirmationUrl
+    }
+  }
+  ```
 - **Use `find` (not `findOrFail`) in background job implementations**, and return early when the record is not found. Model deletion is a normal part of many application flows — a record may be deleted between when the job was queued and when the worker picks it up. Using `findOrFail` would throw an error, causing the job to be retried repeatedly for ~6 days before finally failing, wasting resources on a record that will never exist again.
 - Always call the public entry method from application code, not `this.background(...)` directly from outside the service.
 
@@ -80,6 +111,8 @@ Use `backgroundWithDelay` when:
 ### Debounce with jobId
 
 `backgroundWithDelay` supports debounce behavior via `jobId`. If a job with the same `jobId` is already queued with a delay, re-backgrounding with that `jobId` overwrites the previous job but resets the delay timer from the current time. This reduces duplicate work when events fire in quick succession.
+
+The dedup key's TTL equals the delay, so it has expired by the time the delayed job fires — re-arming the same `jobId` from inside the job's own running handler is safe. A delay of `0` seconds attaches no dedup key at all, so if debouncing matters, floor the delay at 1 second or higher.
 
 ```typescript
 export class IntercomSyncService extends ApplicationBackgroundedService {
@@ -442,7 +475,7 @@ End-of-week works the same way, with the user's chosen end-of-week day folded in
 
 ### Scheduled and backgrounded methods run inline in tests
 
-In `NODE_ENV=test`, both `schedule(...)` and `background(...)` invoke the underlying method immediately and synchronously (see the [Testing Workers](#testing-workers) section). A spec that calls either executes the work with no queue flush needed. The flip side: any environment guard inside the method (e.g. `if (serverEnvironment !== 'production') return`) also fires in tests, so a guarded method needs a `force`-style override to be exercised in a spec.
+In `NODE_ENV=test` with the default `testInvocation: 'automatic'`, `schedule(...)`, `background(...)`, and `backgroundWithDelay(...)` all invoke the underlying method immediately and synchronously — the delay is ignored (see the [Testing Workers](#testing-workers) section). A spec that calls any of them executes the work with no queue flush needed. The flip side: any environment guard inside the method (e.g. `if (serverEnvironment !== 'production') return`) also fires in tests, so a guarded method needs a `force`-style override to be exercised in a spec. Switching to `testInvocation: 'manual'` (see [Manual Mode](#manual-mode)) queues jobs instead of running them inline, requiring an explicit `WorkerTestUtils.work()` to process them.
 
 ## Named Workstreams
 

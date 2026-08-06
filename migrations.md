@@ -16,6 +16,8 @@ This reset is especially important after hand-editing Kysely DDL fragments such 
 
 Use `git diff --name-only origin/main -- api/src/db/migrations/` to confirm a migration is still on your branch before editing.
 
+Every `pnpm psy` command boots the full app, importing all models, before any type-regeneration step — so a stale `src/types/db.ts` (referencing a column the model no longer has, for example) crashes the CLI at import, before even `pnpm psy db:reset` or `pnpm psy sync` can reach the fix. Recover with `git checkout HEAD -- src/types/db.ts src/types/dream.ts`, then `pnpm psy db:reset` (or `sync`) to regenerate from a clean baseline. This only helps when `db.ts`/`dream.ts` themselves regressed — overwritten by a fresh scaffold's version, for example. If the real cause is a model referencing a column that was never migrated, `HEAD`'s version is equally stale and the checkout is a no-op — run the missing migration (or revert the model edit) first, then sync.
+
 ### NOT NULL columns and defaults
 
 When a NOT NULL column has a single obvious domain default (`'normal'`, `'pending'`, `false`, `0`), encode it at the migration layer with `col.defaultTo(value).notNull()`. This:
@@ -45,7 +47,7 @@ await db.schema
 
 The temporary default backfills existing rows; dropping it afterward keeps the "no silent default in caller code" guarantee for everything written from here on. (If a permanent default genuinely fits the domain, keep it and skip the drop — that's the `col.defaultTo(value).notNull()` case above.) Column-shorthand generators omit the default by design, since they can't know whether the table is populated — this is expected generate-then-edit territory, not a generator bug.
 
-`pnpm psy db:migrate` runs migrations then sync. If post-sync fails (e.g., a model references an old table name), the migration itself is not reverted — `db.ts` has already been regenerated from the current database state. Fix the problem and run `pnpm psy sync` to complete the process.
+`pnpm psy db:migrate` runs migrations then sync. If post-sync fails (e.g., a model references an old table name), Dream reverts `db.ts`, `dream.ts`, and any other generated type files that already existed before this sync began back to their pre-sync content. The migration itself and the database schema it applied are unaffected by this revert — the migration is recorded and its schema change is committed before sync ever starts, so there's no need to `db:rollback` on the assumption the ledger is out of sync. Fix the problem and run `pnpm psy sync` to regenerate the types.
 
 ### Generating column-only migrations
 
@@ -285,7 +287,7 @@ await DreamMigrationHelpers.dropEnumValue(db, {
 
 ### Renaming an Enum Value (Two-Migration Pattern)
 
-PostgreSQL cannot add and use a new enum value in the same transaction, and Dream runs all pending migrations in a single transaction by default. To rename an enum value (add the new name, migrate data from old to new, drop the old name), you must use **two separate migration files**.
+PostgreSQL cannot add and use a new enum value in the same transaction, and Dream runs all pending migrations in a single transaction by default. This isn't specific to renaming — **any** migration that adds an enum value and then uses that value (an `INSERT`, an `UPDATE`, a `dropEnumValue` replacement) needs the addition committed in its own transaction before a later migration can use it, per [Forcing a New Transaction in Migrations](#forcing-a-new-transaction-in-migrations) below. A rename is just the most common shape of this, and it's the one worked through here. To rename an enum value (add the new name, migrate data from old to new, drop the old name), you must use **two separate migration files**.
 
 **Migration 1** — add the new enum value:
 
@@ -354,6 +356,27 @@ This detection is a naive string search on the file contents — it looks for th
 export async function up(db: Kysely<any>): Promise<void> {
   DreamMigrationHelpers.newTransaction()
   await db.schema.alterTable('places')...
+}
+```
+
+## Raw Kysely Data Queries in Migrations
+
+A migration's `db` handle is the same Kysely instance Dream builds everywhere else, with `CamelCasePlugin` applied — so it works the same way here as it does anywhere else in a Dream app: write table and column identifiers in camelCase, and Kysely translates them to the real snake_case columns on the way out and camelCases every result key on the way back, unconditionally ([SKILL.md — Naming Conventions](SKILL.md#naming-conventions)). A migration is easy to get wrong here because the rest of the file — DDL, `DreamMigrationHelpers` calls — is written in snake_case, so a raw data query reads like it should be too:
+
+```typescript
+export async function up(db: Kysely<any>): Promise<void> {
+  const rooms = await db
+    .selectFrom('rooms')
+    .select(['id', 'hostId'])
+    .execute()
+
+  for (const room of rooms) {
+    await db
+      .updateTable('bookings')
+      .set({ hostId: room.hostId })
+      .where('roomId', '=', room.id)
+      .execute()
+  }
 }
 ```
 
