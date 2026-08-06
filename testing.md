@@ -568,7 +568,7 @@ A more complex layout — a flex container around the `<dt>`/`<dd>` pair, for in
 
 `toNotHaveSelector` requires true DOM absence. A present-but-hidden element — one still in the DOM but invisible via CSS — **fails** `toNotHaveSelector`; only an element that's actually unmounted or never rendered passes it.
 
-The full matcher set is presence/interaction-only: `toCheck`, `toClick`/`toClickButton`/`toClickLink`/`toClickSelector`, `toFill`, `toHaveChecked`, `toHaveLink`, `toHavePath`, `toHaveSelector`, `toHaveUnchecked`, `toHaveUrl`, `toMatchTextContent`, `toNotHaveSelector`, `toNotMatchTextContent`, `toSelect`, `toUncheck`. None of them assert visibility — there is no matcher in this set that proves an element is or isn't visible on the page.
+The full matcher set is presence/interaction-only: `toCheck`, `toClick`/`toClickButton`/`toClickLink`/`toClickSelector`, `toFill`, `toHaveChecked`, `toHaveLink`, `toHavePath`, `toHaveSelector`, `toHaveUnchecked`, `toHaveUrl`, `toMatchTextContent`, `toNotHaveSelector`, `toNotMatchTextContent`, `toSelect`, `toUncheck`. None of these convenience matchers assert visibility directly. `toEvaluate` — a generic retry-with-timeout predicate matcher, requiring an `{ pass, actual }`-returning function and a `failureText` option — can express a visibility check, but has no established usage pattern in this codebase; the class-assertion workaround below is the more direct tool for the common case.
 
 When a spec genuinely needs to distinguish hidden-but-mounted from truly absent, assert the mechanism that hides the element rather than reaching for a visibility matcher that doesn't exist. If a booking confirmation banner is toggled with an `invisible` CSS class instead of being unmounted, assert the class directly:
 
