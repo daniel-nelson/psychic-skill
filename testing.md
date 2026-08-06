@@ -562,6 +562,22 @@ Keep this separate from **specificity**. Case-insensitivity does not make a matc
 
 A more complex layout — a flex container around the `<dt>`/`<dd>` pair, for instance — can break that contiguity, landing extra whitespace between what look like adjacent elements in the source. If a literal contiguous match fails unexpectedly on markup that looks equivalent to the example above, fall back to a whitespace-tolerant regex (`/Sleeps\s+4/`) rather than assuming the assertion itself is broken.
 
+### What the selector matchers actually assert
+
+`toHaveSelector` is a **presence-only** assertion: it checks that the selector is attached to the DOM, regardless of visibility. Passing `{ visible: true }` or `{ hidden: true }` does not narrow the check — a matching element that's hidden with `display: none` or a `visibility: hidden` style still passes `toHaveSelector`, the same as a visible one.
+
+`toNotHaveSelector` requires true DOM absence. A present-but-hidden element — one still in the DOM but invisible via CSS — **fails** `toNotHaveSelector`; only an element that's actually unmounted or never rendered passes it.
+
+The full matcher set is presence/interaction-only: `toCheck`, `toClick`/`toClickButton`/`toClickLink`/`toClickSelector`, `toFill`, `toHaveChecked`, `toHaveLink`, `toHavePath`, `toHaveSelector`, `toHaveUnchecked`, `toHaveUrl`, `toMatchTextContent`, `toNotHaveSelector`, `toNotMatchTextContent`, `toSelect`, `toUncheck`. None of them assert visibility — there is no matcher in this set that proves an element is or isn't visible on the page.
+
+When a spec genuinely needs to distinguish hidden-but-mounted from truly absent, assert the mechanism that hides the element rather than reaching for a visibility matcher that doesn't exist. If a booking confirmation banner is toggled with an `invisible` CSS class instead of being unmounted, assert the class directly:
+
+```typescript
+await expect(page).toHaveSelector('.booking-confirmation')                 // still mounted either way
+const classAttr = await page.$eval('.booking-confirmation', el => el.className)
+expect(classAttr).toMatch(/\binvisible\b/)                                 // actually hidden
+```
+
 ### Full Example
 
 ```typescript

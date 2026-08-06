@@ -2,9 +2,14 @@
 
 ## 0.76.0 — 2026-08-06
 
+### Added
+
+- **`testing.md`** — new "What the selector matchers actually assert" subsection: `toHaveSelector` is presence-only regardless of any `visible`/`hidden` option passed, and `toNotHaveSelector` requires true DOM absence (a present-but-hidden element fails it). No matcher in the current set asserts visibility; when a spec needs to distinguish hidden-but-mounted from truly absent, assert the hiding mechanism (e.g. a CSS class) directly instead.
+
 ### Changed
 
 - **`SKILL.md`** — ecosystem version baseline: `@rvoh/psychic-websockets` to 3.5.x (the other four packages unchanged).
+- **`serializers.md`** — the `optional`-on-`rendersOne` note gains a caveat: `optional: true` has no effect on `NonLoadedAssociation` — rendering an association that was never preloaded or loaded still throws regardless of `optional`.
 
 ## 0.75.0 — 2026-07-29
 
