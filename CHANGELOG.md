@@ -4,7 +4,7 @@
 
 ### Changed
 
-- **`serializers.md`** — the "STI-aware preloading" note states the union behavior: `preloadFor` on an STI base class loads the union of what every STI child's serializer renders, decided before the query knows which types it will return, so every row carries the whole union. It describes `rendersOne`, `rendersMany`, and `delegatedAttribute` as render targets of a child's serializer rather than as associations.
+- **`serializers.md`** — the "STI-aware preloading" note states the union behavior: wherever the serializer graph reaches an STI base — at the root of a `preloadFor` call, or through an association whose target is one — the preload set is the union across every STI child's serializer, decided before the query knows which types it will return, so every row carries the whole union, while each row is still serialized by its own child's serializer. The note attributes what is rendered to each child's serializer rather than to the child itself.
 - **`SKILL.md`** — ecosystem version baseline: `@rvoh/dream` to 2.23.x (the other four packages unchanged).
 
 ## 0.76.0 — 2026-08-06
