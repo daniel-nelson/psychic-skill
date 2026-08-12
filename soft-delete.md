@@ -44,12 +44,6 @@ export default class Place extends ApplicationModel {
 }
 ```
 
-### 3. Run sync
-
-```bash
-pnpm psy sync
-```
-
 ### Foreign key constraints
 
 When using soft delete, use the default `restrict` foreign key constraint (not `cascade`). Since the parent row is not actually deleted, a `cascade` constraint would not fire, and `restrict` correctly prevents deletion of rows that still have references:
