@@ -53,7 +53,7 @@ The temporary default backfills existing rows; dropping it afterward keeps the "
 
 For schema changes that just add columns (or a foreign key) to an existing table, `pnpm psy g:migration` accepts the same column shorthand as `g:resource` and `g:model` — including `BelongsTo:type` and `:optional` modifiers. See the canonical examples in [generators.md — Adding properties to an existing model](generators.md#adding-properties-to-an-existing-model). Hand-edit the generated migration only when the change isn't expressible as column shorthand (check constraints, enum alterations, custom backfill).
 
-A hand-written migration's name must contain neither `-to-` nor `-from-` anywhere: the first such marker makes the text after it a table name and puts the generator into alter-table mode, which fails when no columns are passed.
+A hand-written migration's name must contain neither `-to-` nor `-from-` anywhere: either marker resolves the text after it into a real table name — a `-to-` anywhere in the name wins even when a `-from-` appears earlier, and `-from-` applies only when there's no `-to-` at all — and once the table name is resolved rather than left as a `<table-name>` placeholder, the generator fails when no columns are passed.
 
 ## DreamMigrationHelpers
 
