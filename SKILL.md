@@ -44,26 +44,49 @@ All CLI commands in this document are run via the local project's package manage
 12. **Use Dream's built-in utilities** (`@rvoh/dream/utils`) instead of lodash or hand-rolled equivalents. See [utils.md](utils.md) for the full list.
 13. **NEVER use `process.env` directly** - always use `AppEnv` (`api/src/conf/AppEnv.ts`) to access environment variables. `AppEnv` validates that required variables are present at boot time with clear error messages, and decouples the application from the container environment (enabling secret injection from external sources like AWS Secrets Manager). Variables that are only present in some environments (e.g., a deploy-only credential blob absent in local dev) use the `{ optional: true }` overload, which returns `string | undefined` instead of throwing — never reach for `process.env` to avoid the throw. Example: `const credentialConfig = AppEnv.string('GOOGLE_CALENDAR_CREDENTIAL_CONFIG', { optional: true })`; gate the deployed-vs-local path with `if (credentialConfig) { ... } else { ... }`. This rule governs reading *application config*. It does not cover a dev-only launcher whose job is to *compose* the environment handed to spawned child processes — reading `process.env` to spread it into a `spawn(..., { env })` child is correct there, since no `AppEnv` accessor represents "the whole environment to forward" and those values are child-process plumbing, not validated app config.
 14. **NEVER add try/catch blocks unless handling a specific, expected error.** Dead programs tell no lies — an unhandled exception with a stack trace is far more useful than a program that silently swallows errors and continues with corrupted state. Psychic already converts common errors to appropriate HTTP responses automatically (e.g., `findOrFail` → 404, `castParam` → 400, validation failure → 400). If you must catch, handle only the specific error you expect and re-throw everything else. Never wrap large blocks of code in a catch-all try/catch. **Two rationalizations to reject explicitly:** (a) "I'm logging, not silently swallowing" — logging is for humans reading logs after the fact, not for machines deciding what to do next; if the caller is an HTTP handler, the user gets a 200 instead of a 500; if the caller is a BullMQ worker, the job is marked successful and never retried; a `console.error` line does not influence control flow. (b) "This is a small per-iteration catch, not a large block" — the size of the wrapped code is not the test; the test is whether the failure needs to propagate. A 3-line per-iteration catch inside a loop hides failures just as effectively as a 300-line function-wide catch.
-15. **Branching on a closed-enum value ALWAYS uses an exhaustive `switch` with a `const _never: never` default.** Closed enums include database enums regenerated into `@src/types/db.js` (e.g., `MessagingMessageRequestStatusesEnum`), STI type discriminators (e.g., `RoomTypesEnum`), and any other union of string literals declared in code. `if/else if` chains on these values type-check fine but **silently no-op** when a future enum value is added — the addition compiles, the branch is missing, and the bug surfaces at runtime with no stack trace. The `never` default branch turns "missing case" into a compile error. No-op cases get explicit `case` arms with `return` so every enum value is named in the code; the `_never` default proves it. Reviewers should reject `if/else if` on enum values the same way they reject `try/catch` without a specific expected error. The STI controller switch-on-`type` pattern is one example of this rule, not the rule itself. Case labels are the literal string itself (`case 'dispatched':`), never a named constant typed as the enum union — `const x: SomeEnum = 'dispatched'` widens `x` to the whole union, so using it as a case label breaks the `_never` exhaustiveness check at the `default`. Don't work around this by adding a `satisfies`-typed alias per literal either; that's a mechanical workaround for the same non-problem. Write the literal directly.
+15. **Code that handles every value of a closed enum must stop compiling when a value is added or removed.** Closed enums include database enums regenerated into `@src/types/db.js` (e.g. `PlaceStylesEnum`, `BookingStatusesEnum`), STI type discriminators (`RoomTypesEnum`), and any other union of string literals declared in code. Adding a value to a database enum and re-syncing types widens the union everywhere at once, and the compiler is what finds the sites that now have a hole in them. When your code must account for every value, write it in whichever of the two shapes below gives you that check, never in one that doesn't.
+
+    **Running different code per value — exhaustive `switch` with a `const _never: never` default.**
 
     ```ts
-    const status = this.status
+    const status = booking.status
     switch (status) {
-      case 'dispatched':
-        await Bridge.handleDispatched(this.id)
+      case 'confirmed':
+        await booking.notifyGuest()
         return
       case 'cancelled':
-        await Bridge.handleCancelled(this.id)
+        await booking.releaseHold()
         return
-      case 'pending_draft':
-      case 'drafted':
+      case 'pending':
         return  // explicit no-op — case is acknowledged, not forgotten
       default: {
         const _never: never = status
-        throw new Error(`Unhandled status: ${String(_never)}`)
+        throw new Error(`Unhandled BookingStatusesEnum: ${String(_never)}`)
       }
     }
     ```
+
+    No-op cases get their own `case` arm with a `return`, so every value is named in the code; the `_never` default proves none is missing.
+
+    **Mapping a value per member — `Record<Enum, T>`.**
+
+    ```ts
+    const NIGHTLY_MINIMUM: Record<PlaceStylesEnum, number> = {
+      cottage: 2,
+      cabin: 2,
+      treehouse: 1,
+      tent: 1,
+      cave: 3,
+    }
+    ```
+
+    `Record` over the union requires a key for every member, so a new place style fails to compile at the literal. This is the shape whenever the answer is data — a duration, a label, a rate — and no branch needs to run.
+
+    **What doesn't give you the check:** an `if/else if` chain. It type-checks fine and **silently no-ops** when a value is added — the addition compiles, the branch is missing, and the bug surfaces at runtime with no stack trace. Reviewers should reject an `if/else if` chain that enumerates a closed enum the same way they reject `try/catch` without a specific expected error.
+
+    **Case labels are the literal string** (`case 'confirmed':`), never a named constant typed as the enum union — `const x: BookingStatusesEnum = 'confirmed'` widens `x` to the whole union, so using it as a case label breaks the `_never` check at the `default`. Don't work around this with a `satisfies`-typed alias per literal either; write the literal directly.
+
+    The STI controller switch-on-`type` pattern is one example of this rule, not the rule itself.
 
 16. **The database is the source of truth for types defined at the database level.** Never hardcode database enum values or other database-defined types in application code. Always import the auto-generated constants and types from `@src/types/db.js` (e.g., `PlaceStylesEnumValues`, `RoomTypesEnum`). These are regenerated by `pnpm psy sync` and propagate automatically to TypeScript types, OpenAPI specs, and generated frontend clients. The only place database enum literal strings belong is inside migration files. The union type (`RoomTypesEnum`) and the values array (`RoomTypesEnumValues`) serve different jobs: type a variable, property, or parameter holding one known enum value as the union type and assign the literal directly; reach for the values array only where a runtime array is actually needed (`castParam(..., { enum })`, OpenAPI enum schemas, select options, iteration). Don't invent a helper to pluck one member out of the values array — that's what the union type is for.
 17. **Commit all auto-generated files** after `pnpm psy db:migrate` or `pnpm psy sync`. This includes files in `src/types/`, `src/openapi/`, and any configured sync output directories (e.g., `client/api/`, `admin/api/`). Don't cherry-pick which generated files to stage.

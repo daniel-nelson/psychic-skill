@@ -436,7 +436,7 @@ Columns shared by **all** STI children should be on the STI base model instead, 
 
 ## Controller Pattern
 
-A single controller handles ALL STI types. The `create` action switches on `type` with a `_never` default — this is the STI application of [SKILL.md Critical Rule 15](SKILL.md#critical-rules) (exhaustive switch on closed enums); the rule applies to any closed-enum dispatch, not just STI discriminators.
+A single controller handles ALL STI types. The `create` action switches on `type` with a `_never` default — this is the STI application of [SKILL.md Critical Rule 15](SKILL.md#critical-rules) (closed-enum dispatch must be exhaustive); the rule applies to any closed-enum dispatch, not just STI discriminators.
 
 ```typescript
 export default class V1HostPlacesRoomsController extends V1HostPlacesBaseController {
