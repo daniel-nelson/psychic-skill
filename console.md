@@ -11,6 +11,8 @@ pnpm psy db:reset                          # Resets the TEST database (default)
 
 This applies to `db:migrate`, `db:rollback`, `db:reset`, and all other `pnpm psy` commands. Running `pnpm psy db:reset` without `NODE_ENV=development` will only reset the test database, leaving stale data in the development database.
 
+Under the `NODE_ENV=development` prefix, `db:migrate` and `db:rollback` do not sync types — type generation only ever runs against the test database, and `NODE_ENV=development pnpm psy sync` prints `skipping sync` and does nothing. To pick up a schema change in `src/types/`, run the migration under the default test environment too: `pnpm psy db:migrate`.
+
 **Use caution with `NODE_ENV=development pnpm psy db:reset`** — it drops and recreates the development database, losing all data. This is safe if all needed development data is in a seed file, but can be destructive otherwise.
 
 ## Dream Console

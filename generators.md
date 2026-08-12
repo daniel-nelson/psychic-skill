@@ -52,7 +52,7 @@ This mainly bites when a model was already created (via `g:model` or a prior `g:
 ## Generator workflow (after a generator runs)
 
 1. **Update the migration file as needed** (e.g., add `unique()` to a column).
-2. **Run migrations**: `pnpm psy db:migrate` (this also runs `sync` automatically — do NOT follow it with a separate `pnpm psy sync`).
+2. **Run migrations**: `pnpm psy db:migrate` (under the default `NODE_ENV=test` this also runs `sync` automatically — do NOT follow it with a separate `pnpm psy sync`; see [migrations.md](migrations.md) for the `NODE_ENV=development` case).
 3. **If the generator was a resource generator**:
    - Update the generated controller spec first.
    - Then update the corresponding generated controller.
@@ -62,7 +62,7 @@ This mainly bites when a model was already created (via `g:model` or a prior `g:
    Generate Room resource
 
    ```console
-   pnpm psy g:resource --sti-base-serializer --owning-model=Place v1/host/places/rooms Room type:enum:room_types:Bathroom,Bedroom,Kitchen,Den
+   pnpm psy g:resource --sti-base-serializer --owning-model=Place v1/host/places/{}/rooms Room type:enum:room_types:Bathroom,Bedroom,Kitchen,Den,LivingRoom Place:belongs_to position:integer:optional
    ```
    ```
 
@@ -75,7 +75,7 @@ Run `pnpm psy sync` whenever any of the following are added or changed:
 - An OpenAPI decorator on a controller action
 - A route
 
-If controller specs have type errors about what an endpoint accepts or returns, the OpenAPI shape is out of sync — run `pnpm psy sync`. (Standalone `sync` is only needed when no migration was run; `db:migrate` already runs it.)
+If controller specs have type errors about what an endpoint accepts or returns, the OpenAPI shape is out of sync — run `pnpm psy sync`. (Standalone `sync` is only needed when no migration was run; `db:migrate` already runs it under the default `NODE_ENV=test` — see [migrations.md](migrations.md).)
 
 ## Adding properties to an existing model
 

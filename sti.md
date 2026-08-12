@@ -15,8 +15,7 @@ pnpm psy g:resource --sti-base-serializer --owning-model=Place \
   v1/host/places/{}/rooms Room \
   type:enum:room_types:Bathroom,Bedroom,Kitchen,Den,LivingRoom \
   Place:belongs_to \
-  position:integer:optional \
-  deleted_at:datetime:optional
+  position:integer:optional
 ```
 
 **Breaking down the command:**
@@ -27,7 +26,6 @@ pnpm psy g:resource --sti-base-serializer --owning-model=Place \
 - `type:enum:room_types:Bathroom,Bedroom,...` - The type discriminator column as an enum with all child type values
 - `Place:belongs_to` - Association column
 - `position:integer:optional` - Shared column (nullable)
-- `deleted_at:datetime:optional` - For soft delete
 
 **What this generates:**
 - Migration creating the `rooms` table with `type` enum column
@@ -75,7 +73,6 @@ pnpm psy g:sti-child --model-name=LivingRoom Room/LivingRoom extends Room
 After all children are generated:
 ```bash
 pnpm psy db:migrate
-pnpm psy sync
 ```
 
 **`g:sti-child` flags:**
@@ -436,7 +433,7 @@ Columns shared by **all** STI children should be on the STI base model instead, 
 
 ## Controller Pattern
 
-A single controller handles ALL STI types. The `create` action switches on `type` with a `_never` default — this is the STI application of [SKILL.md Critical Rule 15](SKILL.md#critical-rules) (exhaustive switch on closed enums); the rule applies to any closed-enum dispatch, not just STI discriminators.
+A single controller handles ALL STI types. The `create` action switches on `type` with a `_never` default — this is the STI application of [SKILL.md Critical Rule 15](SKILL.md#critical-rules) (closed-enum dispatch must be exhaustive); the rule applies to any closed-enum dispatch, not just STI discriminators.
 
 ```typescript
 export default class V1HostPlacesRoomsController extends V1HostPlacesBaseController {
@@ -637,7 +634,7 @@ describe('POST /v1/host/places/:placeId/rooms', () => {
 pnpm psy g:resource --sti-base-serializer --owning-model=Place \
   v1/host/places/{}/rooms Room \
   type:enum:room_types:Bathroom,Bedroom,Kitchen,Den,LivingRoom \
-  Place:belongs_to position:integer:optional deleted_at:datetime:optional
+  Place:belongs_to position:integer:optional
 
 # 2. Migrate parent table
 pnpm psy db:migrate
@@ -658,9 +655,8 @@ pnpm psy db:migrate
 pnpm psy g:sti-child --model-name=Den Room/Den extends Room
 pnpm psy g:sti-child --model-name=LivingRoom Room/LivingRoom extends Room
 
-# 4. Migrate remaining children and sync types
+# 4. Migrate remaining children
 pnpm psy db:migrate
-pnpm psy sync
 
 # 5. Update controller create action with switch statement for all types
 # 6. Add @Sortable and deferrable unique constraint if needed

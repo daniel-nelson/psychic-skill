@@ -715,6 +715,8 @@ await Model.whereNot({ field: null }).all()    // IS NOT NULL
 
 Because the case-sensitivity of `ops.like` is invisible at the call site (it depends on the column's type, not the operator), prefer `ops.ilike` when case-insensitivity is the intended semantic — the operator name documents the intent. Reach for `ops.like` only when case-sensitivity is intentional, in which case the column should be `text` / `varchar`, not `citext`.
 
+**Negating a value also matches NULL.** `ops.not.equal`, `ops.not.in`, `whereNot`, and `andNot` against a non-null value match rows whose column is NULL: a `Room` whose `position` was never set is not position 1, so `Room.where({ position: ops.not.equal(1) })` returns it. Raw SQL's three-valued logic drops that row instead — `position != 1` is UNKNOWN when `position` is NULL — so a query written from SQL habit expects a smaller result set than Dream returns, and a `.update()` or `.destroy()` on that negated `where` writes to the NULL rows too. The exception is the null literal itself: `whereNot({ position: null })` compiles to `IS NOT NULL`, as shown above.
+
 ## Special Decorators
 
 ```typescript
@@ -851,6 +853,8 @@ This is distinct from `@deco.Virtual`: a virtual backs a property that is not a 
 - `setAttribute` / `setAttributes` (plural) **bypass** custom setters and write the bag raw — use these when you deliberately want the untransformed value, and inside the setter body itself.
 
 So input arriving through `create` / `update` / extracted params is transformed, while internal hydration (loading a row from the DB) writes raw and is never double-transformed.
+
+A `{ skipHooks: true }` query update — `Booking.where(…).update(attrs, { skipHooks: true })` — never instantiates a model, so no setter runs at all: the attribute names go into the `UPDATE` as given and the transform is silently skipped. The instance form, `instance.update(attrs, { skipHooks: true })`, is unaffected — it assigns through `assignAttributes`, so custom setters still run; `skipHooks` there means hooks, not setters.
 
 ## Creating and Updating
 

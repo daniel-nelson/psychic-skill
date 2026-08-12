@@ -8,7 +8,7 @@ Dream migrations use Kysely under the hood. **Migrations are always created via 
 
 Migrations that are still on a feature branch — i.e., not yet merged into `main` — may be freely edited in place. There is no production data to worry about, so create columns with the correct constraints (e.g., `NOT NULL`) directly; don't write backfill `UPDATE` statements for data that doesn't exist yet.
 
-When you edit an unmerged migration in place after it has already been applied locally, run `pnpm psy db:reset` to bring the DB back in sync — `pnpm psy db:migrate` won't re-run an already-recorded migration, so your edits won't take effect. `db:reset` drops, recreates, runs all migrations from scratch, and re-syncs types in one command. (Per `console.md`, all `psy` commands default to `NODE_ENV=test`; prefix with `NODE_ENV=development` to reset the dev DB instead — but be aware of the dev-DB caveats in `console.md`.)
+When you edit an unmerged migration in place after it has already been applied locally, run `pnpm psy db:reset` to bring the DB back in sync — `pnpm psy db:migrate` won't re-run an already-recorded migration, so your edits won't take effect. `db:reset` drops, recreates, runs all migrations from scratch, and re-syncs types in one command. (Per `console.md`, all `psy` commands default to `NODE_ENV=test`; prefix with `NODE_ENV=development` to reset the dev DB instead — but that prefix skips the type-sync step, so regenerating types means running `pnpm psy db:reset` under the test default as well, and be aware of the dev-DB caveats in `console.md`.)
 
 This applies to **any** in-place edit that changes the resulting schema — adding a column to a `createTable`, retrofitting `@SoftDelete()`, tightening a constraint, adjusting `asEnum([...])` values for an STI discriminator, anything. The single rule covers the single situation: if you edited a migration that has already been applied locally, `db:reset`. Do NOT chain a follow-up migration to "fix" an unmerged one — edit the original.
 
@@ -47,11 +47,13 @@ await db.schema
 
 The temporary default backfills existing rows; dropping it afterward keeps the "no silent default in caller code" guarantee for everything written from here on. (If a permanent default genuinely fits the domain, keep it and skip the drop — that's the `col.defaultTo(value).notNull()` case above.) Column-shorthand generators omit the default by design, since they can't know whether the table is populated — this is expected generate-then-edit territory, not a generator bug.
 
-`pnpm psy db:migrate` runs migrations then sync. If post-sync fails (e.g., a model references an old table name), Dream reverts `db.ts`, `dream.ts`, and any other generated type files that already existed before this sync began back to their pre-sync content. The migration itself and the database schema it applied are unaffected by this revert — the migration is recorded and its schema change is committed before sync ever starts, so there's no need to `db:rollback` on the assumption the ledger is out of sync. Fix the problem and run `pnpm psy sync` to regenerate the types.
+`pnpm psy db:migrate` runs migrations, then syncs types **only when `NODE_ENV=test`** — the default for `psy` commands. `db:rollback` carries the same guard. Generated types are only ever built from the **test** database — `pnpm psy sync` is a no-op under any other `NODE_ENV`, and no standalone sync can read a development database. Migrating development therefore does not update `src/types/`; run `pnpm psy db:migrate` under the default test environment as well, which migrates the test database and regenerates the types. If post-sync fails (e.g., a model references an old table name), Dream reverts `db.ts`, `dream.ts`, and any other generated type files that already existed before this sync began back to their pre-sync content. The migration itself and the database schema it applied are unaffected by this revert — the migration is recorded and its schema change is committed before sync ever starts, so there's no need to `db:rollback` on the assumption the ledger is out of sync. Fix the problem and run `pnpm psy sync` to regenerate the types.
 
 ### Generating column-only migrations
 
 For schema changes that just add columns (or a foreign key) to an existing table, `pnpm psy g:migration` accepts the same column shorthand as `g:resource` and `g:model` — including `BelongsTo:type` and `:optional` modifiers. See the canonical examples in [generators.md — Adding properties to an existing model](generators.md#adding-properties-to-an-existing-model). Hand-edit the generated migration only when the change isn't expressible as column shorthand (check constraints, enum alterations, custom backfill).
+
+A hand-written migration's name must contain neither `-to-` nor `-from-` anywhere: either marker resolves the text after it into a real table name — a `-to-` anywhere in the name wins even when a `-from-` appears earlier, and `-from-` applies only when there's no `-to-` at all — and once the table name is resolved rather than left as a `<table-name>` placeholder, the generator fails when no columns are passed.
 
 ## DreamMigrationHelpers
 
@@ -102,12 +104,12 @@ export async function down(db: Kysely<any>): Promise<void> {
 
 **Full workflow for renaming a table:**
 
-1. `pnpm psy g:migration rename-host-places-to-host-listings`
+1. `pnpm psy g:migration rename-host-places-table`
 2. Edit the migration to use `DreamMigrationHelpers.renameTable(db, 'host_places', 'host_listings')`
 3. Update all models referencing the old table: change `return 'host_places' as const` to `return 'host_listings' as const` in each model's `table` getter
 4. `pnpm psy db:migrate`
 
-Step 3 must happen before step 4. `db:migrate` runs migrations then sync. The sync step regenerates `db.ts` from database introspection (which now sees the new table name), then runs post-sync which boots the app and loads models. If any model's `table` getter still returns the old name, post-sync fails with `InvalidTableName`.
+Step 3 must happen before step 4. `db:migrate` runs migrations then sync (under `NODE_ENV=test`; see above). The sync step regenerates `db.ts` from database introspection (which now sees the new table name), then runs post-sync which boots the app and loads models. If any model's `table` getter still returns the old name, post-sync fails with `InvalidTableName`.
 
 ## Primary Key Patterns
 
@@ -292,7 +294,7 @@ PostgreSQL cannot add and use a new enum value in the same transaction, and Drea
 **Migration 1** — add the new enum value:
 
 ```bash
-pnpm psy g:migration add-treehouse-to-place-styles
+pnpm psy g:migration add-treehouse-place-style
 ```
 
 ```typescript
@@ -309,7 +311,7 @@ export async function down(): Promise<void> {}
 **Migration 2** — replace the old value with the new one and drop it:
 
 ```bash
-pnpm psy g:migration replace-lean-to-with-treehouse
+pnpm psy g:migration replace-legacy-place-style-with-treehouse
 ```
 
 ```typescript

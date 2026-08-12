@@ -50,6 +50,8 @@ export default class Place extends ApplicationModel {
 pnpm psy sync
 ```
 
+The decorator is what `sync` records: it regenerates `src/types/dream.ts` with the model's default scopes, which is where `removeDefaultScope('dream:SoftDelete')` gets its type.
+
 ### Foreign key constraints
 
 When using soft delete, use the default `restrict` foreign key constraint (not `cascade`). Since the parent row is not actually deleted, a `cascade` constraint would not fire, and `restrict` correctly prevents deletion of rows that still have references:

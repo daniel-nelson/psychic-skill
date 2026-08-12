@@ -487,6 +487,8 @@ Escape only the user-controlled portion. The wildcard markers (`%` and `_`) you 
 query.whereNot({ status: 'archived', role: 'guest' })
 ```
 
+Negation also matches rows whose column is NULL — see [models.md — Query Operators](models.md#query-operators).
+
 ### Instance-level loading
 
 `load` and `leftJoinLoad` follow the same chaining pattern on instances:
