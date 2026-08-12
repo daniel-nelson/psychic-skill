@@ -47,7 +47,7 @@ await db.schema
 
 The temporary default backfills existing rows; dropping it afterward keeps the "no silent default in caller code" guarantee for everything written from here on. (If a permanent default genuinely fits the domain, keep it and skip the drop — that's the `col.defaultTo(value).notNull()` case above.) Column-shorthand generators omit the default by design, since they can't know whether the table is populated — this is expected generate-then-edit territory, not a generator bug.
 
-`pnpm psy db:migrate` runs migrations then sync. If post-sync fails (e.g., a model references an old table name), Dream reverts `db.ts`, `dream.ts`, and any other generated type files that already existed before this sync began back to their pre-sync content. The migration itself and the database schema it applied are unaffected by this revert — the migration is recorded and its schema change is committed before sync ever starts, so there's no need to `db:rollback` on the assumption the ledger is out of sync. Fix the problem and run `pnpm psy sync` to regenerate the types.
+`pnpm psy db:migrate` runs migrations, then syncs types **only when `NODE_ENV=test`** — the default for `psy` commands. `db:rollback` carries the same guard. After migrating a development database (`NODE_ENV=development pnpm psy db:migrate`), run `pnpm psy sync` yourself. If post-sync fails (e.g., a model references an old table name), Dream reverts `db.ts`, `dream.ts`, and any other generated type files that already existed before this sync began back to their pre-sync content. The migration itself and the database schema it applied are unaffected by this revert — the migration is recorded and its schema change is committed before sync ever starts, so there's no need to `db:rollback` on the assumption the ledger is out of sync. Fix the problem and run `pnpm psy sync` to regenerate the types.
 
 ### Generating column-only migrations
 
@@ -109,7 +109,7 @@ export async function down(db: Kysely<any>): Promise<void> {
 3. Update all models referencing the old table: change `return 'host_places' as const` to `return 'host_listings' as const` in each model's `table` getter
 4. `pnpm psy db:migrate`
 
-Step 3 must happen before step 4. `db:migrate` runs migrations then sync. The sync step regenerates `db.ts` from database introspection (which now sees the new table name), then runs post-sync which boots the app and loads models. If any model's `table` getter still returns the old name, post-sync fails with `InvalidTableName`.
+Step 3 must happen before step 4. `db:migrate` runs migrations then sync (under `NODE_ENV=test`; see above). The sync step regenerates `db.ts` from database introspection (which now sees the new table name), then runs post-sync which boots the app and loads models. If any model's `table` getter still returns the old name, post-sync fails with `InvalidTableName`.
 
 ## Primary Key Patterns
 

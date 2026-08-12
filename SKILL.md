@@ -185,10 +185,10 @@ api/
 **CRITICAL: All `pnpm psy` commands default to `NODE_ENV=test`.** To operate on the development database, prefix with `NODE_ENV=development`. See [console.md](console.md) for details.
 
 ```bash
-pnpm psy db:migrate              # Run migrations, then automatically runs sync — do NOT follow with a separate `pnpm psy sync`
+pnpm psy db:migrate              # Run migrations, then auto-syncs when NODE_ENV=test (the default) — no separate `pnpm psy sync` needed
 pnpm psy db:rollback             # Rollback last run migration (use --steps to specify multiple rollback steps)
 pnpm psy db:reset                # Drop + create + migrate, then sync
-pnpm psy sync                    # Sync types, OpenAPI specs, and cli:sync commands (only needed standalone when no migration was run)
+pnpm psy sync                    # Sync types, OpenAPI specs, and cli:sync commands (needed standalone when no migration was run, or after migrating with NODE_ENV=development)
 pnpm psy routes                  # Display all routes
 pnpm psy --help                  # List all psy commands
 
