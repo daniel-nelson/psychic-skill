@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.78.0 — 2026-08-11
+
+### Added
+
+- **`models.md`** — the Query Operators section gains a "Negation includes NULL" paragraph: `ops.not.equal`, `ops.not.in`, `whereNot`, and `andNot` match rows whose column is NULL, so a `Booking` whose `status` was never set comes back from `Booking.where({ status: ops.not.equal('cancelled') })`. Raw SQL's three-valued logic drops that row instead, so a query written from SQL habit expects a smaller result set than Dream returns. `querying.md`'s `whereNot` semantics subsection points at it.
+- **`models.md`** — "Which writes run the setter" gains a paragraph: a `{ skipHooks: true }` query update never instantiates a model, so no custom setter runs — the attribute names go into the `UPDATE` as given and the transform is silently skipped.
+- **`SKILL.md`** — Critical Rule 15 gains a second sanctioned shape, `Record<Enum, T>`, for the case where a value is mapped per enum member rather than code run per value: the `Record` over the union requires a key for every member, so a new value fails to compile at the literal.
+
+### Changed
+
+- **`migrations.md`** — three `pnpm psy g:migration` examples renamed so they generate: `rename-host-places-table`, `add-treehouse-place-style`, and `replace-legacy-place-style-with-treehouse`. A migration name containing `-to-` or `-from-` puts the generator into alter-table mode against the text that follows, which fails when no columns are passed.
+- **`SKILL.md`** — Critical Rule 15 rewritten to lead with the guarantee it buys — code that handles every value of a closed enum must stop compiling when a value is added or removed — rather than with a mandated mechanism, with one example per sanctioned shape. The `if/else if` prohibition and the literal-case-label rule are unchanged. `sti.md`'s gloss of the rule matches the new framing.
+- **`SKILL.md`**, **`generators.md`**, **`migrations.md`**, **`console.md`** — `db:migrate` and `db:rollback` sync types **only when `NODE_ENV=test`**, the default for `psy` commands. After migrating a development database, run `pnpm psy sync` by hand. `migrations.md` carries the full statement; the other three defer to it.
+- **`workers.md`** — local seeding is `NODE_ENV=development pnpm psy db:seed`. Under the test default the CLI skips seeding entirely, and setting `DREAM_SEED_DB_IN_TEST=1` as it suggests still registers nothing, because the app seed then returns at `AppEnv.isTest`. `SKILL.md`'s `db:reset` description names the seed step it runs last.
+- **`generators.md`** — the `g:resource` STI example matches `sti.md`'s canonical form: the `{}` parent-id path placeholder, `LivingRoom` among the room types, `Place:belongs_to`, and `position:integer:optional`.
+- **`SKILL.md`** — ecosystem version baseline: `@rvoh/dream` to 2.25.x (the other four packages unchanged).
+
 ## 0.77.0 — 2026-08-07
 
 ### Changed
