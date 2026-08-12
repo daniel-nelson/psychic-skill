@@ -53,6 +53,8 @@ The temporary default backfills existing rows; dropping it afterward keeps the "
 
 For schema changes that just add columns (or a foreign key) to an existing table, `pnpm psy g:migration` accepts the same column shorthand as `g:resource` and `g:model` — including `BelongsTo:type` and `:optional` modifiers. See the canonical examples in [generators.md — Adding properties to an existing model](generators.md#adding-properties-to-an-existing-model). Hand-edit the generated migration only when the change isn't expressible as column shorthand (check constraints, enum alterations, custom backfill).
 
+**The migration name selects the generator's mode.** The first `-to-` in it — or, if there is no `-to-`, the first `-from-` — anywhere in the name, not only at the end, makes whatever follows a table name and puts `pnpm psy g:migration` into alter-table mode, which fails outright when no columns are passed. Keep both strings out of names for hand-written migrations: `rename-host-places-table`, not `rename-host-places-to-host-listings`.
+
 ## DreamMigrationHelpers
 
 `DreamMigrationHelpers` (imported from `@rvoh/dream/db`) provides convenience methods for common migration operations. **Prefer a DreamMigrationHelpers method over compound Kysely calls whenever one is available.** Consult the TSDocs on `DreamMigrationHelpers` for the full list of available methods and their signatures - methods include helpers for extensions, enum manipulation, deferrable constraints, GIN indexes, table renaming, and more.
@@ -102,7 +104,7 @@ export async function down(db: Kysely<any>): Promise<void> {
 
 **Full workflow for renaming a table:**
 
-1. `pnpm psy g:migration rename-host-places-to-host-listings`
+1. `pnpm psy g:migration rename-host-places-table`
 2. Edit the migration to use `DreamMigrationHelpers.renameTable(db, 'host_places', 'host_listings')`
 3. Update all models referencing the old table: change `return 'host_places' as const` to `return 'host_listings' as const` in each model's `table` getter
 4. `pnpm psy db:migrate`
@@ -292,7 +294,7 @@ PostgreSQL cannot add and use a new enum value in the same transaction, and Drea
 **Migration 1** — add the new enum value:
 
 ```bash
-pnpm psy g:migration add-treehouse-to-place-styles
+pnpm psy g:migration add-treehouse-place-style
 ```
 
 ```typescript
@@ -309,7 +311,7 @@ export async function down(): Promise<void> {}
 **Migration 2** — replace the old value with the new one and drop it:
 
 ```bash
-pnpm psy g:migration replace-lean-to-with-treehouse
+pnpm psy g:migration replace-legacy-place-style-with-treehouse
 ```
 
 ```typescript
