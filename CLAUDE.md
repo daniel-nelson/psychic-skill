@@ -10,7 +10,7 @@ The agent-facing counterpart is Critical Rule #2 in `SKILL.md`, which tells a re
 
 ## Example domain: BearBnB
 
-Every example in the skill — models, controllers, serializers, generators, migrations, routing — uses one shared domain: BearBnB, a bear-themed short-term-rental app (Airbnb for bears). The core nouns are `Place`, `Room` (an STI base with children `Bathroom`/`Bedroom`/`Den`), `Host`, `Guest`, `Booking`, `City`, and `LocalizedText`. Reusing these nouns keeps examples mutually consistent — an association in one file lines up with the model and serializer shown in another — so when adding or editing any example, draw from this domain rather than introducing a new one, and extend the noun set only when no existing noun fits.
+Every example in the skill — models, controllers, serializers, generators, migrations, routing — uses one shared domain: BearBnB, a bear-themed short-term-rental app (Airbnb for bears). The core nouns are `Place`, `Room` (an STI base with children `Bathroom`/`Bedroom`/`Kitchen`/`Den`/`LivingRoom`), `Host`, `Guest`, `Booking`, `City`, and `LocalizedText`. Reusing these nouns keeps examples mutually consistent — an association in one file lines up with the model and serializer shown in another — so when adding or editing any example, draw from this domain rather than introducing a new one, and extend the noun set only when no existing noun fits.
 
 ## Release process (required on every PR)
 

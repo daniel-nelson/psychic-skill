@@ -62,7 +62,7 @@ This mainly bites when a model was already created (via `g:model` or a prior `g:
    Generate Room resource
 
    ```console
-   pnpm psy g:resource --sti-base-serializer --owning-model=Place v1/host/places/rooms Room type:enum:room_types:Bathroom,Bedroom,Kitchen,Den
+   pnpm psy g:resource --sti-base-serializer --owning-model=Place v1/host/places/{}/rooms Room type:enum:room_types:Bathroom,Bedroom,Kitchen,Den,LivingRoom Place:belongs_to position:integer:optional
    ```
    ```
 
