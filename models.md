@@ -715,6 +715,8 @@ await Model.whereNot({ field: null }).all()    // IS NOT NULL
 
 Because the case-sensitivity of `ops.like` is invisible at the call site (it depends on the column's type, not the operator), prefer `ops.ilike` when case-insensitivity is the intended semantic — the operator name documents the intent. Reach for `ops.like` only when case-sensitivity is intentional, in which case the column should be `text` / `varchar`, not `citext`.
 
+**Negation includes NULL.** `ops.not.equal`, `ops.not.in`, `whereNot`, and `andNot` match rows whose column is NULL: a `Booking` whose `status` was never set is not cancelled, so `Booking.where({ status: ops.not.equal('cancelled') })` returns it. Raw SQL's three-valued logic drops that row instead — `status != 'cancelled'` is UNKNOWN when `status` is NULL — so a query written from SQL habit expects a smaller result set than Dream returns.
+
 ## Special Decorators
 
 ```typescript
