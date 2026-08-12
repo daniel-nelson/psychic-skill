@@ -187,7 +187,7 @@ api/
 ```bash
 pnpm psy db:migrate              # Run migrations, then auto-syncs when NODE_ENV=test (the default) — no separate `pnpm psy sync` needed
 pnpm psy db:rollback             # Rollback last run migration (use --steps to specify multiple rollback steps)
-pnpm psy db:reset                # Drop + create + migrate, then sync
+pnpm psy db:reset                # Drop + create + migrate, then sync, then seed
 pnpm psy sync                    # Sync types, OpenAPI specs, and cli:sync commands (needed standalone when no migration was run, or after migrating with NODE_ENV=development)
 pnpm psy routes                  # Display all routes
 pnpm psy --help                  # List all psy commands

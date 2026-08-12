@@ -381,7 +381,7 @@ export default async function seed() {
 
 `schedule()` upserts (keyed `` `${globalName}:${method}` ``), so registration is idempotent and belongs wherever a deploy already reconciles the database to the code — which is why seed runs immediately after migrations in every environment ([deploying.md](deploying.md#combine-dbmigrate--dbseed-in-one-invocation)). A pipeline that migrates without seeding leaves Redis holding the previous schedule set, so pair the two commands everywhere they run.
 
-The seed process must reach the jobs Redis; with `enableOfflineQueue: false` an unreachable Redis fails the seed task loudly rather than buffering. Locally, run `pnpm psy db:seed` (or `pnpm psy db:reset`, which seeds last) before expecting a schedule to exist.
+The seed process must reach the jobs Redis; with `enableOfflineQueue: false` an unreachable Redis fails the seed task loudly rather than buffering. Locally, run `NODE_ENV=development pnpm psy db:seed` before expecting a schedule to exist. Under the test default (see [console.md](console.md#node_env-defaults)) the CLI skips seeding entirely, and setting `DREAM_SEED_DB_IN_TEST=1` as it suggests still registers nothing, because the seed above then returns at `AppEnv.isTest`. `db:seed` is non-destructive, so it is one of the few commands worth running against development.
 
 ### Scheduled services are thin orchestrators, not workers
 
