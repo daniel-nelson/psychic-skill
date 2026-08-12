@@ -854,6 +854,8 @@ This is distinct from `@deco.Virtual`: a virtual backs a property that is not a 
 
 So input arriving through `create` / `update` / extracted params is transformed, while internal hydration (loading a row from the DB) writes raw and is never double-transformed.
 
+A `{ skipHooks: true }` query update — `Booking.where(…).update(attrs, { skipHooks: true })` — never instantiates a model, so no setter runs at all: the attribute names go into the `UPDATE` as given and the transform is silently skipped.
+
 ## Creating and Updating
 
 **Instantiation**: Use `ModelName.new()` to create an unpersisted model instance. `new ModelName()` does not work and will throw a type error.
