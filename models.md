@@ -921,11 +921,12 @@ The instance form works the same **regardless of the association's shape** — p
 
 **Filtering accepts an array of instances**, not just a single one — `where({ place: places })`, and likewise in `whereNot`/`whereAny` and the `and`/`andNot`/`andAny` of a join on-clause. A non-polymorphic key expands to a foreign-key `IN`; a polymorphic key groups the instances by type, turns each group into an id-`IN` plus type-match pair, and ORs the groups, so an id collision across types can never match the wrong row. This is query-only: `create`, `update`, and `findOrCreateBy` still take a single instance, because a list of parents is meaningless there.
 
-Three reasons this is the rule, not a preference:
+Four reasons this is the rule, not a preference:
 
 1. **Polymorphic filters are wrong without it.** `where({ localizableId: host.id })` constrains the id alone — it never sets `localizable_type`. With integer/serial primary keys a `Host` and a `Place` can share id `1`, so that query matches localized texts belonging to *both*. `where({ localizable: host })` adds `localizable_type = 'Host'` for you. (UUID keys hide the collision, but the id-only form is still incomplete.)
 2. **STI type strings resolve correctly.** Creating or filtering through an STI child records/matches the base type (`'Room'`). A hand-written `localizableType: 'Bathroom'` matches nothing, because the association is declared on the `Room` base — and nothing at the call site warns you.
 3. **Holding the instance means you loaded it.** The authorized way to obtain a record is to load it, usually through an association chain from `currentUser` that proves the current user may touch it. Passing the instance keeps that step in the code path; hand-assigning a raw id from a request param skips it.
+4. **Factories create an orphan from an id.** Generated factories guard on the association (`host: attrs.host ?? (await createHost())`) with `...attrs` spread after, so `createHostPlace({ hostId: host.id })` creates a second Host and then overwrites `hostId` with the one passed — a stray row and an extra insert per call, silently.
 
 In a **controller this is effectively absolute** (see [controllers.md — `extractParams`](controllers.md#extractparams)): an id or type that arrives in a param is untrusted, verifying it means loading the record through an authorized association chain, and once you have done that you hold the instance — so you use it. There is no path where you legitimately hold a verified id but not the instance.
 
