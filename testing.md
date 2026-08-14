@@ -108,8 +108,8 @@ export default async function createHostPlace(
   attrs: UpdateableProperties<HostPlace> = {}
 ) {
   return await HostPlace.create({
-    host: attrs.host ? null : await createHost(),
-    place: attrs.place ? null : await createPlace(),
+    host: attrs.host ?? (await createHost()),
+    place: attrs.place ?? (await createPlace()),
     ...attrs,
   })
 }
@@ -127,7 +127,7 @@ export default async function createBedroom(
   attrs: UpdateableProperties<Bedroom> = {}
 ) {
   return await Bedroom.create({
-    place: attrs.place ? null : await createPlace(),
+    place: attrs.place ?? (await createPlace()),
     bedTypes: ['queen'],
     ...attrs,
   })
@@ -146,10 +146,9 @@ export default async function createGuest(attrs = {}) {
 
 // GOOD — returns the Guest auto-created by User's AfterCreate hook
 export default async function createGuest(attrs = {}) {
-  const user = attrs.user ? null : await createUser()
-  const userId = attrs.user?.id ?? user!.id
-  const guest = await Guest.findBy({ userId })
-  if (!guest) throw new Error(`Guest not found for userId ${userId}`)
+  const user = attrs.user ?? (await createUser())
+  const guest = await Guest.findBy({ userId: user.id })
+  if (!guest) throw new Error(`Guest not found for userId ${user.id}`)
   return guest
 }
 ```
