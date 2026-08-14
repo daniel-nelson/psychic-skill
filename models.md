@@ -1012,6 +1012,16 @@ const user = await User.createOrFindBy(
 )
 ```
 
+On the unique-violation fallback, Dream re-finds with that same first argument, so it must hold exactly the unique index's attributes and nothing more — an extra attribute narrows the lookup, and if the submitted value differs from the stored row the re-find comes back empty and `CreateOrFindByFailedToCreateAndFind` turns the duplicate case into a 500. Everything else goes in `createWith`.
+
+```typescript
+// unique index on (place_id, guest_id)
+const booking = await Booking.createOrFindBy(
+  { place, guest },
+  { createWith: { nights: 3 } }
+)
+```
+
 ### updateOrCreateBy
 
 Finds a record and updates it, or creates one if none exists. Functionally equivalent to an upsert, but runs as two queries. Safe to use in transactions. There is a race condition risk between the find and create steps — if concurrent requests could match the same lookup attributes, prefer `createOrUpdateBy`.
