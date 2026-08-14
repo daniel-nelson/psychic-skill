@@ -786,10 +786,11 @@ public phone: DreamColumn<User, 'encryptedPhone'>
 // type (which generates a `text` backing column), not `:jsonb`. JSONB earns its place
 // by being queryable — GIN indexes, path operators, an index on `field->>'key'` — and
 // ciphertext is opaque, so none of that survives; what's left is a value you can only
-// read whole, which is what `text` gives you. Parse and stringify at the model layer
-// with a `@deco.Virtual` or a getter/setter pair. So the decision is whether the data
-// warrants encryption at all: if it does, `:encrypted` plus an accessor; if not, it
-// stays `jsonb` and keeps its query ergonomics.
+// read whole. The encrypted column carries structured content directly — Dream
+// JSON-serializes the value on write and parses it on read, so the plaintext property
+// round-trips objects and arrays as-is, with no model-layer parse/stringify. So the
+// decision is whether the data warrants encryption at all: if it does, `:encrypted`;
+// if not, it stays `jsonb` and keeps its query ergonomics.
 
 // Virtual — accepted by create(), update(), and extractParams() but not stored directly in DB.
 // Use getter/setter pairs to transform between the virtual and the actual DB column.
@@ -964,7 +965,7 @@ user.hasChanges('email')          // false
 
 `changedAttributes()` works before the first save too. `User.new({ name: 'Alice' })` marks `name` dirty immediately, so `changedAttributes()` is populated on the unpersisted instance.
 
-A persisted instance with nothing dirty issues no SQL on `save()` or `update()`, and since Dream stamps `updatedAt` as part of writing the row, a save that writes nothing leaves it unchanged — `update({})`, or an `update()` assigning values equal to the current ones, is a no-op rather than a touch.
+A persisted instance with nothing dirty issues no `UPDATE` on `save()` or `update()` and leaves `updatedAt` unstamped — `update({})`, or an `update()` assigning values equal to the current ones, is a no-op rather than a touch. Before-save hooks and validations still run first, so a hook that dirties the record turns it back into a real write.
 
 For an `@deco.Encrypted()` field, `changedAttributes()` reports the persisted `encrypted<Name>` key, not the plaintext virtual property. `getAttribute('<plaintext>')` returns `undefined` — it isn't the decrypting accessor; `getAttribute('encrypted<Name>')` returns ciphertext. Read the decrypted value via the instance property (`instance.<plaintext>`) — see [Encrypted](#special-decorators) above.
 
@@ -1026,12 +1027,12 @@ const user = await User.createOrFindBy(
 )
 ```
 
-On the unique-violation fallback, Dream re-finds with that same first argument, so it must hold exactly the unique index's attributes and nothing more — an extra attribute narrows the lookup, and if the submitted value differs from the stored row the re-find comes back empty and `CreateOrFindByFailedToCreateAndFind` turns the duplicate case into a 500. Everything else goes in `createWith`.
+On the unique-violation fallback, `createOrFindBy` and `createOrUpdateBy` both re-find with that same first argument, so it must hold exactly the unique index's attributes and nothing more — an extra attribute narrows the lookup, and if the submitted value differs from the stored row the re-find comes back empty and `CreateOrFindByFailedToCreateAndFind` / `CreateOrUpdateByFailedToCreateAndUpdate` turns the duplicate case into a 500. Everything else goes in `createWith`.
 
 ```typescript
-// unique index on (place_id, guest_id)
+// unique index on (place_id, guest_id, check_in_month)
 const booking = await Booking.createOrFindBy(
-  { place, guest },
+  { place, guest, checkInMonth },
   { createWith: { nights: 3 } }
 )
 ```
@@ -1142,7 +1143,7 @@ await doWork(user)
 
 Both `Model.txn(null)` (class-level) and `instance.txn(null)` (instance-level) work the same way.
 
-**Restrictions inside transactions:** Methods that rely on foreign key violations to function (`createOrFindBy`, `createOrUpdateBy`) cannot be used inside a transaction. Use their transaction-safe counterparts (`findOrCreateBy`, `updateOrCreateBy`) instead. See the [find-or-create methods](#find-or-create-and-upsert-methods) table for details.
+**Restrictions inside transactions:** Methods that rely on unique-constraint violations to function (`createOrFindBy`, `createOrUpdateBy`) cannot be used inside a transaction. Use their transaction-safe counterparts (`findOrCreateBy`, `updateOrCreateBy`) instead. See the [find-or-create methods](#find-or-create-and-upsert-methods) table for details.
 
 **Background jobs and transactions:** When queuing background work from a Dream lifecycle hook, always use the `Commit` variant of the hook (e.g., `@deco.AfterCreateCommit` instead of `@deco.AfterCreate`). This applies to backgrounded services, model instance backgrounding, and indirect helper methods that enqueue jobs. Regular hooks run inside the transaction, so the worker may execute before the transaction commits and either miss a newly-created row or read stale persisted data after an update. This also applies to imperative `background()` calls from services with a `txn` parameter — see [workers.md](workers.md) for both forms.
 

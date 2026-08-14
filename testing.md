@@ -142,12 +142,12 @@ When a model's AfterCreate hook automatically creates an associated record (e.g.
 
 ```typescript
 // BAD — creates a duplicate Guest, may violate unique constraint on userId
-export default async function createGuest(attrs = {}) {
+export default async function createGuest(attrs: UpdateableProperties<Guest> = {}) {
   return await Guest.create({ user: await createUser(), ...attrs })
 }
 
 // GOOD — returns the Guest auto-created by User's AfterCreate hook
-export default async function createGuest(attrs = {}) {
+export default async function createGuest(attrs: UpdateableProperties<Guest> = {}) {
   const user = attrs.user ?? (await createUser())
   const guest = await Guest.findBy({ userId: user.id })
   if (!guest) throw new Error(`Guest not found for userId ${user.id}`)

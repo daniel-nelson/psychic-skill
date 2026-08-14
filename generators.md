@@ -74,6 +74,7 @@ Run `pnpm psy sync` whenever any of the following are added or changed:
 - A serializer
 - An OpenAPI decorator on a controller action
 - A route
+- A decorator that declares a virtual column (`@deco.Virtual()`, `@deco.Encrypted()`)
 
 If controller specs have type errors about what an endpoint accepts or returns, the OpenAPI shape is out of sync — run `pnpm psy sync`. (Standalone `sync` is only needed when no migration was run; `db:migrate` already runs it under the default `NODE_ENV=test` — see [migrations.md](migrations.md).)
 
