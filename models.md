@@ -788,7 +788,10 @@ public phone: DreamColumn<User, 'encryptedPhone'>
 // ciphertext is opaque, so none of that survives; what's left is a value you can only
 // read whole. The encrypted column carries structured content directly — Dream
 // JSON-serializes the value on write and parses it on read, so the plaintext property
-// round-trips objects and arrays as-is, with no model-layer parse/stringify. So the
+// round-trips objects and arrays as-is, with no model-layer parse/stringify. The
+// generated declaration types the plaintext property from its `text` backing column
+// (`DreamColumn<Place, 'encryptedHouseRules'>`, i.e. `string | null`), so widen it by
+// hand to the structured type (`public houseRules: HouseRules | null`). So the
 // decision is whether the data warrants encryption at all: if it does, `:encrypted`;
 // if not, it stays `jsonb` and keeps its query ergonomics.
 
