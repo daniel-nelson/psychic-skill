@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.79.0 — 2026-08-13
+
+### Added
+
+- **`models.md`** — the `createOrFindBy` section states the unique-violation fallback: Dream re-finds with the same first argument, so that argument must hold exactly the unique index's attributes and nothing more — an extra attribute narrows the lookup, and if the submitted value differs from the stored row the re-find comes back empty and `CreateOrFindByFailedToCreateAndFind` turns the duplicate case into a 500. Everything else goes in `createWith`, with a BearBnB `Booking.createOrFindBy` example.
+- **`models.md`** — "Passing associations: use the instance, not the foreign key" gains a fourth reason: generated factories guard on the association (`host: attrs.host ?? (await createHost())`) with `...attrs` spread after, so `createHostPlace({ hostId: host.id })` creates a second `Host` and then overwrites `hostId` with the one passed — a stray row and an extra insert per call, silently.
+- **`models.md`** — the `@deco.Encrypted` block adds the column-type decision: a column needing both encryption and structured content uses the `:encrypted` type (which generates a `text` backing column), not `:jsonb`. JSONB earns its place by being queryable and ciphertext is opaque, so parse and stringify at the model layer with a `@deco.Virtual` or a getter/setter pair; the real question is whether the data warrants encryption at all. The not-queryable note also names the consequence that no single-statement compare-and-set `UPDATE ... WHERE` can filter on the value being replaced.
+- **`models.md`** — the Dirty Tracking section notes that a persisted instance with nothing dirty issues no SQL on `save()` or `update()`, and since `updatedAt` is stamped as part of writing the row, a save that writes nothing leaves it unchanged — `update({})`, or an `update()` assigning values equal to the current ones, is a no-op rather than a touch.
+- **`testing.md`** — the Factory Pattern conventions add the boundary with `Model.new()`: factories are for records that exist, `Model.new()` for a spec whose subject is an instance that deliberately has no row behind it (validation state before a save, an identifier with no account).
+- **`testing.md`** — a ninth testing principle: exercise an environment-dependent branch by spying on the accessor the code actually calls (`vi.spyOn(AppEnv, 'isTest', 'get').mockReturnValue(false)`), since `vi.stubEnv` also changes what Dream reads, including its test-database machinery.
+
+### Changed
+
+- **`testing.md`** — "The API server runs in-process" scopes its interception claim to `vi.spyOn`: the setup file boots the app, so anything a route file imports is already loaded before a spec's mock registry exists and a `vi.mock` on it is silently ignored — spy on the runtime object instead.
+- **`testing.md`**, **`sti.md`** — factory examples use the generated default form `attrs.x ?? (await createX())`; the auto-created-`Guest` example collapses its now-redundant `userId` line accordingly.
+- **`SKILL.md`** — Critical Rule 10 names a decorator that declares a virtual column (`@deco.Virtual()`, `@deco.Encrypted()`) as its own `pnpm psy sync` trigger, separate from the sync a migration triggers, with the symptom being `create()` / `update()` rejecting the virtual attribute at build time while every runtime spec passes.
+- **`SKILL.md`** — Critical Rule 13 closes with a link to [deploying.md — Environment Variables](deploying.md#environment-variables), where the full `AppEnv` treatment lives.
+- **`SKILL.md`**, **`controllers.md`** — the four mentions of `paramSafeColumnsOrFallback()` describe the model's param-safe set (its declared `paramSafeColumns`, or the default otherwise) instead of naming a method app code calls; the `params` / `including` literal-array rule keeps its force and names what an app can actually reach.
+- **`migrations.md`** — the `dropEnumValue` blocker sentence covers check constraints alongside a column `DEFAULT`: a check constraint over the column fails the retype-to-text step the same way, so drop it with `DreamMigrationHelpers.dropConstraint(db, constraintName, { table })` before the first `dropEnumValue` and re-add whichever should survive.
+- **`SKILL.md`** — ecosystem version baseline: `@rvoh/dream` to 2.27.x (the other four packages unchanged).
+
 ## 0.78.0 — 2026-08-11
 
 ### Added
