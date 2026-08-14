@@ -82,6 +82,8 @@ Factory conventions:
 - Provide sensible defaults for all required fields
 - Accept overrides via spread
 
+Factories are for records that exist; use `Model.new()` when the spec's subject is an instance that deliberately has no row behind it — validation state before a save, or an identifier with no account.
+
 **Reused-enum placeholder.** When a model column reuses an existing enum (shorthand `name:enum:enum_type_name`, no inline values), the generator can't see the enum's values and emits a TS-rejecting `'TODO'` placeholder paired with a comment hint:
 
 ```typescript
