@@ -775,10 +775,21 @@ public phone: DreamColumn<User, 'encryptedPhone'>
 // Whereable type — `where({ phone: ... })` is a TS2353 compile error. This is
 // correct: the plaintext never exists in the database, and the stored ciphertext is
 // non-deterministic (a fresh IV per write), so even matching the raw `encryptedPhone`
-// column can't find a row by its plaintext value. For an existence/idempotency
-// check, fetch candidate rows by their queryable columns and compare the decrypted
-// property in memory. A true server-side equality lookup needs a separate
-// deterministic (blind-index) column you maintain yourself; Dream does not add one.
+// column can't find a row by its plaintext value, and no single-statement
+// compare-and-set `UPDATE ... WHERE` can filter on the value being replaced. For an
+// existence/idempotency check, fetch candidate rows by their queryable columns and
+// compare the decrypted property in memory. A true server-side equality lookup needs
+// a separate deterministic (blind-index) column you maintain yourself; Dream does not
+// add one.
+//
+// A column that needs both encryption and structured content uses the `:encrypted`
+// type (which generates a `text` backing column), not `:jsonb`. JSONB earns its place
+// by being queryable — GIN indexes, path operators, an index on `field->>'key'` — and
+// ciphertext is opaque, so none of that survives; what's left is a value you can only
+// read whole, which is what `text` gives you. Parse and stringify at the model layer
+// with a `@deco.Virtual` or a getter/setter pair. So the decision is whether the data
+// warrants encryption at all: if it does, `:encrypted` plus an accessor; if not, it
+// stays `jsonb` and keeps its query ergonomics.
 
 // Virtual — accepted by create(), update(), and extractParams() but not stored directly in DB.
 // Use getter/setter pairs to transform between the virtual and the actual DB column.
