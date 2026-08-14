@@ -663,6 +663,7 @@ OpenAPI request validation may reject invalid model params before model validati
 6. **Test authorization** - Verify users can only access their own resources
 7. **Test soft deletes by testing behavior** - Verify record is hidden (normal query) AND still present when scopes are removed
 8. **Use Polly** (`setupPolly`) for recording and replaying external API calls rather than stubbing
+9. **Spy on `AppEnv`, don't stub the environment** - To exercise an environment-dependent branch, spy on the accessor the code actually calls (`vi.spyOn(AppEnv, 'isTest', 'get').mockReturnValue(false)`) — app config is read through `AppEnv` ([Critical Rule 13](SKILL.md#critical-rules)), and `vi.stubEnv` also changes what Dream reads, including its test-database machinery
 
 ## Background Worker Testing
 
