@@ -82,6 +82,8 @@ Factory conventions:
 - Provide sensible defaults for all required fields
 - Accept overrides via spread
 
+Factories are for records that exist; use `Model.new()` when the spec's subject is an instance that deliberately has no row behind it — validation state before a save, or an identifier with no account.
+
 **Reused-enum placeholder.** When a model column reuses an existing enum (shorthand `name:enum:enum_type_name`, no inline values), the generator can't see the enum's values and emits a TS-rejecting `'TODO'` placeholder paired with a comment hint:
 
 ```typescript
@@ -108,8 +110,8 @@ export default async function createHostPlace(
   attrs: UpdateableProperties<HostPlace> = {}
 ) {
   return await HostPlace.create({
-    host: attrs.host ? null : await createHost(),
-    place: attrs.place ? null : await createPlace(),
+    host: attrs.host ?? (await createHost()),
+    place: attrs.place ?? (await createPlace()),
     ...attrs,
   })
 }
@@ -127,7 +129,7 @@ export default async function createBedroom(
   attrs: UpdateableProperties<Bedroom> = {}
 ) {
   return await Bedroom.create({
-    place: attrs.place ? null : await createPlace(),
+    place: attrs.place ?? (await createPlace()),
     bedTypes: ['queen'],
     ...attrs,
   })
@@ -140,16 +142,15 @@ When a model's AfterCreate hook automatically creates an associated record (e.g.
 
 ```typescript
 // BAD — creates a duplicate Guest, may violate unique constraint on userId
-export default async function createGuest(attrs = {}) {
+export default async function createGuest(attrs: UpdateableProperties<Guest> = {}) {
   return await Guest.create({ user: await createUser(), ...attrs })
 }
 
 // GOOD — returns the Guest auto-created by User's AfterCreate hook
-export default async function createGuest(attrs = {}) {
-  const user = attrs.user ? null : await createUser()
-  const userId = attrs.user?.id ?? user!.id
-  const guest = await Guest.findBy({ userId })
-  if (!guest) throw new Error(`Guest not found for userId ${userId}`)
+export default async function createGuest(attrs: UpdateableProperties<Guest> = {}) {
+  const user = attrs.user ?? (await createUser())
+  const guest = await Guest.findBy({ userId: user.id })
+  if (!guest) throw new Error(`Guest not found for userId ${user.id}`)
   return guest
 }
 ```
@@ -664,6 +665,7 @@ OpenAPI request validation may reject invalid model params before model validati
 6. **Test authorization** - Verify users can only access their own resources
 7. **Test soft deletes by testing behavior** - Verify record is hidden (normal query) AND still present when scopes are removed
 8. **Use Polly** (`setupPolly`) for recording and replaying external API calls rather than stubbing
+9. **Spy on `AppEnv`, don't stub the environment** - To exercise an environment-dependent branch, spy on the accessor the code actually calls (`vi.spyOn(AppEnv, 'isTest', 'get').mockReturnValue(false)`) — app config is read through `AppEnv` ([Critical Rule 13](SKILL.md#critical-rules)), and `vi.stubEnv` also changes what Dream reads, including its test-database machinery
 
 ## Background Worker Testing
 
@@ -725,7 +727,7 @@ describe('Host creates a Place', () => {
 
 ### The API server runs in-process — stub the backend boundary directly
 
-Feature specs start the `PsychicServer` inside the same Vitest worker as the test (the generated `spec/features/setup/hooks.ts` calls `server.start(...)` in `beforeAll`, then launches the browser). The browser talks to that server over `localhost:<port>`, but the server runs the *same module instances* the spec can see. So `vi.spyOn(SomeService, 'method')` and `vi.mock(...)` on backend modules intercept server-side code that runs while the browser drives the front end — exactly as in a unit or controller spec. There's no separate process and no IPC barrier.
+Feature specs start the `PsychicServer` inside the same Vitest worker as the test (the generated `spec/features/setup/hooks.ts` calls `server.start(...)` in `beforeAll`, then launches the browser). The browser talks to that server over `localhost:<port>`, but the server runs the *same module instances* the spec can see. So `vi.spyOn(SomeService, 'method')` on backend modules intercepts server-side code that runs while the browser drives the front end — exactly as in a unit or controller spec. There's no separate process and no IPC barrier. `vi.mock` is the exception: the setup file's static import of the app config pulls in `conf/routes.ts` and every controller a route file names as an argument (`r.get('/places', PlacesController, 'show')`), loading them before a spec's mock registry exists — so the mock is silently ignored and you spy on the runtime object instead. A controller only the boot-time loader reaches loads later and does get mocked, which is why the same `vi.mock` can be live on one route namespace and inert on another.
 
 This matters because a common (wrong) assumption is "a feature spec runs a real server I can't reach into, so I must use a live API key or record HTTP." Not so. To make a feature spec deterministic and offline, stub the backend boundary — an external API gateway, the clock, a third-party client — with `vi.spyOn` in the feature spec, the same way you would anywhere else. Reserve HTTP recording (Polly) for cases where you genuinely want to exercise the real client code path.
 

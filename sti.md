@@ -569,7 +569,7 @@ export default async function createBedroom(
   attrs: UpdateableProperties<Bedroom> = {}
 ) {
   return await Bedroom.create({
-    place: attrs.place ? null : await createPlace(),
+    place: attrs.place ?? (await createPlace()),
     bedTypes: ['queen'],
     ...attrs,
   })

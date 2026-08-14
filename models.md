@@ -775,10 +775,25 @@ public phone: DreamColumn<User, 'encryptedPhone'>
 // Whereable type — `where({ phone: ... })` is a TS2353 compile error. This is
 // correct: the plaintext never exists in the database, and the stored ciphertext is
 // non-deterministic (a fresh IV per write), so even matching the raw `encryptedPhone`
-// column can't find a row by its plaintext value. For an existence/idempotency
-// check, fetch candidate rows by their queryable columns and compare the decrypted
-// property in memory. A true server-side equality lookup needs a separate
-// deterministic (blind-index) column you maintain yourself; Dream does not add one.
+// column can't find a row by its plaintext value, and no single-statement
+// compare-and-set `UPDATE ... WHERE` can filter on the value being replaced. For an
+// existence/idempotency check, fetch candidate rows by their queryable columns and
+// compare the decrypted property in memory. A true server-side equality lookup needs
+// a separate deterministic (blind-index) column you maintain yourself; Dream does not
+// add one.
+//
+// A column that needs both encryption and structured content uses the `:encrypted`
+// type (which generates a `text` backing column), not `:jsonb`. JSONB earns its place
+// by being queryable — GIN indexes, path operators, an index on `field->>'key'` — and
+// ciphertext is opaque, so none of that survives; what's left is a value you can only
+// read whole. The encrypted column carries structured content directly — Dream
+// JSON-serializes the value on write and parses it on read, so the plaintext property
+// round-trips objects and arrays as-is, with no model-layer parse/stringify. The
+// generated declaration types the plaintext property from its `text` backing column
+// (`DreamColumn<Place, 'encryptedHouseRules'>`, i.e. `string | null`), so widen it by
+// hand to the structured type (`public houseRules: HouseRules | null`). So the
+// decision is whether the data warrants encryption at all: if it does, `:encrypted`;
+// if not, it stays `jsonb` and keeps its query ergonomics.
 
 // Virtual — accepted by create(), update(), and extractParams() but not stored directly in DB.
 // Use getter/setter pairs to transform between the virtual and the actual DB column.
@@ -921,11 +936,12 @@ The instance form works the same **regardless of the association's shape** — p
 
 **Filtering accepts an array of instances**, not just a single one — `where({ place: places })`, and likewise in `whereNot`/`whereAny` and the `and`/`andNot`/`andAny` of a join on-clause. A non-polymorphic key expands to a foreign-key `IN`; a polymorphic key groups the instances by type, turns each group into an id-`IN` plus type-match pair, and ORs the groups, so an id collision across types can never match the wrong row. This is query-only: `create`, `update`, and `findOrCreateBy` still take a single instance, because a list of parents is meaningless there.
 
-Three reasons this is the rule, not a preference:
+Four reasons this is the rule, not a preference:
 
 1. **Polymorphic filters are wrong without it.** `where({ localizableId: host.id })` constrains the id alone — it never sets `localizable_type`. With integer/serial primary keys a `Host` and a `Place` can share id `1`, so that query matches localized texts belonging to *both*. `where({ localizable: host })` adds `localizable_type = 'Host'` for you. (UUID keys hide the collision, but the id-only form is still incomplete.)
 2. **STI type strings resolve correctly.** Creating or filtering through an STI child records/matches the base type (`'Room'`). A hand-written `localizableType: 'Bathroom'` matches nothing, because the association is declared on the `Room` base — and nothing at the call site warns you.
 3. **Holding the instance means you loaded it.** The authorized way to obtain a record is to load it, usually through an association chain from `currentUser` that proves the current user may touch it. Passing the instance keeps that step in the code path; hand-assigning a raw id from a request param skips it.
+4. **Factories create an orphan from an id.** Generated factories guard on the association (`host: attrs.host ?? (await createHost())`) with `...attrs` spread after, so `createHostPlace({ hostId: host.id })` creates a second Host and then overwrites `hostId` with the one passed — a stray row and an extra insert per call, silently.
 
 In a **controller this is effectively absolute** (see [controllers.md — `extractParams`](controllers.md#extractparams)): an id or type that arrives in a param is untrusted, verifying it means loading the record through an authorized association chain, and once you have done that you hold the instance — so you use it. There is no path where you legitimately hold a verified id but not the instance.
 
@@ -951,6 +967,8 @@ user.hasChanges('email')          // false
 ```
 
 `changedAttributes()` works before the first save too. `User.new({ name: 'Alice' })` marks `name` dirty immediately, so `changedAttributes()` is populated on the unpersisted instance.
+
+A persisted instance with nothing dirty issues no `UPDATE` on `save()` or `update()` and leaves `updatedAt` unstamped — `update({})`, or an `update()` assigning values equal to the current ones, is a no-op rather than a touch. Re-assigning the same plaintext to an `@deco.Encrypted()` property is always a real write: each assignment re-encrypts to fresh ciphertext. Before-save hooks and validations still run first, so a hook that dirties the record turns it back into a real write.
 
 For an `@deco.Encrypted()` field, `changedAttributes()` reports the persisted `encrypted<Name>` key, not the plaintext virtual property. `getAttribute('<plaintext>')` returns `undefined` — it isn't the decrypting accessor; `getAttribute('encrypted<Name>')` returns ciphertext. Read the decrypted value via the instance property (`instance.<plaintext>`) — see [Encrypted](#special-decorators) above.
 
@@ -1009,6 +1027,16 @@ Like `findOrCreateBy`, but attempts to create first. Relies on a **unique constr
 const user = await User.createOrFindBy(
   { email: 'how@yadoin' },
   { createWith: { name: 'Chalupa Joe' } }
+)
+```
+
+On the unique-violation fallback, `createOrFindBy` and `createOrUpdateBy` both re-find with that same first argument, so it must hold exactly the unique index's attributes and nothing more — an extra attribute narrows the lookup, and if the submitted value differs from the stored row the re-find comes back empty and `CreateOrFindByFailedToCreateAndFind` / `CreateOrUpdateByFailedToCreateAndUpdate` turns the duplicate case into a 500. Everything else goes in `createWith` — except a field carrying its own unique constraint: any unique violation lands in the same fallback, and the first argument can't identify the row that field collided with.
+
+```typescript
+// unique index on (place_id, guest_id, check_in_month)
+const booking = await Booking.createOrFindBy(
+  { place, guest, checkInMonth },
+  { createWith: { nights: 3 } }
 )
 ```
 
@@ -1118,7 +1146,7 @@ await doWork(user)
 
 Both `Model.txn(null)` (class-level) and `instance.txn(null)` (instance-level) work the same way.
 
-**Restrictions inside transactions:** Methods that rely on foreign key violations to function (`createOrFindBy`, `createOrUpdateBy`) cannot be used inside a transaction. Use their transaction-safe counterparts (`findOrCreateBy`, `updateOrCreateBy`) instead. See the [find-or-create methods](#find-or-create-and-upsert-methods) table for details.
+**Restrictions inside transactions:** Methods that rely on unique-constraint violations to function (`createOrFindBy`, `createOrUpdateBy`) cannot be used inside a transaction. Use their transaction-safe counterparts (`findOrCreateBy`, `updateOrCreateBy`) instead. See the [find-or-create methods](#find-or-create-and-upsert-methods) table for details.
 
 **Background jobs and transactions:** When queuing background work from a Dream lifecycle hook, always use the `Commit` variant of the hook (e.g., `@deco.AfterCreateCommit` instead of `@deco.AfterCreate`). This applies to backgrounded services, model instance backgrounding, and indirect helper methods that enqueue jobs. Regular hooks run inside the transaction, so the worker may execute before the transaction commits and either miss a newly-created row or read stale persisted data after an update. This also applies to imperative `background()` calls from services with a `txn` parameter — see [workers.md](workers.md) for both forms.
 
