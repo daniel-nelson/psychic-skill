@@ -207,7 +207,8 @@ Because it goes through `findEach`, a default (non-`skipHooks`) query update alw
 `.update()` resolves to the number of rows it updated. Under `{ skipHooks: true }` the filter
 and the write are one `UPDATE ... WHERE` statement, so a filtered update is a compare-and-set
 claim: a `0` return means another writer got there first. The default form updates each matched
-record separately, so its count says how many rows changed, not that you won a race.
+record separately, so its count is how many records it visited and wrote through — one already
+holding the incoming values still counts — not that you won a race.
 
 ```typescript
 // Claim a pending booking exactly once, even under concurrent requests
