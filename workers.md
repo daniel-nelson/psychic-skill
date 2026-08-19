@@ -499,6 +499,8 @@ The mode also decides which `backgroundJobConfig` routing key a service can use,
 
 A workstream is a BullMQ queue with its own set of workers. Most apps only need the default workstream, but named workstreams are useful for isolating specific work (e.g., external API calls that need rate limiting).
 
+The workstream's `name` does three jobs at once: it names the Redis queue, it is the routing key a service passes as `backgroundJobConfig.workstream`, and it becomes the `group.id` of that workstream's workers — which is why assigning a service to a workstream moves its priority onto `group.priority` (see [Priority Levels](#priority-levels)).
+
 Configure in `conf/initializers/workers.ts`:
 
 ```typescript
@@ -511,12 +513,14 @@ workersApp.set('background', {
   namedWorkstreams: [
     {
       name: 'Intercom',
-      workerCount: 1,
+      workerCount: 1,  // the default; concurrency defaults to 10
     },
   ],
   // ...
 })
 ```
+
+A named workstream can also carry its own `queueConnection` and `workerConnection`, each falling back to the app-wide `defaultQueueConnection` / `defaultWorkerConnection`. Those two keys are what actually place a workstream on a separate Redis instance or cluster node; without them every workstream shares the default connection, and the isolation is only in queue and worker counts.
 
 After adding a named workstream, run `pnpm psy sync` to update types. Then assign services to the workstream via `backgroundJobConfig`:
 
@@ -551,6 +555,26 @@ workersApp.set('background', {
   ],
 })
 ```
+
+### Transitional Workstreams
+
+When moving background work to a different Redis instance, `transitionalWorkstreams` keeps the old one drained. It takes the same simple-mode keys — its own connections, `defaultWorkstream` and `namedWorkstreams` — describing the legacy Redis:
+
+```typescript
+workersApp.set('background', {
+  defaultQueueConnection: bookingRedis,
+  defaultWorkerConnection: bookingRedis,
+  namedWorkstreams: [{ name: 'BookingReminders' }],
+
+  transitionalWorkstreams: {
+    defaultQueueConnection: legacyRedis,
+    defaultWorkerConnection: legacyRedis,
+    namedWorkstreams: [{ name: 'BookingReminders' }],
+  },
+})
+```
+
+Psychic builds queues and workers for the transitional config, so jobs already sitting in the legacy Redis keep being worked. Transitional workstream names are not written into the generated types, so nothing can be routed to them — `backgroundJobConfig.workstream` reaches only the top-level workstreams, and every newly enqueued job goes to the new instance. Remove the key once the legacy queues are empty.
 
 ## Native BullMQ Mode
 
