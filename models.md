@@ -567,6 +567,12 @@ public removeFromSearchIndex(this: Place) { ... }
 
 **Gating on an encrypted field.** When the gated field is an `@deco.Encrypted` field, list the persisted column name `encrypted<Name>` in `ifChanged` (e.g. `ifChanged: ['encryptedPhone']`), not the plaintext virtual (`phone`). `ifChanged` is typed over the real persisted columns (`DreamColumnNames`); setting the virtual marks the underlying `encrypted<Name>` column dirty, which is what change detection sees.
 
+### Hook order around a `dependent: 'destroy'` cascade
+
+A destroy runs the record's own `beforeDestroy` hooks **first**, then the `dependent: 'destroy'` cascade, then `afterDestroy` — so a `beforeDestroy` on `Place` still sees its `Room` records present, and an `afterDestroy` sees them gone. Work that must read, count, or archive the children belongs in `beforeDestroy`; work that assumes they are already deleted belongs in `afterDestroy`, which still runs inside the destroy's transaction.
+
+`undestroy()` goes the other way: the deepest descendants are restored first and the record itself last. A child's `afterUpdate` therefore runs while its parent still carries a non-null `deletedAt`, so an association read back to the parent through the parent's own default scopes finds nothing. Read it with `.removeAllDefaultScopes()`, or move the work to the parent's `afterUpdate`, which runs after the whole cascade.
+
 ## Validations
 
 ```typescript
@@ -735,6 +741,7 @@ export default class Place extends ApplicationModel { ... }
 public position: DreamColumn<Room, 'position'>
 // Requires deferrable unique constraint in migration
 // Under @SoftDelete, the position column must be nullable — see soft-delete.md#sortable-position-columns
+// Inside a transaction, a sortable write MUST be bound with .txn(txn) — see Transactions below
 
 // Encrypted - auto encrypt/decrypt
 @deco.Encrypted()
@@ -1103,6 +1110,8 @@ Two ways to start a transaction:
 If the callback throws, the entire transaction rolls back.
 
 **Every model operation inside a transaction must be explicitly bound via `.txn(txn)`.** This includes creates, updates, destroys, queries, association operations — everything. If you forget `.txn(txn)`, the operation runs outside the transaction and won't roll back on failure.
+
+On a `@deco.Sortable` model the omission is worse than a lost rollback. A sortable write computes its position under a lock on its sort scope, so an unbound `room.destroy()` inside a `Place` transaction opens a second transaction on another connection and waits on a lock the enclosing transaction is holding. Only one side is waiting, so Postgres's deadlock detector never sees it: the call hangs until `sortableScopeLockTimeout` expires, then throws `SortableScopeLockWaitTimedOut`. That error advises retrying; a retry cannot help here — add the missing `.txn(txn)`.
 
 ```typescript
 // Class-level transaction

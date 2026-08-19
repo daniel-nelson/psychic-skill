@@ -217,6 +217,7 @@ export default class Bedroom extends Room {
 - Children **cannot use `@SoftDelete()`** - must be on the parent
 - Children **cannot use `@ReplicaSafe()`** - must be on the parent
 - Children **cannot use `@Sortable()`** - must be on the parent. If you need position sorting scoped per STI type, declare `@Sortable` on the base model with `type` in the scope array (e.g., `scope: ['place', 'type']`)
+- STI is **exactly one level deep**: `@STI()` always names the base, even when the TypeScript `extends` chain is deeper. `class Bunkroom extends Bedroom` must still be decorated `@STI(Room)`. `@STI(Bedroom)` compiles and imports, then fails silently: `Bedroom.all()` matches only rows whose `type` is exactly `'Bedroom'`, and `Bunkroom` never joins `Room`'s child list, so it is invisible to `preloadFor` and to the generated OpenAPI.
 - Children can override `get serializers()` (and should)
 - Children can add child-specific **physical** columns (they live on the shared parent table). **Virtual attributes behave differently** — a child's `@deco.Virtual` does not filter up to the base class; see [Virtual attributes don't filter up to the base class](#virtual-attributes-dont-filter-up-to-the-base-class).
 
@@ -328,6 +329,8 @@ export const RoomForGuestsSerializer = <T extends Room>(
 ```
 
 The three STI-load-bearing parts — the `StiChildClass` parameter, `DreamSerializer(StiChildClass ?? Room, room)`, and the `type` attribute whose OpenAPI `enum` is `[(StiChildClass ?? Room).sanitizedName]` — are exactly what a plain serializer lacks. Each child serializer then calls the variant with its concrete class (`RoomForGuestsSerializer(Kitchen, kitchen, passthrough)`), which is what narrows that child's rendered `type` to a single-value enum (`['Kitchen']`) and binds the serializer to the child's columns.
+
+**Register the variant on every child.** The generated schema lists a table's serializer keys as the intersection across the models sharing it, so `forGuests` reaches `Room`'s `DreamSerializerKey` only once all five children register it. The type error lands on `Room.preloadFor('forGuests')`; the fix is on the child that lacks the key. Add it to every child, then `pnpm psy sync`.
 
 **Why it matters / what breaks:** the per-child single-value `type` enum is the discriminator that makes the generated OpenAPI a discriminated union, so clients and `fastJsonStringify` know which child shape they received. Drop the `type` attribute (or write the variant in the plain non-STI shape) and every child collapses to one indistinguishable schema. The failure is silent in a unit spec — direct serializer rendering still looks correct — and only shows up over HTTP: under `fastJsonStringify` the response omits child-specific fields. When you see that exact symptom (direct render correct, HTTP response missing STI child fields), suspect a hand-written serializer that lost the `type`/`StiChildClass` shape or the resulting OpenAPI schema — not Dream model instantiation or `preloadFor`.
 

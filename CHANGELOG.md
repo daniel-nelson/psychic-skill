@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.80.0 — 2026-08-18
+
+### Added
+
+- **`sti.md`** — a new STI limitation: STI is exactly one level deep, so `@STI()` always names the base even when the TypeScript `extends` chain is deeper. A `class Bunkroom extends Bedroom` decorated `@STI(Bedroom)` compiles and imports, then fails silently — `Bedroom.all()` matches only rows whose `type` is exactly `'Bedroom'`, and `Bunkroom` never joins `Room`'s child list, so it is invisible to `preloadFor` and to the generated OpenAPI.
+- **`sti.md`** — the hand-added base-serializer variant section states that the variant must be registered on every child: a table's serializer keys are the intersection across the models sharing it, so a `forGuests` key reaches `Room`'s `DreamSerializerKey` only once all five children register it. The type error lands on the base's `preloadFor` call while the fix lives on the child that lacks the key.
+- **`models.md`** — a new "Hook order around a `dependent: 'destroy'` cascade" subsection: `beforeDestroy` runs before the cascade and `afterDestroy` after it, so work that must read or archive the children belongs in `beforeDestroy`. `undestroy()` restores the deepest descendants first, so a child's `afterUpdate` runs while its parent still carries a non-null `deletedAt` and an association read back through the parent's default scopes finds nothing — read it with `.removeAllDefaultScopes()` or move the work to the parent's own `afterUpdate`.
+- **`models.md`** — the Transactions section names what a missing `.txn(txn)` costs on a `@deco.Sortable` model: the unbound write opens a second transaction and waits on a scope lock the enclosing transaction holds, which no deadlock detector can see, so the call hangs until `sortableScopeLockTimeout` expires and throws `SortableScopeLockWaitTimedOut`. That error advises retrying, and a retry cannot help. The `@deco.Sortable` decorator block points at it.
+- **`querying.md`** — preload conditions attach to the association rather than to the chain: several preload chains reaching one association share a single condition node, so a later chain repeating a key overwrites it and a later chain carrying no conditions inherits the earlier chain's.
+
+### Changed
+
+- **`SKILL.md`** — ecosystem version baseline: `@rvoh/dream` to 2.28.x (the other four packages unchanged).
+
 ## 0.79.0 — 2026-08-13
 
 ### Added

@@ -418,6 +418,8 @@ const users = await User.preload('posts', {
 }).all()
 ```
 
+Conditions attach to the association, not to the chain: when several preload chains reach one association, they share a single condition node. A later chain that repeats a key (`and` / `andNot` / `andAny`) overwrites it, and a later chain carrying no conditions still inherits the earlier chain's. Set an association's conditions in one place.
+
 #### Constraints on a required `BelongsTo` are forbidden
 
 A condition object on a **non-optional** `BelongsTo` (the default) is a **compile error** in the hydrating loaders — `preload`, `load`, `leftJoinPreload`, and `leftJoinLoad`. A constraint could filter the parent row out and leave the slot null, breaking the non-nullable field the OpenAPI spec promises for a required `BelongsTo`:
