@@ -216,8 +216,9 @@ BullMQ relies on thrown exceptions to detect failure. A caught-and-not-rethrown 
 
 - No failed-job marker in BullMQ
 - No automatic retry
-- No alerting hook fires
 - The work is silently lost and only discoverable by reading worker logs
+
+Throwing is how the job reports that it did not finish — it is not how the app tells a human. BullMQ's `failed` set is job state, not a notification system. Alerting is the app's own concern: send the event to your error-reporting service — Sentry, for instance — from the code that detects the problem, rather than routing it through the queue to surface as a side effect.
 
 ```typescript
 // WRONG — log-and-continue inside a backgrounded service
