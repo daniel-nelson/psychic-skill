@@ -876,7 +876,7 @@ This is distinct from `@deco.Virtual`: a virtual backs a property that is not a 
 
 So input arriving through `create` / `update` / extracted params is transformed, while internal hydration (loading a row from the DB) writes raw and is never double-transformed.
 
-A `{ skipHooks: true }` query update without `lock` — `Booking.where(…).update(attrs, { skipHooks: true })` — never instantiates a model, so no setter runs at all: the attribute names go into the `UPDATE` as given and the transform is silently skipped. The instance form, `instance.update(attrs, { skipHooks: true })`, is unaffected — it assigns through `assignAttributes`, so custom setters still run; `skipHooks` there means hooks, not setters.
+A `{ skipHooks: true }` query update without `lock` — `Booking.where(…).update(attrs, { skipHooks: true })` — never instantiates a model, so no setter runs at all: the attribute names go into the `UPDATE` as given and the transform is silently skipped. Naming an `@deco.Encrypted` column's backing column here throws unless the value is `null`, since nothing on this path encrypts it — write through the plaintext property instead, or pass `lock: true`; `null` is how this path clears the column. The instance form, `instance.update(attrs, { skipHooks: true })`, is unaffected — it assigns through `assignAttributes`, so custom setters still run; `skipHooks` there means hooks, not setters.
 
 ## Creating and Updating
 
