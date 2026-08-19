@@ -248,6 +248,8 @@ public static async importAll(records: Record[]) {
 
 If your motivation for adding a catch is "I want to be resilient to one bad input out of many", the right answer is **separate background jobs per input**. A try/catch loop inside a single job that fakes per-iteration success gives up the retry property entirely.
 
+The one catch that carries a named, justified reason is a narrow one matching a single expected error type, where the service takes over the retry itself — see [App-Owned Retry Budgets](#app-owned-retry-budgets).
+
 ## Fanning Out Background Jobs for Very Large Record Sets
 
 When you need to background work across a very large number of records (hundreds of thousands to millions), don't enqueue all individual jobs up front. Creating a million jobs at once has several problems:
@@ -636,6 +638,39 @@ defaultBullMQQueueOptions: {
 This config is sent directly to BullMQ and can be customized in `conf/initializers/workers.ts`.
 
 **This is why using `find` instead of `findOrFail` matters in background jobs.** If a record has been deleted and the job uses `findOrFail`, the thrown error triggers 20 retries over 6 days — all of which will also fail, wasting resources. Using `find` and returning early when the record is `null` allows the job to exit cleanly.
+
+### App-Owned Retry Budgets
+
+When one job's expected failure is worth retrying, but not twenty times over six days — an external service billed per attempt, say — the service owns the budget itself instead of reaching for a config knob. The implementation method takes an `attempt` argument defaulting to `1`, catches its one expected error, and re-enqueues itself with the count incremented while it is under the threshold:
+
+```typescript
+export class PlaceGeocodingService extends ApplicationBackgroundedService {
+  public static async geocodePlace(place: Place) {
+    await this.background('_geocodePlace', place.id)
+  }
+
+  public static async _geocodePlace(placeId: string, attempt: number = 1) {
+    const place = await Place.find(placeId)
+    if (!place) return
+
+    try {
+      await Geocoder.locate(place) // billed per call
+    } catch (error) {
+      if (!(error instanceof GeocoderUnavailableError)) throw error
+
+      if (attempt < 3) {
+        await this.backgroundWithDelay({ minutes: 5 * attempt }, '_geocodePlace', placeId, attempt + 1)
+      } else {
+        // report the exhausted failure to the app's error-reporting service
+      }
+    }
+  }
+}
+```
+
+The counter belongs on the `_` implementation method, never on the public entry point — it is internal bookkeeping, and callers keep writing `await PlaceGeocodingService.geocodePlace(place)`. `background` and `backgroundWithDelay` are variadic and typed off the backgrounded method's own signature, so the extra parameter typechecks and serializes. The count travels in the job arguments, so nothing is persisted and nothing is read back from BullMQ.
+
+This is the narrow catch [Never Rescue Exceptions Inside Backgrounded Services](#never-rescue-exceptions-inside-backgrounded-services) allows: it matches one expected error type and rethrows everything else, so an unexpected failure still propagates and still gets the full app-wide budget. Because the expected failure ends in a completed job, BullMQ's own retry never engages for it, and `backgroundWithDelay` sets the spacing between tries.
 
 ## Job Logging
 
