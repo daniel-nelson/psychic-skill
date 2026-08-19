@@ -39,7 +39,7 @@ export class IntercomSyncService extends ApplicationBackgroundedService {
 
   // Optional: configure priority and/or workstream
   public static override get backgroundJobConfig() {
-    return { priority: 'not_urgent', workstream: 'Intercom' }
+    return { workstream: 'Intercom' }
   }
 }
 
@@ -332,6 +332,8 @@ The priority of each backgrounded service/model is customizable via `backgroundJ
 type BackgroundQueuePriority = 'urgent' | 'default' | 'not_urgent' | 'last'
 // Maps to BullMQ numeric priority: 1 (urgent), 2 (default), 3 (not_urgent), 4 (last)
 ```
+
+**Priority ordering and workstreams are an either/or without a BullMQ Pro license.** When a `backgroundJobConfig` sets a `workstream` (or a `groupId`), the priority number is written to the job's `group.priority` instead of the top-level `priority`, and open-source BullMQ ignores `group.priority` — group priority is a BullMQ Pro surface. So a service gets workstream isolation or priority ordering, not both, unless the app runs the `QueuePro`/`WorkerPro` providers.
 
 ```typescript
 export class FileImportService extends ApplicationBackgroundedService {
