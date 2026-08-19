@@ -198,9 +198,7 @@ large "bulk" updates can be N+1 unless you explicitly choose `skipHooks`.
 
 Of the query-level writers, only `update(attrs, { skipHooks: true })` and `delete()` bypass the model
 entirely; `destroy` and `undestroy` instantiate each record even under `skipHooks`, so custom setters
-still run there. That makes the bulk update the one query path that can put plaintext into an
-`@deco.Encrypted` column — see
-[models.md — Transforming a column on write](models.md#transforming-a-column-on-write).
+still run there.
 
 Because it goes through `findEach`, a default (non-`skipHooks`) query update always visits matched records in ascending primary-key order and ignores any `order` you applied to the query — see [Batch Processing](models.md#batch-processing) for why `findEach` can't honor an arbitrary order.
 
