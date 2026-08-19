@@ -554,7 +554,7 @@ workersApp.set('background', {
 
 ### Transitional Workstreams
 
-When moving background work to a different Redis instance, `transitionalWorkstreams` keeps the old one drained. It takes the same simple-mode keys — its own connections, `defaultWorkstream` and `namedWorkstreams` — describing the legacy Redis:
+Moving background work to a different Redis instance strands whatever the old one still holds: repoint the app's connections and nothing is attached to work those jobs. `transitionalWorkstreams` describes the legacy topology alongside the current one — the same `defaultWorkstream` / `namedWorkstreams` shape, with its own connections — so Psychic builds queues and workers for both.
 
 ```typescript
 workersApp.set('background', {
@@ -570,7 +570,7 @@ workersApp.set('background', {
 })
 ```
 
-Psychic builds queues and workers for the transitional config, so jobs already sitting in the legacy Redis keep being worked. Transitional workstream names are not written into the generated types, so nothing can be routed to them — `backgroundJobConfig.workstream` reaches only the top-level workstreams, and every newly enqueued job goes to the new instance. Remove the key once the legacy queues are empty.
+Workers attach to the legacy queues and work them down, while enqueueing reaches only the top-level workstreams, so every new job lands on the new instance. The old side can only drain, never be added to, which is what makes the cutover finish. Delete the key once those queues are empty.
 
 ## Native BullMQ Mode
 
