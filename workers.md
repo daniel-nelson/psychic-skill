@@ -184,7 +184,7 @@ public async notifyCreation(this: Place) {
 
 ### Imperative Form: Never Enqueue from Inside an Active Transaction
 
-The same race applies to **services** that take a `txn` parameter and call `background()` directly. BullMQ is not transactional with Postgres — anything you enqueue from inside an open transaction is visible to workers immediately, but the records you just created via `txn(txn).create(...)` are not yet visible to other connections. The worker dequeues, calls `Model.find(id)`, gets `null`, and silently returns success. The job is marked complete, no retry, no alerting, data stranded.
+The same race applies to **services** that take a `txn` parameter and call `background()` directly. BullMQ is not transactional with Postgres — anything you enqueue from inside an open transaction is visible to workers immediately, but the records you just created via `txn(txn).create(...)` are not yet visible to other connections. The worker dequeues, calls `Model.find(id)`, gets `null`, and silently returns success. The job is marked complete, no retry, data stranded.
 
 ```typescript
 // WRONG — bgjob races the transaction commit
@@ -210,7 +210,7 @@ await PhotoProcessingService.background('process', photoId)
 
 ## Never Rescue Exceptions Inside Backgrounded Services
 
-Inside any class extending `ApplicationBackgroundedService` or `ApplicationBackgroundedModel`, the bar for adding a `try/catch` is much higher than [SKILL.md rule #13](SKILL.md). The default is **no catch, ever**, and you need a named, justified reason to deviate.
+Inside any class extending `ApplicationBackgroundedService` or `ApplicationBackgroundedModel`, the bar for adding a `try/catch` is much higher than [Critical Rule 14](SKILL.md#critical-rules). The default is **no catch, ever**, and you need a named, justified reason to deviate.
 
 BullMQ relies on thrown exceptions to detect failure. A caught-and-not-rethrown error inside a backgrounded method causes the job to be marked successful, which means:
 
