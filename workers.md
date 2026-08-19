@@ -477,6 +477,19 @@ End-of-week works the same way, with the user's chosen end-of-week day folded in
 
 In `NODE_ENV=test` with the default `testInvocation: 'automatic'`, `schedule(...)`, `background(...)`, and `backgroundWithDelay(...)` all invoke the underlying method immediately and synchronously — the delay is ignored (see the [Testing Workers](#testing-workers) section). A spec that calls any of them executes the work with no queue flush needed. The flip side: any environment guard inside the method (e.g. `if (serverEnvironment !== 'production') return`) also fires in tests, so a guarded method needs a `force`-style override to be exercised in a spec. Switching to `testInvocation: 'manual'` (see [Manual Mode](#manual-mode)) queues jobs instead of running them inline, requiring an explicit `WorkerTestUtils.work()` to process them.
 
+## Two Configuration Modes
+
+`workersApp.set('background', { ... })` accepts one of two mutually exclusive shapes:
+
+- **Simple (workstream) mode** — Psychic builds the queues and workers from a workstream description. Selected by omitting `nativeBullMQ`; this is what the boilerplate ships, and what every other configuration example in this file uses.
+- **Native BullMQ mode** — you hand Psychic raw BullMQ queue and worker options per queue, and it does little beyond constructing them and wiring the job handler. Selected by supplying `nativeBullMQ` — even `nativeBullMQ: {}` selects it.
+
+The options type is an `Either`, so the two key sets exclude one another: supplying `nativeBullMQ` types `defaultWorkstream`, `namedWorkstreams` and `transitionalWorkstreams` as `never`, and supplying any of those types `nativeBullMQ` as `never`. There is no mixing them.
+
+Legal in **both** modes: `providers`, `defaultBullMQQueueOptions`, `defaultBullMQWorkerOptions`, `defaultQueueConnection`, `defaultWorkerConnection`. Their required-ness differs — simple mode requires `defaultQueueConnection`, and requires the `defaultWorkerConnection` *key* even when its value is `undefined` (omitting the key is a type error); native mode makes both optional, since a connection can instead be supplied per queue.
+
+The mode also decides which `backgroundJobConfig` routing key a service can use, because `pnpm psy sync` generates the routing unions from whichever mode is configured: simple mode populates workstream names, so services route with `workstream`; native mode populates the queue/group map, so services route with `queue` and `groupId`. `priority` is legal in both. `BackgroundJobConfig` is itself an `Either` — `workstream` is never combinable with `queue`/`groupId`.
+
 ## Named Workstreams
 
 A workstream is a BullMQ queue with its own set of workers. Most apps only need the default workstream, but named workstreams are useful for isolating specific work (e.g., external API calls that need rate limiting).
@@ -533,6 +546,73 @@ workersApp.set('background', {
   ],
 })
 ```
+
+## Native BullMQ Mode
+
+Native mode is for apps that need to hand BullMQ its own options per queue — a distinct Redis instance or cluster node per queue, or BullMQ Pro group settings Psychic's workstream shape does not express. Queues are declared by name, and workers are declared separately against those names:
+
+```typescript
+workersApp.set('background', {
+  defaultQueueConnection: bookingRedis,
+  defaultWorkerConnection: !AppEnv.boolean('WORKER_SERVICE') ? undefined : bookingWorkerRedis,
+
+  nativeBullMQ: {
+    defaultQueueOptions: {
+      defaultJobOptions: { attempts: 20, backoff: { type: 'exponential', delay: 1000 } },
+    },
+    defaultWorkerCount: parseInt(process.env.WORKER_COUNT || '0'),
+    defaultWorkerOptions: { concurrency: 100 },
+
+    namedQueueOptions: {
+      BookingNotifications: {
+        queueConnection: notificationsRedis,
+        workerConnection: notificationsWorkerRedis,
+      },
+    },
+
+    namedQueueWorkers: {
+      BookingNotifications: { workerCount: 1, concurrency: 10 },
+    },
+  },
+})
+```
+
+Run `pnpm psy sync` after changing the queue names, then route a service to one:
+
+```typescript
+export class BookingNotificationService extends ApplicationBackgroundedService {
+  public static get backgroundJobConfig(): BackgroundJobConfig<ApplicationBackgroundedService> {
+    return { queue: 'BookingNotifications' }
+  }
+}
+```
+
+The options under `nativeBullMQ`:
+
+| Option | Effect |
+|---|---|
+| `defaultQueueOptions` | BullMQ `QueueOptions` for the default queue, with `connection` replaced by `queueConnection`/`workerConnection` (see below). Spread over `defaultBullMQQueueOptions`. |
+| `defaultWorkerCount` | How many default workers to create. Defaults to `1`. |
+| `defaultWorkerOptions` | BullMQ `WorkerOptions` for the default workers, spread over `defaultBullMQWorkerOptions`. Worker *count* comes from `defaultWorkerCount`, not from a `workerCount` here. |
+| `namedQueueOptions` | One queue per key; the key is the queue name and the value is that queue's `QueueOptions`. |
+| `namedQueueWorkers` | Worker options per named queue, keyed by the same queue name. `workerCount` defaults to `1`; a `group.id` here is what makes that value legal in `backgroundJobConfig.groupId`. |
+
+Sharp edges specific to this mode:
+
+- **A queue in `namedQueueOptions` with no matching key in `namedQueueWorkers` gets zero workers.** The queue is created and accepts jobs; nothing ever works them. There is no warning and no error — jobs simply accumulate in Redis. Every named queue needs an entry in both maps.
+- **A `namedQueueWorkers` key with no matching `namedQueueOptions` key is silently ignored**, since the worker map is only consulted while iterating the queue map.
+- **A named queue's `defaultJobOptions` replaces the app-wide bag rather than merging with it.** The two option objects are combined with one shallow spread, and `defaultJobOptions` is a single key — so a queue that sets `defaultJobOptions: { attempts: 3 }` drops the app-wide `backoff`, `removeOnComplete` and `removeOnFail` entirely. Restate every key you still want.
+- **There is no concurrency default here.** Simple mode forces `concurrency: 10` on every worker it builds; native mode writes no `concurrency` at all, so BullMQ's own default applies unless you set it in `defaultWorkerOptions`, `defaultBullMQWorkerOptions`, or a `namedQueueWorkers` entry.
+- **The default queue cannot be named in `backgroundJobConfig.queue`** — only queues declared in `namedQueueOptions` appear in the generated union. Target the default queue by omitting `queue`.
+
+### Connections in native mode
+
+Connections are `Redis`/`Cluster` *instances*, and a named queue's **worker** connection is configured on that queue's `namedQueueOptions` entry, not on its `namedQueueWorkers` entry. Both sides fall back in the same order:
+
+- Queue: `namedQueueOptions[name].queueConnection` → `nativeBullMQ.defaultQueueOptions.queueConnection` → `defaultQueueConnection`.
+- Worker: `namedQueueOptions[name].workerConnection` → `nativeBullMQ.defaultQueueOptions.workerConnection` → `defaultWorkerConnection`.
+
+If no queue connection resolves at any level, connecting throws regardless of whether workers are being activated — and because `pnpm psy sync` connects to background in order to generate types, that failure surfaces at sync time, not only at boot. A missing *worker* connection throws only when workers are activated.
 
 ## Automatic Retry
 
