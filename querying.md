@@ -196,6 +196,12 @@ raw bulk SQL update with no hooks or validations. This distinction matters in bo
 directions: hook-enforced invariants are still enforced by default query updates, and
 large "bulk" updates can be N+1 unless you explicitly choose `skipHooks`.
 
+`update(attrs, { skipHooks: true })` and `delete()` are the only query-level writers that bypass the
+model entirely; `destroy`, `undestroy` and `createOrFindBy` instantiate each record even under
+`skipHooks`, so custom setters still run there. Because the bulk update writes the columns it is
+given as given, it can put plaintext into an `@deco.Encrypted` column — see
+[models.md — Transforming a column on write](models.md#transforming-a-column-on-write).
+
 Because it goes through `findEach`, a default (non-`skipHooks`) query update always visits matched records in ascending primary-key order and ignores any `order` you applied to the query — see [Batch Processing](models.md#batch-processing) for why `findEach` can't honor an arbitrary order.
 
 `.update()` resolves to the number of rows it updated. Under `{ skipHooks: true }` the filter
