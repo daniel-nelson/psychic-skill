@@ -723,7 +723,7 @@ The `Job` parameter is optional and always comes last. Job logs are accessible t
 
 ## Worker Configuration
 
-The full worker configuration lives in `conf/initializers/workers.ts`:
+Worker configuration lives in `conf/initializers/workers.ts`. This is the simple-mode shape a typical app runs:
 
 ```typescript
 import os from 'os'
@@ -774,6 +774,8 @@ export default (workersApp: PsychicAppWorkers) => {
   })
 }
 ```
+
+Two more keys belong in this block and are not shown above. `defaultBullMQWorkerOptions` is the app-wide worker-options bag spread into every worker Psychic builds — the counterpart to `defaultBullMQQueueOptions` — though in simple mode a `concurrency` or `connection` placed inside it is always overwritten by the workstream's own value. `transitionalWorkstreams` drains a Redis instance the app is moving off of (see [Transitional Workstreams](#transitional-workstreams)). An app configured the other way replaces `defaultWorkstream` and `namedWorkstreams` wholesale with `nativeBullMQ` (see [Native BullMQ Mode](#native-bullmq-mode)).
 
 ### Redis TLS
 
