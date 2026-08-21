@@ -194,7 +194,7 @@ records with `findEach`, calls instance `.update()` on each one, and runs per-re
 hooks and validations. Pass `{ skipHooks: true }` only when you intentionally want one
 raw bulk SQL update with no hooks or validations. This distinction matters in both
 directions: hook-enforced invariants are still enforced by default query updates, and
-large "bulk" updates can be N+1 unless you explicitly choose `skipHooks`.
+large "bulk" updates issue one `UPDATE` per matched row unless you explicitly choose `skipHooks`.
 
 Of the query-level writers, only `update(attrs, { skipHooks: true })` and `delete()` bypass the model
 entirely; `destroy` and `undestroy` instantiate each record even under `skipHooks`, so custom setters
