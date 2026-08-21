@@ -262,16 +262,18 @@ When you need to background work across a very large number of records (hundreds
 The idiomatic pattern is a **two-level fan-out** using `pluckEach` and priority levels:
 
 1. A kickoff job uses `pluckEach` to pluck IDs in batches (default batch size is 1000).
-2. For each batch, it enqueues an **expander job** (priority `not_urgent`) with just that batch of IDs.
-3. Each expander job iterates its batch and enqueues an **individual worker job** (priority `default`) per ID.
+2. For each batch, it enqueues an **expander job** (priority `last`) with just that batch of IDs.
+3. Each expander job iterates its batch and enqueues an **individual worker job** (priority `not_urgent`) per ID.
 4. Each individual worker job loads the record and does the real work.
 
-Because expanders run at `not_urgent` priority, they only claim worker slots when no `default`-priority individual jobs are pending. With 10 workers, that means at most ~10 batches are expanded at a time (producing ~10,000 individual jobs in flight), and the individual jobs are drained before more batches are expanded. The queue depth stays bounded regardless of the total record count.
+Keep both tiers of the fan-out below `default`. A bulk run's individual jobs vastly outnumber ordinary application work, and if they run at `default` priority they compete directly with it — routine, more-important-than-bulk jobs queue up behind however many thousand photos are left to reprocess. Bulk work belongs entirely under `not_urgent`/`last` so it only fills otherwise-idle worker slots.
+
+Because expanders run at `last` priority, they only claim worker slots when no `not_urgent`-priority individual jobs are pending. With 10 workers, that means at most ~10 batches are expanded at a time (producing ~10,000 individual jobs in flight), and the individual jobs are drained before more batches are expanded. The queue depth stays bounded regardless of the total record count. Expander jobs are also infrequent relative to individual jobs — one per 1000 IDs — so sharing the `last` tier with a [check-in/heartbeat job](#priority-levels) doesn't starve it outright; it just interleaves.
 
 ```typescript
 export default class ReprocessAllPhotosService extends ApplicationBackgroundedService {
   public static override get backgroundJobConfig() {
-    return { priority: 'not_urgent' as const }
+    return { priority: 'last' as const }
   }
 
   // Step 1: kickoff — iterates the table in batches and enqueues one expander per batch
@@ -291,7 +293,7 @@ export default class ReprocessAllPhotosService extends ApplicationBackgroundedSe
     if (batch.length > 0) await this.background('_expandBatch', batch)
   }
 
-  // Step 2: expander — fans the batch into individual high-priority jobs
+  // Step 2: expander — fans the batch into individual worker jobs
   public static async _expandBatch(ids: string[]) {
     for (const id of ids) {
       await PhotoProcessingService.processOne(id)
@@ -301,7 +303,7 @@ export default class ReprocessAllPhotosService extends ApplicationBackgroundedSe
 
 export default class PhotoProcessingService extends ApplicationBackgroundedService {
   public static override get backgroundJobConfig() {
-    return { priority: 'default' as const }
+    return { priority: 'not_urgent' as const }
   }
 
   // Step 3: individual worker — loads the record and does the actual work
@@ -320,7 +322,11 @@ export default class PhotoProcessingService extends ApplicationBackgroundedServi
 Key points:
 
 - **`pluckEach` selects only the `id` column** — no hydration, minimal memory.
-- **Priorities create natural backpressure.** Expanders (`not_urgent`) yield to individual jobs (`default`), so the in-flight count of individual jobs never exceeds roughly `worker_count * concurrency * batch_size`.
+- **Priorities create natural backpressure.** Expanders (`last`) yield to individual jobs (`not_urgent`), so the in-flight count of individual jobs never exceeds roughly `worker_count * concurrency * batch_size`.
+- **The expander and individual-worker services must route to the same queue.** Priority is only meaningful within a single BullMQ queue: jobs in different queues have separate worker pools and never compete for the same slots, so putting expanders and individual jobs on different queues silently defeats the backpressure — each queue just drains independently, and you're back to unbounded fan-out.
+- **To isolate this fan-out to its own queue** (keeping it off the default queue entirely, e.g. so it can't crowd out unrelated default-queue work even at `not_urgent`/`last`):
+  - **Open-source BullMQ** — route both services to the same **native-mode** `queue`, not a named **`workstream`**. A `workstream` sets that job's BullMQ `group.id` to the workstream name, which moves `priority` into `group.priority` instead of the top-level field — and open-source BullMQ silently ignores `group.priority` (it's a BullMQ Pro-only feature), so the expander/individual backpressure stops working with no error or warning. A native-mode `queue` (with no `groupId` set) keeps `priority` top-level and the backpressure intact.
+  - **BullMQ Pro** — a named `workstream` works fine instead, *because* Pro honors `group.priority`, so isolation and backpressure both hold. Pro is also the only way to rate-limit the individual jobs against an external dependency (see [Rate Limiting (BullMQ Pro)](#rate-limiting-bullmq-pro)) — worth adopting for a bulk job that calls a rate-limited API or otherwise needs to throttle pressure on a shared resource (the database included), since `not_urgent`/`last` priority only affects worker-slot ordering, not the rate of requests once a job is running.
 - **If the kickoff is interrupted,** only the expanders already enqueued will run, and if the kickoff job itself is retried it will re-pluck from the beginning — but because each individual job is independent and idempotent (via the `find`/early-return pattern), re-runs are safe.
 - **Individual jobs still follow the standard rule of passing IDs, not model instances.** Hydrate inside `_processOne`.
 
@@ -343,7 +349,7 @@ export class FileImportService extends ApplicationBackgroundedService {
 }
 ```
 
-Use `last` for check-in/heartbeat jobs (e.g., Dead Man's Snitch) so they only run after all other work is processed, giving confidence that the queue is healthy.
+Use `last` for check-in/heartbeat jobs (e.g., Dead Man's Snitch) so they only run after all other work is processed, giving confidence that the queue is healthy. Keep bulk work — like the [fan-out pattern](#fanning-out-background-jobs-for-very-large-record-sets) — off `default`, so a large bulk run doesn't hold up genuinely important application jobs at that tier.
 
 ## Scheduled/Cron Jobs
 
