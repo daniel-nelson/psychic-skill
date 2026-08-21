@@ -180,11 +180,13 @@ Query-level write methods also exist and are easy to miss:
 // Update matching records — loads each record and calls instance update(), running lifecycle hooks and validations
 await LocalizedText.where({ localizable: host, locale: 'en-US' }).update({ title: 'New Title' })
 
-// Update in a single SQL call (skips lifecycle hooks)
+// Suppress the callback lifecycle — one UPDATE ... WHERE, no model instantiated, no hooks or validations
 await LocalizedText.where({ localizable: host, locale: 'en-US' }).update({ title: 'New Title' }, { skipHooks: true })
 
-// Delete matching records
-await Tag.where({ post }).delete()
+// Single DELETE statement — bypasses the model: no hooks, no `dependent: 'destroy'`
+// cascade (database-level FK cascades still fire), and no soft delete, so the rows are
+// permanently gone even on a `@SoftDelete()` model. Use `destroy()` when you want those.
+await LocalizedText.where({ localizable: host }).delete()
 ```
 
 When you hold the associated instance, filter by it — `where({ localizable: host })`, not `where({ localizableId: host.id })`. For a polymorphic association this is a correctness fix, not just style: the id-only form omits `localizable_type`, so it matches rows across every type that shares that id. Passing the instance sets both columns (and resolves an STI child to its base type). See [models.md — Passing associations](models.md#passing-associations-use-the-instance-not-the-foreign-key) for the full rule and its exceptions.
@@ -193,23 +195,35 @@ Query-level `.update()` is not Rails `update_all`: by default it iterates the ma
 records with `findEach`, calls instance `.update()` on each one, and runs per-record
 hooks and validations. Pass `{ skipHooks: true }` only when you intentionally want one
 raw bulk SQL update with no hooks or validations. This distinction matters in both
-directions: hook-enforced invariants are still enforced by default query updates, and
-large "bulk" updates can be N+1 unless you explicitly choose `skipHooks`.
+directions: hook-enforced invariants are still enforced by default query updates, and a
+default update issues one `UPDATE` per matched row.
+
+**`skipHooks` is the bulk path, and its price is the lifecycle.** It is the idiomatic way to write
+many rows in one SQL statement — there is no other, short of dropping to `toKysely()` for the same
+statement. What it removes is the callback lifecycle, so before reaching for it, establish that the
+model's hooks carry no business logic that applies to *this* write — the safety judgment is per
+write, not per model: a hook guarding `status` transitions makes a bulk `status` write unsafe to
+skip, but says nothing about a bulk write to an unrelated column on the same model. When the hooks
+do apply, the fix is not to skip them: keep the default per-record update, or narrow the query.
+
+Of the query-level writers, only the no-`lock` `update(attrs, { skipHooks: true })` and `delete()`
+bypass the model entirely; `destroy`, `reallyDestroy`, and `undestroy` instantiate each record even
+under `skipHooks`, so default scopes and the `dependent: 'destroy'` cascade still apply. (With
+`lock: true`, `skipHooks` also stays on the per-instance path — hooks skipped, custom setters still
+run; see [locking.md](locking.md).)
 
 Because it goes through `findEach`, a default (non-`skipHooks`) query update always visits matched records in ascending primary-key order and ignores any `order` you applied to the query — see [Batch Processing](models.md#batch-processing) for why `findEach` can't honor an arbitrary order.
 
-`.update()` resolves to the number of rows it updated. Under `{ skipHooks: true }` the filter
-and the write are one `UPDATE ... WHERE` statement, so a filtered update is a compare-and-set
-claim: a `0` return means another writer got there first. The default form updates each matched
-record separately, so its count says how many rows changed, not that you won a race.
+`.update()` resolves to the number of records it wrote. The default form updates each matched record
+separately, so its count is how many records it visited and wrote through — one already holding the
+incoming values still counts. Under `{ skipHooks: true }` the filter and the write are one
+`UPDATE ... WHERE` statement and the count is the rows that statement matched.
 
-```typescript
-// Claim a pending booking exactly once, even under concurrent requests
-const claimed = await Booking.where({ id: booking.id, status: 'pending' })
-  .update({ status: 'confirmed' }, { skipHooks: true })
-
-if (claimed === 0) return this.conflict()   // someone else already confirmed it
-```
+When the value being written depends on a value just read — claiming a record out of a state, so a
+concurrent writer must not clobber the result — reach for `{ lock: true }`, the compare-and-set that
+keeps the lifecycle. The single-statement `{ skipHooks: true }` form is also a compare-and-set — its
+one `UPDATE ... WHERE` re-checks the conditions under each row's lock — but choosing it is choosing
+to skip the hooks, per the rule above. See [locking.md](locking.md).
 
 ### Range Predicates
 

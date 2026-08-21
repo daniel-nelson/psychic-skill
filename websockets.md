@@ -14,8 +14,9 @@ Psychic Websockets provides real-time communication via **Socket.IO** with Redis
 
 ```typescript
 // conf/initializers/websockets.ts
-import { allowRequestForOrigins, allowedCorsOrigins } from '@rvoh/psychic-websockets'
-import resolveWebsocketUser from '../system/resolveWebsocketUser.js'
+import AppEnv from '@conf/AppEnv.js'
+import allowedCorsOrigins from '@conf/system/allowedCorsOrigins.js'
+import resolveWebsocketUser from '@conf/system/resolveWebsocketUser.js'
 
 export default (psy: PsychicApp) => {
   // PsychicAppWebsockets initializes in all processes by default. Any process —
@@ -31,20 +32,31 @@ export default (psy: PsychicApp) => {
 }
 
 function initializeWebsockets(wsApp: PsychicAppWebsockets) {
-  // Redis connection
-  wsApp.set('connection', new Redis({
-    host: process.env.REDIS_HOST,
-    port: Number(process.env.REDIS_PORT),
-    maxRetriesPerRequest: null,
-  }))
+  // Redis connection — the adapter default outside test. This connection issues no
+  // blocking commands, so it must bound retries: `maxRetriesPerRequest: null` belongs
+  // only on the BullMQ worker connection, and here it makes a broadcast or registry
+  // lookup (e.g. a worker-process emit) hang forever when Redis is unreachable.
+  if (!AppEnv.isTest) {
+    wsApp.set('connection', new Redis({
+      host: AppEnv.string('WS_REDIS_HOST', { optional: true }) || 'localhost',
+      port: AppEnv.integer('WS_REDIS_PORT', { optional: true }) || 6379,
+      maxRetriesPerRequest: 3,
+      commandTimeout: 10000,
+    }))
+  }
 
-  // Socket.IO options — `allowRequest` enforces an origin allowlist on the handshake
-  // across BOTH long-polling and native WebSocket transports. Socket.IO's own
-  // `cors.origin` only applies to long-polling, so use `allowRequestForOrigins` here
-  // to close the gap.
+  // Socket.IO options — socket.io's own `cors.origin` constrains HTTP long-polling only;
+  // native WebSocket upgrades bypass CORS. `allowRequest` runs before every handshake on
+  // every transport, so re-enforce the allowlist there (and add any auth-token check).
+  const allowedOrigins = allowedCorsOrigins()
   wsApp.set('socketio', {
     transports: ['websocket', 'polling'],
-    allowRequest: allowRequestForOrigins(allowedCorsOrigins()),
+    cors: { credentials: true, origin: allowedOrigins },
+    allowRequest: (req, callback) => {
+      const origin = req.headers.origin
+      if (origin !== undefined && allowedOrigins.includes(origin)) callback(null, true)
+      else callback('origin not allowed', false)
+    },
   })
 
   // Health check endpoint
@@ -99,7 +111,7 @@ The "fail loudly in dev" ergonomic is intentional — if auth isn't wired up, no
 `ws:error` is the ws-layer analogue of `server:error` — the point to forward a framework-contained websocket failure to your monitoring SDK (Sentry, Datadog). Register it alongside `ws:start` and `ws:connect`, with the same positional signature `(error, context)`:
 
 ```typescript
-// conf/websockets.ts
+// inside initializeWebsockets, in conf/initializers/websockets.ts
 wsApp.on('ws:error', (error, context) => {
   if (context.phase === 'ws:connect') {
     // a ws:connect hook threw; context.socketId identifies the socket
@@ -126,15 +138,15 @@ Two properties worth knowing:
 
 ### Origin allowlist
 
-`allowRequestForOrigins(origins: string[])` returns a socket.io `allowRequest` handler that rejects handshakes whose `Origin` header isn't in the allowlist. Wire it via `wsApp.set('socketio', { allowRequest: ... })` (shown above).
+The allowlist lives in the app. `conf/system/allowedCorsOrigins.ts` parses the `CORS_HOSTS` env var, and the websockets initializer closes over its result inside `allowRequest` (shown above) — that inline body is also where you layer an auth-token check onto the handshake.
 
-`allowedCorsOrigins()` reads the `CORS_HOSTS` environment variable, which must be a JSON-encoded array of origins:
+`CORS_HOSTS` must be a JSON-encoded array of origins:
 
 ```bash
 CORS_HOSTS='["https://app.example.com","https://admin.example.com"]'
 ```
 
-If `CORS_HOSTS` is malformed JSON, the helper throws `CORS_HOSTS must be a JSON-encoded array of origins` at boot. Override the env-parsing strategy by passing a different array to `allowRequestForOrigins(...)` directly.
+It defaults to `[]` when unset, so an app booted without it rejects every handshake. Malformed JSON throws at boot, naming `CORS_HOSTS` and echoing what it received.
 
 ## Emitting Messages
 
@@ -184,7 +196,8 @@ wsApp.on('ws:start', io => {
 ```typescript
 // ws.ts (separate process)
 import { Cable } from '@rvoh/psychic-websockets'
-import initializePsychicApp from './src/cli/helpers/initializePsychicApp.js'
+import AppEnv from '@conf/AppEnv.js'
+import initializePsychicApp from '@conf/system/initializePsychicApp.js'
 
 let cable: Cable | null = null
 
@@ -193,7 +206,7 @@ async function startWs() {
   await initializePsychicApp()
 
   cable = new Cable()
-  await cable.start(Number(process.env.WS_PORT || 8888))
+  await cable.start(AppEnv.integer('WS_PORT', { optional: true }) || (AppEnv.isTest ? 8889 : 8888))
 }
 
 process.on('SIGINT', async () => {
@@ -258,10 +271,4 @@ const socket = io(websocketHost, {
 
 ## Plugin Registration
 
-```typescript
-// conf/app.ts or initializePsychicApp.ts
-import { PsychicAppWebsockets } from '@rvoh/psychic-websockets'
-import websocketsConf from '../../conf/websockets.js'
-
-await PsychicAppWebsockets.init(psychicApp, websocketsConf)
-```
+`conf/initializers/websockets.ts` is auto-loaded by `psy.load('initializers', …)` in `conf/app.ts`, and its default export registers the plugin itself (see [Configuration](#configuration)). Nothing needs wiring in `initializePsychicApp`.

@@ -490,7 +490,7 @@ public async create() {
 
 ### Request body size limits
 
-`koa-bodyparser` defaults to `jsonLimit: '1mb'` and `formLimit: '56kb'`. Requests larger than these reject with a 413 before reaching the action. Override via `psy.set('json', { ... })` in `conf/app.ts`:
+`@koa/bodyparser` caps request bodies via `jsonLimit` and `formLimit`. A request over the limit rejects with a 413 before reaching the action. Override via `psy.set('json', { ... })` in `conf/app.ts`:
 
 ```typescript
 psy.set('json', {
@@ -499,7 +499,7 @@ psy.set('json', {
 })
 ```
 
-See the [koa-bodyparser README](https://github.com/koajs/bodyparser) for the full option surface. Tune to the largest legitimate payload your endpoints accept; DoS protection against oversized payloads belongs at the edge (see [Rate Limiting](#rate-limiting) above), not at the body-parser layer.
+See the [@koa/bodyparser README](https://github.com/koajs/bodyparser) for the full option surface. Tune to the largest legitimate payload your endpoints accept; DoS protection against oversized payloads belongs at the edge (see [Rate Limiting](#rate-limiting) below), not at the body-parser layer.
 
 ### castParam Types
 
@@ -833,20 +833,20 @@ One important STI nuance: when `@OpenAPI(BaseModel, ...)` documents an STI-dispa
 
 #### Worked example — UPDATE with a nullable FK
 
-The most-mistaken case: an `update` action whose body needs to express "the FK can be set or cleared." Reach for `including`, not `combining` — column nullability is inferred from the model's `@deco.BelongsTo('ZipCode', { optional: true })` declaration.
+The most-mistaken case: an `update` action whose body needs to express "the FK can be set or cleared." Reach for `including`, not `combining` — column nullability is inferred from the model's `@deco.BelongsTo('City', { optional: true })` declaration.
 
 ```typescript
-// `@deco.BelongsTo('ZipCode', { optional: true })` on Venue makes zipCodeId nullable.
-// `including: ['zipCodeId']` advertises the FK in the OpenAPI shape with the right nullability.
-// Don't reach for `combining: { zipCodeId: ['string', 'null'] }` — `combining` shadows the
+// `@deco.BelongsTo('City', { optional: true })` on Place makes cityId nullable.
+// `including: ['cityId']` advertises the FK in the OpenAPI shape with the right nullability.
+// Don't reach for `combining: { cityId: ['string', 'null'] }` — `combining` shadows the
 // model-derived shape with a hand-typed copy that drifts.
-@OpenAPI(Venue, {
+@OpenAPI(Place, {
   status: 204,
-  tags: ['venues'],
-  requestBody: { params: ['name'], including: ['zipCodeId'] },
+  tags: ['places'],
+  requestBody: { params: ['name'], including: ['cityId'] },
 })
 public async update() {
-  await (await this.venue()).update(this.extractParams(Venue, ['name', 'zipCodeId']))
+  await (await this.place()).update(this.extractParams(Place, ['name', 'cityId']))
   this.noContent()
 }
 ```

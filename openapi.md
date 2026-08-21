@@ -112,23 +112,7 @@ Gating `responseBody` on `AppEnv.isTest` validates responses under test without 
 
 ### syncTypes
 
-When `syncTypes` is true, Psychic reads the spec with `openapi-typescript` and generates TypeScript interfaces from it. Use those to type response bodies in tests via the `OpenapiResponseBody` utility.
-
-```typescript
-psy.set('openapi', {
-  outputFilepath: path.join('src', 'openapi', 'openapi.json'),
-  syncTypes: true,
-})
-```
-
-```typescript
-import { openapiPaths } from '@src/types/openapi.js'
-
-it('returns posts', async () => {
-  const res = await request.get('/posts', 200)
-  const body = res.body as OpenapiResponseBody<openapiPaths, '/posts', 'get', 200>
-})
-```
+When `syncTypes` is true, `pnpm psy sync` runs the spec through `openapi-typescript` and writes one declaration file per synced spec to `src/types/openapi/<spec-json-basename>.d.ts` — e.g. `src/types/openapi/tests.openapi.d.ts` — each exporting a `paths` type. The boilerplate sets it only on the `tests` spec; see [The tests spec](#the-tests-spec).
 
 ### The long tail
 
@@ -210,7 +194,7 @@ Defaults fill a status only when nothing above already set it, and the conf merg
 
   ```typescript
   // a truly public GET — drop the auth defaults, re-add the ones it can still return
-  @OpenAPI(Listing, {
+  @OpenAPI(Place, {
     omitDefaultResponses: true,
     responses: {
       404: { $ref: '#/components/responses/NotFound' },

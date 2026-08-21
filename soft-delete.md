@@ -145,31 +145,9 @@ await place.reallyDestroyAssociation('rooms', { and: { name: 'my room' } })
 
 `reallyDestroy()` cascades through this record's `dependent: 'destroy'` associations, hard-deleting each one (depth-first, children before the parent) rather than soft-deleting it — and it bypasses the `dream:SoftDelete` default scope while loading that cascade, so children already soft-deleted are loaded and hard-deleted too. A `restrict`-FK child that isn't reachable through a `dependent: 'destroy'` association is never loaded or touched by the cascade: if such a row still references the parent, `reallyDestroy()` throws a foreign-key violation rather than deleting it.
 
-### Guarded (compare-and-set) destroy
-
-Plain `destroy()`/`reallyDestroy()` on a query read the matching records and then destroy each one. A concurrent writer can change a record in that window — moving it out of the set the query originally matched — and it gets destroyed anyway. Pass `lock: true` to close that window:
-
-```typescript
-const destroyed = await Booking.where({ status: 'pending' }).destroy({ lock: true })
-// 0 — someone else already moved every matching booking out of 'pending'
-```
-
-Records are processed in batches; each batch re-selects its rows with an exclusive row lock (`FOR UPDATE OF`) inside its own transaction before destroying them. A record another transaction has already moved out of the query drops out of the locked read and is left alone. The returned count is the number of records actually claimed, so a caller can detect a lost race by comparing it to what it expected.
-
-Four things to keep in mind:
-
-- **The guarantee is per batch, not set-wide.** A run spanning more than one batch can win the race in one batch and lose it in another — nothing holds the whole matched set still for the duration of the run. For all-or-nothing across the whole set, wrap the call in `ApplicationModel.transaction(...)` and thread it through with `.txn(txn)` (see [models.md — Transactions](models.md#transactions)):
-
-  ```typescript
-  await ApplicationModel.transaction(async txn => {
-    await Booking.txn(txn).where({ status: 'pending' }).destroy({ lock: true })
-  })
-  ```
-
-  Every batch then shares that transaction and holds its locks until you commit, at the cost of blocking for the whole run.
-- **`batchSize` defaults to 10 under `lock`**, not the 1000 `findEach` and unlocked `destroy`/`reallyDestroy` use. Every record in a batch stays locked for that batch's full destroy-hook and `dependent: 'destroy'` cascade duration, so an oversized batch blocks unrelated writers touching those rows. Lower `batchSize` further for models with deep cascades or expensive destroy hooks.
-- **This is not a bulk-delete accelerator — it's the opposite.** If you're destroying a large set and don't need compare-and-set, pass no `lock` option; plain `destroy()` or `.delete()` are the right tools for that.
-- **`lock` lives on the query**, not on an instance — `Booking.where(...).destroy({ lock: true })` or `Booking.query().destroy({ lock: true })`. There's no instance-level equivalent, and none is needed: destroying a single already-loaded instance has no select-then-destroy window to close.
+`destroy()` and `reallyDestroy()` accept `{ lock: true }`, which makes the destroy a guarded
+(compare-and-set) removal. That is a concurrency concern rather than a soft-delete one — see
+[locking.md](locking.md).
 
 ## Cascading
 

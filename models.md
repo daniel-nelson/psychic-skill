@@ -549,12 +549,12 @@ export default class SeedDefaultRooms {
 
 ```typescript
 @deco.AfterCreateCommit()
-public sendWelcomeEmail(this: User) {
+public async sendWelcomeEmail(this: User) {
   await EmailService.background('sendWelcome', this.id)
 }
 
 @deco.AfterUpdateCommit({ ifChanged: ['status'] })
-public notifyStatusChange(this: Place) {
+public async notifyStatusChange(this: Place) {
   await NotificationService.background('statusChanged', this.id)
 }
 
@@ -876,7 +876,7 @@ This is distinct from `@deco.Virtual`: a virtual backs a property that is not a 
 
 So input arriving through `create` / `update` / extracted params is transformed, while internal hydration (loading a row from the DB) writes raw and is never double-transformed.
 
-A `{ skipHooks: true }` query update — `Booking.where(…).update(attrs, { skipHooks: true })` — never instantiates a model, so no setter runs at all: the attribute names go into the `UPDATE` as given and the transform is silently skipped. The instance form, `instance.update(attrs, { skipHooks: true })`, is unaffected — it assigns through `assignAttributes`, so custom setters still run; `skipHooks` there means hooks, not setters.
+A `{ skipHooks: true }` query update — `Booking.where(…).update(attrs, { skipHooks: true })` — never instantiates a model, so no setter runs at all: the attribute names go into the `UPDATE` as given and the transform is silently skipped. Naming an `@deco.Encrypted` column's backing column here throws unless the value is `null`. To update an encrypted column, use a path that instantiates the model — a plain query update, or `{ lock: true }` (with or without `skipHooks`) — and write through the encrypted property. The instance form, `instance.update(attrs, { skipHooks: true })`, is unaffected — it assigns through `assignAttributes`, so custom setters still run; `skipHooks` there means hooks, not setters.
 
 ## Creating and Updating
 
@@ -913,10 +913,13 @@ await user.update({ name: 'Updated' }, { skipHooks: true })
 - `update()` accepts attributes, applies them, and persists — it also persists any attributes previously assigned via `=`
 - On an unpersisted instance (`User.new()`), both `save()` and `update({})` will create the record
 
-Query-level updates also run instance hooks by default: `User.where(...).update(attrs)`
-loads each matched record and calls instance `.update()` on it. It is not a single
-bulk SQL update unless you pass `{ skipHooks: true }`, which bypasses hooks and
-validations.
+Query-level updates run instance hooks by default: `User.where(...).update(attrs)`
+iterates the matched records and calls instance `.update()` on each, so the cost is one
+`UPDATE` per matched row. `{ skipHooks: true }` collapses that to one SQL statement, at the
+price of the callback lifecycle — pay it only when the hooks carry no business logic that
+applies to the attributes being written. See
+[querying.md — Query-object methods](querying.md#query-object-methods) for when it is
+warranted, and [locking.md](locking.md) for guarding a read-then-write.
 
 ## Passing associations: use the instance, not the foreign key
 
@@ -978,8 +981,6 @@ user.hasChanges('email')          // false
 A persisted instance with nothing dirty issues no `UPDATE` on `save()` or `update()` and leaves `updatedAt` unstamped — `update({})`, or an `update()` assigning values equal to the current ones, is a no-op rather than a touch. Re-assigning the same plaintext to an `@deco.Encrypted()` property is always a real write: each assignment re-encrypts to fresh ciphertext. Before-save hooks and validations still run first, so a hook that dirties the record turns it back into a real write.
 
 For an `@deco.Encrypted()` field, `changedAttributes()` reports the persisted `encrypted<Name>` key, not the plaintext virtual property. `getAttribute('<plaintext>')` returns `undefined` — it isn't the decrypting accessor; `getAttribute('encrypted<Name>')` returns ciphertext. Read the decrypted value via the instance property (`instance.<plaintext>`) — see [Encrypted](#special-decorators) above.
-
-To force a write against the row's current database state regardless of the loaded instance's in-memory value (for example, resetting a field that another writer may have changed), use a query-level update (`Booking.where({ id }).update({ ... })`) or call `instance.reload()` *before* assigning the field(s) you're about to force-write — `reload()` overwrites every attribute on the instance from the database, so calling it after other unsaved changes on the same instance discards them too. The default (non-`skipHooks`) query-level `.update()` isn't a single bulk `UPDATE`: it loads and updates matching rows one at a time via `findEach`, running model hooks per row — fine when the `where` matches one row, as above, but an N+1 pattern if applied more broadly; pass `{ skipHooks: true }` for the actual single-statement bulk path. Either form is still a read-then-write with an open race window, not a compare-and-set guarantee — if genuine concurrency safety against another writer is the goal, see the `lock: true` pattern in [soft-delete.md's "Guarded (compare-and-set) destroy"](soft-delete.md#guarded-compare-and-set-destroy).
 
 ## Batch Processing
 

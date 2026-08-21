@@ -251,7 +251,7 @@ When building a family of serializers around a key (e.g., `'summary'`, `'interna
 Flattening merges a `rendersOne` association's attributes directly into the parent response (instead of nesting them under a key). This is useful when a model wants to present a HasOne or BelongsTo association's data as if it were part of itself.
 
 ```typescript
-.rendersOne('candidate', { serializerKey: 'summary', flatten: true })
+.rendersOne('guest', { serializerKey: 'summary', flatten: true })
 ```
 
 ### Attribute Shadowing
@@ -268,26 +268,26 @@ Flattening merges a `rendersOne` association's attributes directly into the pare
 **Fix 1 (preferred when the shadowing attribute from the flattened association is not needed):** Create a dedicated flattenable serializer that omits the conflicting attribute (e.g., `id`). Build the default serializer from the flattenable serializer, adding the omitted attribute back. This changes the normal composition pattern where the default serializer extends the summary serializer, so some attributes may need to be duplicated.
 
 ```typescript
-// CandidateSerializers
-export const CandidateSummarySerializer = (candidate: Candidate) =>
-  DreamSerializer(Candidate, candidate)
+// GuestSerializers
+export const GuestSummarySerializer = (guest: Guest) =>
+  DreamSerializer(Guest, guest)
     .attribute('id')
     .attribute('name')
 
-export const FlattenableCandidateSerializer = (candidate: Candidate) =>
-  DreamSerializer(Candidate, candidate)
+export const FlattenableGuestSerializer = (guest: Guest) =>
+  DreamSerializer(Guest, guest)
     .attribute('name')
     .attribute('bio')
 
-export const CandidateSerializer = (candidate: Candidate) =>
-  FlattenableCandidateSerializer(candidate)
+export const GuestSerializer = (guest: Guest) =>
+  FlattenableGuestSerializer(guest)
     .attribute('id')
 
-// ClientSerializer — flattens candidate data without the candidate's id
-export const ClientSerializer = (client: Client) =>
-  DreamSerializer(Client, client)
+// BookingSerializer — flattens guest data without the guest's id
+export const BookingSerializer = (booking: Booking) =>
+  DreamSerializer(Booking, booking)
     .attribute('id')
-    .rendersOne('candidate', { serializer: FlattenableCandidateSerializer, flatten: true })
+    .rendersOne('guest', { serializer: FlattenableGuestSerializer, flatten: true })
 ```
 
 **Fix 2 (preferred when the shadowed attribute from the parent is not needed — common for join models):** Simply omit the shadowed attribute from the parent serializer. This is typical when the parent is a join model (e.g., `HostPlace`) where the join model's own `id` is not useful to the consumer, and the real identity is the flattened association's `id`.
@@ -305,9 +305,9 @@ const HostPlaceSerializer = (hostPlace: HostPlace) =>
 When a serializer uses flattening, controller specs should assert the serialized API contract, not the raw model shape:
 
 ```typescript
-// If ClientSerializer flattens candidate data and exposes:
-//   - client's id as 'id' would be shadowed, so client omits it or renames it
-//   - candidate's 'id', 'name', 'bio' flattened into the response
+// If BookingSerializer flattens guest data and exposes:
+//   - booking's id as 'id' would be shadowed, so booking omits it or renames it
+//   - guest's 'id', 'name', 'bio' flattened into the response
 // Then specs should assert against the serialized shape, not model property names
 ```
 
@@ -344,13 +344,13 @@ When a model has virtual attributes that are only populated in certain contexts 
 This avoids OpenAPI response validation failures when the virtuals are undefined in other actions (e.g., show/index).
 
 ```typescript
-// DocumentSerializer.ts — base serializer omits context-specific fields
-export const PlacePhotoSerializer = (PlacePhoto: PlacePhoto) =>
-  PlacePhotoSummarySerializer(PlacePhoto)
+// serializers/Place/PhotoSerializer.ts — base serializer omits context-specific fields
+export const PlacePhotoSerializer = (placePhoto: PlacePhoto) =>
+  PlacePhotoSummarySerializer(placePhoto)
 
 // Create-specific serializer adds upload fields only present after creation
-export const PlacePhotoCreateSerializer = (PlacePhoto: PlacePhoto) =>
-  PlacePhotoSerializer(PlacePhoto)
+export const PlacePhotoCreateSerializer = (placePhoto: PlacePhoto) =>
+  PlacePhotoSerializer(placePhoto)
     .attribute('uploadUrl')
     .attribute('uploadHeaders')
 ```
@@ -358,7 +358,7 @@ export const PlacePhotoCreateSerializer = (PlacePhoto: PlacePhoto) =>
 Register the action-specific serializer under its own key:
 
 ```typescript
-// Document.ts model
+// models/Place/Photo.ts
 public get serializers(): DreamSerializers<PlacePhoto> {
   return {
     default: 'Place/PhotoSerializer',
@@ -370,11 +370,11 @@ public get serializers(): DreamSerializers<PlacePhoto> {
 Use that key in the controller action:
 
 ```typescript
-// DocumentsController.ts
+// controllers/V1/Host/Places/PhotosController.ts
 @OpenAPI(PlacePhoto, { status: 201, serializerKey: 'create' })
 public async create() {
   // ... creation logic that populates uploadUrl/uploadHeaders ...
-  this.created(Document)
+  this.created(placePhoto)
 }
 ```
 
@@ -623,18 +623,18 @@ src/app/serializers/
   LocalizedTextSerializer.ts  # LocalizedTextSerializer
 ```
 
-## N+1 Prevention
+## Unloaded associations throw
 
-Serializers are **synchronous by design** - they cannot make database queries. This forces you to preload all needed data upfront:
+Serializers are **synchronous by design** — they cannot make database queries, so everything a serializer renders has to be loaded before `this.ok(...)`:
 
 ```typescript
 // CORRECT: Preload before serializing
 const places = await Place.preloadFor('forGuests').all()
 this.ok(places)  // Serializer accesses already-loaded associations
 
-// WRONG: Would cause N+1 (serializers can't query)
+// WRONG: rendering an unloaded association throws NonLoadedAssociation
 const places = await Place.all()
-this.ok(places)  // Associations not loaded -> empty/missing data
+this.ok(places)
 ```
 
 ## Sync After Serializer Changes
