@@ -223,6 +223,15 @@ const claimed = await Booking.where({ id: booking.id, status: 'pending' })
 if (claimed === 0) return this.conflict()   // someone else already confirmed it
 ```
 
+When the claim has to run hooks, custom setters, or a write through an `@deco.Encrypted` property, pass `{ lock: true }` rather than reaching for `skipHooks`:
+
+```typescript
+const claimed = await Booking.where({ id: booking.id, status: 'pending' })
+  .update({ status: 'confirmed' }, { lock: true })
+```
+
+Each batch re-selects its rows under an exclusive row lock inside its own transaction before writing, so a record another writer has moved out of the query drops out of the locked read and is left alone, and the count is the records actually claimed. The batching and locking caveats are the destroy form's — see [soft-delete.md's "Guarded (compare-and-set) destroy"](soft-delete.md#guarded-compare-and-set-destroy).
+
 ### Range Predicates
 
 Dream's `range` helper from `@rvoh/dream/utils` is accepted in `where` clauses for bounded comparisons on supported scalar columns, including `CalendarDate`, `DateTime`, `ClockTime`, and `ClockTimeTz` columns. Use it when a single column has a natural lower and/or upper bound. If named comparison operators make the query easier to read, use `ops` instead.
