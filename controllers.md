@@ -499,7 +499,7 @@ psy.set('json', {
 })
 ```
 
-See the [@koa/bodyparser README](https://github.com/koajs/bodyparser) for the full option surface. Tune to the largest legitimate payload your endpoints accept; DoS protection against oversized payloads belongs at the edge (see [Rate Limiting](#rate-limiting) above), not at the body-parser layer.
+See the [@koa/bodyparser README](https://github.com/koajs/bodyparser) for the full option surface. Tune to the largest legitimate payload your endpoints accept; DoS protection against oversized payloads belongs at the edge (see [Rate Limiting](#rate-limiting) below), not at the body-parser layer.
 
 ### castParam Types
 
