@@ -334,6 +334,8 @@ export default function routes(r: PsychicRouter) {
 
 **Before you add soft delete to an existing model, query soft-deleted rows, or build a `dependent: 'destroy'` chain, read [soft-delete.md](soft-delete.md).** It owns the setup, the `restrict`-not-`cascade` FK rule, `undestroy` / `reallyDestroy`, and the `removeDefaultScope` vs `removeAllDefaultScopes` distinction.
 
+**Before you write a claim — an update or destroy whose new value depends on a value you just read — read [locking.md](locking.md).** It owns `{ lock: true }` on `update` and `destroy`, the attributes and callback forms, and what a lock costs. Most writes need none of it; that file says so first.
+
 ## Default Scopes
 
 Default scopes are conditions automatically applied to every query on a model. Two are built in — **`dream:SoftDelete`** (added by `@SoftDelete()`, hides `deletedAt` rows) and **`dream:STI`** (added by `@STI()`, restricts a child query to its type); define your own with `@deco.Scope({ default: true })`.

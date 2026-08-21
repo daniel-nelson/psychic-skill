@@ -202,37 +202,22 @@ default update issues one `UPDATE` per matched row.
 that way has to be checked against whatever business logic those hooks carry. Two situations warrant
 it: you intentionally want the lifecycle not to run, or you need many records updated in one SQL
 statement and have established that skipping hooks is safe for them. A slow update is not on its own
-a reason. In the second case `lock: true` must not be passed — it restores the per-record path and
-there is no single statement left to gain.
+a reason.
 
 Of the query-level writers, only `update(attrs, { skipHooks: true })` and `delete()` bypass the model
 entirely; `destroy`, `reallyDestroy`, and `undestroy` instantiate each record even under `skipHooks`,
-so custom setters still run there.
+so default scopes and the `dependent: 'destroy'` cascade still apply.
 
 Because it goes through `findEach`, a default (non-`skipHooks`) query update always visits matched records in ascending primary-key order and ignores any `order` you applied to the query — see [Batch Processing](models.md#batch-processing) for why `findEach` can't honor an arbitrary order.
 
-`.update()` resolves to the number of rows it updated. Under `{ skipHooks: true }` the filter
-and the write are one `UPDATE ... WHERE` statement, so a filtered update is a compare-and-set
-claim: a `0` return means another writer got there first. The default form updates each matched
-record separately, so its count is how many records it visited and wrote through — one already
-holding the incoming values still counts — not that you won a race.
+`.update()` resolves to the number of records it wrote. The default form updates each matched record
+separately, so its count is how many records it visited and wrote through — one already holding the
+incoming values still counts. Under `{ skipHooks: true }` the filter and the write are one
+`UPDATE ... WHERE` statement and the count is the rows that statement matched.
 
-```typescript
-// Claim a pending booking exactly once, even under concurrent requests
-const claimed = await Booking.where({ id: booking.id, status: 'pending' })
-  .update({ status: 'confirmed' }, { skipHooks: true })
-
-if (claimed === 0) return this.conflict()   // someone else already confirmed it
-```
-
-When the claim has to run hooks, custom setters, or a write through an `@deco.Encrypted` property, pass `{ lock: true }` rather than reaching for `skipHooks`:
-
-```typescript
-const claimed = await Booking.where({ id: booking.id, status: 'pending' })
-  .update({ status: 'confirmed' }, { lock: true })
-```
-
-Each batch re-selects its rows under an exclusive row lock inside its own transaction before writing, so a record another writer has moved out of the query drops out of the locked read and is left alone, and the count is the records actually claimed. The batching and locking caveats are the destroy form's — see [soft-delete.md's "Guarded (compare-and-set) destroy"](soft-delete.md#guarded-compare-and-set-destroy).
+When the value being written depends on a value just read — claiming a record out of a state, so a
+concurrent writer must not clobber the result — the tool is `{ lock: true }`, not `skipHooks`. See
+[locking.md](locking.md).
 
 ### Range Predicates
 

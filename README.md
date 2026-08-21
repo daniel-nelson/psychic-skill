@@ -84,7 +84,7 @@ Cursor, Aider, Cline, and similar tools don't auto-load skills, but they can sti
 git clone https://github.com/daniel-nelson/psychic-skill.git .ai/psychic-skill
 ```
 
-Then instruct your agent (via its rules file — `.cursorrules`, `.aider.conf.yml`, `AGENTS.md`, etc.) to read `SKILL.md` and the linked topic files (`models.md`, `generators.md`, `controllers.md`, `serializers.md`, `openapi.md`, `sti.md`, `migrations.md`, `querying.md`, `soft-delete.md`, `i18n.md`, `testing.md`, `workers.md`, `websockets.md`, `console.md`, `deploying.md`, `utils.md`) as required reading before making changes. The files are plain markdown — they work as documentation for any agent that can read files.
+Then instruct your agent (via its rules file — `.cursorrules`, `.aider.conf.yml`, `AGENTS.md`, etc.) to read `SKILL.md` and the linked topic files (`models.md`, `generators.md`, `controllers.md`, `serializers.md`, `openapi.md`, `sti.md`, `migrations.md`, `querying.md`, `soft-delete.md`, `locking.md`, `i18n.md`, `testing.md`, `workers.md`, `websockets.md`, `console.md`, `deploying.md`, `utils.md`) as required reading before making changes. The files are plain markdown — they work as documentation for any agent that can read files.
 
 To stay current, run `cd .ai/psychic-skill && git fetch origin && git reset --hard origin/main && ./setup` periodically. This is what `/psychic-update-skill` does under the hood for Claude Code and Codex.
 
@@ -170,6 +170,7 @@ rm -rf .agents/skills/psychic-skill
 | `workers.md` | Background jobs (BullMQ), services, scheduling, testing |
 | `websockets.md` | Real-time communication (Socket.IO, Redis pub/sub) |
 | `soft-delete.md` | `@SoftDelete()`, `dependent: 'destroy'` chains, `undestroy` / `reallyDestroy`, default-scope bypass |
+| `locking.md` | Guarded (compare-and-set) writes — `update` / `destroy` with `{ lock: true }`, the attributes vs callback forms, and the costs |
 | `i18n.md` | Code-driven translations (`I18nProvider`, locale files) and data-driven `LocalizedText` with passthrough |
 | `console.md` | `pnpm console` / REPL usage and the `NODE_ENV` rules for `pnpm psy` commands |
 | `deploying.md` | Runtime model, build output, health checks, environment variables via `AppEnv`, TLS |
