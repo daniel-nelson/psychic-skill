@@ -198,11 +198,13 @@ raw bulk SQL update with no hooks or validations. This distinction matters in bo
 directions: hook-enforced invariants are still enforced by default query updates, and a
 default update issues one `UPDATE` per matched row.
 
-**`skipHooks` is not a performance knob.** It removes the callback lifecycle, so every record reached
-that way has to be checked against whatever business logic those hooks carry. Two situations warrant
-it: you intentionally want the lifecycle not to run, or you need many records updated in one SQL
-statement and have established that skipping hooks is safe for them. A slow update is not on its own
-a reason.
+**`skipHooks` is the bulk path, and its price is the lifecycle.** It is the idiomatic way to write
+many rows in one SQL statement — there is no other, short of dropping to `toKysely()` for the same
+statement. What it removes is the callback lifecycle, so before reaching for it, establish that the
+model's hooks carry no business logic that applies to *this* write — the safety judgment is per
+write, not per model: a hook guarding `status` transitions makes a bulk `status` write unsafe to
+skip, but says nothing about a bulk write to an unrelated column on the same model. When the hooks
+do apply, the fix is not to skip them: keep the default per-record update, or narrow the query.
 
 Of the query-level writers, only the no-`lock` `update(attrs, { skipHooks: true })` and `delete()`
 bypass the model entirely; `destroy`, `reallyDestroy`, and `undestroy` instantiate each record even

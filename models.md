@@ -915,8 +915,9 @@ await user.update({ name: 'Updated' }, { skipHooks: true })
 
 Query-level updates run instance hooks by default: `User.where(...).update(attrs)`
 iterates the matched records and calls instance `.update()` on each, so the cost is one
-`UPDATE` per matched row. `skipHooks` is not the remedy for that cost — it removes the
-callback lifecycle, which is a semantic choice about the records being written. See
+`UPDATE` per matched row. `{ skipHooks: true }` collapses that to one SQL statement, at the
+price of the callback lifecycle — pay it only when the hooks carry no business logic that
+applies to the attributes being written. See
 [querying.md — Query-object methods](querying.md#query-object-methods) for when it is
 warranted, and [locking.md](locking.md) for guarding a read-then-write.
 
