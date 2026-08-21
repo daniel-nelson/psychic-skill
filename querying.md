@@ -180,11 +180,13 @@ Query-level write methods also exist and are easy to miss:
 // Update matching records — loads each record and calls instance update(), running lifecycle hooks and validations
 await LocalizedText.where({ localizable: host, locale: 'en-US' }).update({ title: 'New Title' })
 
-// Update in a single SQL call (skips lifecycle hooks)
+// Suppress the callback lifecycle — one UPDATE ... WHERE, no model instantiated, no hooks or validations
 await LocalizedText.where({ localizable: host, locale: 'en-US' }).update({ title: 'New Title' }, { skipHooks: true })
 
-// Delete matching records
-await Tag.where({ post }).delete()
+// Single DELETE statement — bypasses the model: no hooks, no `dependent: 'destroy'`
+// cascade (database-level FK cascades still fire), and no soft delete, so the rows are
+// permanently gone even on a `@SoftDelete()` model. Use `destroy()` when you want those.
+await LocalizedText.where({ localizable: host }).delete()
 ```
 
 When you hold the associated instance, filter by it — `where({ localizable: host })`, not `where({ localizableId: host.id })`. For a polymorphic association this is a correctness fix, not just style: the id-only form omits `localizable_type`, so it matches rows across every type that shares that id. Passing the instance sets both columns (and resolves an STI child to its base type). See [models.md — Passing associations](models.md#passing-associations-use-the-instance-not-the-foreign-key) for the full rule and its exceptions.
@@ -204,8 +206,8 @@ a reason. In the second case `lock: true` must not be passed — it restores the
 there is no single statement left to gain.
 
 Of the query-level writers, only `update(attrs, { skipHooks: true })` and `delete()` bypass the model
-entirely; `destroy` and `undestroy` instantiate each record even under `skipHooks`, so custom setters
-still run there.
+entirely; `destroy`, `reallyDestroy`, and `undestroy` instantiate each record even under `skipHooks`,
+so custom setters still run there.
 
 Because it goes through `findEach`, a default (non-`skipHooks`) query update always visits matched records in ascending primary-key order and ignores any `order` you applied to the query — see [Batch Processing](models.md#batch-processing) for why `findEach` can't honor an arbitrary order.
 

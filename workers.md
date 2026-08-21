@@ -47,7 +47,7 @@ export class IntercomSyncService extends ApplicationBackgroundedService {
 await IntercomSyncService.syncUser(user)
 ```
 
-**`backgroundJobConfig` is class-level — there is no per-method or per-call override.** Both `background(method, ...args)` and `backgroundWithDelay(delay, method, ...args)` read `this.backgroundJobConfig`, and their only tail is the variadic `...args` — neither accepts a config argument. So the getter's `workstream` and `priority` govern *every* backgrounded method on the service (immediate and delayed alike); you cannot route one method to its own workstream, or make one method `urgent` and another `not_urgent`, from a single class. To isolate a subset of a service's jobs, **extract those methods into a separate backgrounded service** with its own `backgroundJobConfig`. Through the backgrounded-service API, splitting the class is the only mechanism.
+**`backgroundJobConfig` is class-level — a backgrounded service exposes no per-method or per-call override.** Both `background(method, ...args)` and `backgroundWithDelay(delay, method, ...args)` read `this.backgroundJobConfig`, and their only tail is the variadic `...args` — neither accepts a config argument. So the getter's `workstream` and `priority` govern *every* backgrounded method on the service (immediate and delayed alike); you cannot route one method to its own workstream, or make one method `urgent` and another `not_urgent`, from a single class. To isolate a subset of a service's jobs, **extract those methods into a separate backgrounded service** with its own `backgroundJobConfig`. Through the backgrounded-service API, splitting the class is the only mechanism.
 
 **Key rules:**
 - **NEVER pass model data as background job arguments.** Almost always pass only the model's ID and look up the record in the implementation method. This applies to any data stored in a Dream model. Passing model data as arguments has serious downsides: it bloats Redis memory (a full JSON payload vs. a single ID string), loses all type information when serialized to JSON (e.g., Dream date/time objects become plain strings, enums become untyped values), and creates a snapshot that is immediately stale if the record is updated after the job is queued. The only arguments to `this.background(...)` should be IDs and simple scalar values (strings, numbers, booleans) that are not sourced from model columns. For model instance methods, `ApplicationBackgroundedModel` handles this automatically by storing only the primary key.
@@ -585,7 +585,7 @@ workersApp.set('background', {
     defaultQueueOptions: {
       defaultJobOptions: { attempts: 20, backoff: { type: 'exponential', delay: 1000 } },
     },
-    defaultWorkerCount: parseInt(process.env.WORKER_COUNT || '0'),
+    defaultWorkerCount: os.cpus().length,
     defaultWorkerOptions: { concurrency: 100 },
 
     namedQueueOptions: {
@@ -616,7 +616,7 @@ Sharp edges specific to this mode:
 
 - **A queue in `namedQueueOptions` with no matching key in `namedQueueWorkers` gets zero workers.** The queue is created and accepts jobs; nothing ever works them. There is no warning and no error — jobs simply accumulate in Redis. Every named queue needs an entry in both maps.
 - **A named queue's `defaultJobOptions` replaces the app-wide bag rather than merging with it.** The two option objects are combined with one shallow spread, so a queue that sets `defaultJobOptions: { attempts: 3 }` drops the app-wide `backoff`, `removeOnComplete` and `removeOnFail` entirely. Restate every key you still want.
-- **There is no concurrency default here.** Simple mode forces `concurrency: 10` on every worker it builds; native mode writes none, so BullMQ's own default applies unless you set it.
+- **There is no concurrency default here.** Simple mode always writes the workstream's `concurrency` — 10 when the workstream omits it — which is why it overrides `defaultBullMQWorkerOptions`; native mode writes none, so BullMQ's own default applies unless you set it.
 
 ### Connections in native mode
 
@@ -704,11 +704,19 @@ Worker configuration lives in `conf/initializers/workers.ts`. This is the simple
 
 ```typescript
 import os from 'os'
+import { PsychicApp } from '@rvoh/psychic'
 import { PsychicAppWorkers } from '@rvoh/psychic-workers'
+import { Queue, Worker } from 'bullmq'
 import Redis from 'ioredis'
 import AppEnv from '../AppEnv.js'
 
-export default (workersApp: PsychicAppWorkers) => {
+export default (psy: PsychicApp) => {
+  psy.plugin(async () => {
+    await PsychicAppWorkers.init(psy, initializeWorkers)
+  })
+}
+
+function initializeWorkers(workersApp: PsychicAppWorkers) {
   workersApp.set('background', {
     providers: { Queue, Worker },
 
@@ -722,7 +730,7 @@ export default (workersApp: PsychicAppWorkers) => {
     },
 
     defaultWorkstream: {
-      workerCount: parseInt(process.env.WORKER_COUNT || '0'),
+      workerCount: os.cpus().length,
       concurrency: 100,
     },
 
@@ -831,16 +839,4 @@ await WorkerTestUtils.workScheduled({ queue: 'cool' }) // Run delayed jobs for a
 
 ## Plugin Registration
 
-Workers is a Psychic plugin registered during app initialization:
-
-```typescript
-// initializePsychicApp.ts
-import { PsychicAppWorkers } from '@rvoh/psychic-workers'
-import workersConf from '../../conf/workers.js'
-
-export default async function initializePsychicApp(opts = {}) {
-  const psychicApp = await PsychicApp.init(psychicConf, dreamConf, opts)
-  await PsychicAppWorkers.init(psychicApp, workersConf)
-  return psychicApp
-}
-```
+`conf/app.ts` calls `psy.load('initializers', …)`, which auto-loads `conf/initializers/workers.ts`; that file's default export registers the plugin via `psy.plugin()` (see [Worker Configuration](#worker-configuration)). `initializePsychicApp` needs no workers wiring.

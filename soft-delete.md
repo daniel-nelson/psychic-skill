@@ -168,7 +168,7 @@ Four things to keep in mind:
 
   Every batch then shares that transaction and holds its locks until you commit, at the cost of blocking for the whole run.
 - **`batchSize` defaults to 10 under `lock`**, not the 1000 `findEach` and unlocked `destroy`/`reallyDestroy` use. Every record in a batch stays locked for that batch's full destroy-hook and `dependent: 'destroy'` cascade duration, so an oversized batch blocks unrelated writers touching those rows. Lower `batchSize` further for models with deep cascades or expensive destroy hooks.
-- **This is not a bulk-delete accelerator — it's the opposite.** If you're destroying a large set and don't need compare-and-set, pass no `lock` option; plain `destroy()` or `.delete()` are the right tools for that.
+- **This is not a bulk-delete accelerator — it's the opposite.** If you're destroying a large set and don't need compare-and-set, pass no `lock` option; plain `destroy()` is the right tool. `.delete()` is not an alternative here: it bypasses the model to issue one `DELETE`, so the rows are permanently gone — no `deletedAt` write, no `dependent: 'destroy'` cascade.
 - **`lock` lives on the query**, not on an instance — `Booking.where(...).destroy({ lock: true })` or `Booking.query().destroy({ lock: true })`. There's no instance-level equivalent, and none is needed: destroying a single already-loaded instance has no select-then-destroy window to close.
 
 ## Cascading

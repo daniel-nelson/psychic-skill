@@ -58,7 +58,7 @@ If the proxy terminates TLS and forwards plain HTTP to the container, no additio
 
 `SingleDbCredential` accepts an `ssl?: TlsConnectionOptions | false` field that flows directly to the underlying `pg.Pool` connection. The bare `ssl: true` shorthand is rejected — callers must choose explicitly between verified TLS (`{ rejectUnauthorized: true }`) and unverified TLS (`{ rejectUnauthorized: false }`). `ssl: false` is the explicit TLS-off sentinel.
 
-`app.set('db', ...)` throws `MissingDbSslDirective` at setter time — in every environment, not just production — if neither `ssl` nor the legacy `useSsl` is set on a credential. Silently defaulting to TLS-off was the previous behavior; removing that default is intentional, so the call site has to make TLS posture explicit.
+`app.set('db', ...)` throws `MissingDbSslDirective` at setter time — in every environment, not just production — if neither `ssl` nor the legacy `useSsl` is set on a credential, so the call site has to make TLS posture explicit.
 
 The `create-psychic` boilerplate ships verified TLS via the system CA store as the default, with `DB_NO_SSL=true` as the explicit-off escape hatch:
 
@@ -101,7 +101,7 @@ const credential: SingleDbCredential = {
 }
 ```
 
-Existing apps generated under the previous boilerplate may still set `useSsl: true`; that keeps working but is deprecated and will be removed in a future major. The migration is to switch the credential to an explicit `ssl` value chosen from the matrix above — new apps already opt into verified TLS by default, so this only affects apps scaffolded before this change.
+A credential still carrying the deprecated `useSsl: true` resolves to **unverified** TLS (`{ rejectUnauthorized: false }`), not the verified default. Replace it with an explicit `ssl` value from the matrix above.
 
 ## Read Replicas
 

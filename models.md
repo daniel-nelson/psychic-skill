@@ -549,12 +549,12 @@ export default class SeedDefaultRooms {
 
 ```typescript
 @deco.AfterCreateCommit()
-public sendWelcomeEmail(this: User) {
+public async sendWelcomeEmail(this: User) {
   await EmailService.background('sendWelcome', this.id)
 }
 
 @deco.AfterUpdateCommit({ ifChanged: ['status'] })
-public notifyStatusChange(this: Place) {
+public async notifyStatusChange(this: Place) {
   await NotificationService.background('statusChanged', this.id)
 }
 
@@ -913,10 +913,12 @@ await user.update({ name: 'Updated' }, { skipHooks: true })
 - `update()` accepts attributes, applies them, and persists — it also persists any attributes previously assigned via `=`
 - On an unpersisted instance (`User.new()`), both `save()` and `update({})` will create the record
 
-Query-level updates also run instance hooks by default: `User.where(...).update(attrs)`
-loads each matched record and calls instance `.update()` on it. It is not a single
-bulk SQL update unless you pass `{ skipHooks: true }`, which bypasses hooks and
-validations.
+Query-level updates run instance hooks by default: `User.where(...).update(attrs)`
+iterates the matched records and calls instance `.update()` on each, so the cost is one
+`UPDATE` per matched row. `skipHooks` is not the remedy for that cost — it removes the
+callback lifecycle, which is a semantic choice about the records being written. See
+[querying.md — Query-object methods](querying.md#query-object-methods) for when it is
+warranted and what `lock: true` changes.
 
 ## Passing associations: use the instance, not the foreign key
 
@@ -978,8 +980,6 @@ user.hasChanges('email')          // false
 A persisted instance with nothing dirty issues no `UPDATE` on `save()` or `update()` and leaves `updatedAt` unstamped — `update({})`, or an `update()` assigning values equal to the current ones, is a no-op rather than a touch. Re-assigning the same plaintext to an `@deco.Encrypted()` property is always a real write: each assignment re-encrypts to fresh ciphertext. Before-save hooks and validations still run first, so a hook that dirties the record turns it back into a real write.
 
 For an `@deco.Encrypted()` field, `changedAttributes()` reports the persisted `encrypted<Name>` key, not the plaintext virtual property. `getAttribute('<plaintext>')` returns `undefined` — it isn't the decrypting accessor; `getAttribute('encrypted<Name>')` returns ciphertext. Read the decrypted value via the instance property (`instance.<plaintext>`) — see [Encrypted](#special-decorators) above.
-
-Dirty tracking's baseline is the values the instance was **loaded** with, not the row's current values. If another writer changed the row since, assigning the value the instance already holds marks nothing dirty, so no `UPDATE` is issued and the diverged row is left as it is — silently, with no error. Call `await booking.reload()` before assigning: it overwrites every column on the instance from the database (discarding any unsaved changes on it), so the assignment that follows is measured against what is actually stored.
 
 ## Batch Processing
 

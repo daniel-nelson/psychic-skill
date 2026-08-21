@@ -87,15 +87,15 @@ Factories are for records that exist; use `Model.new()` when the spec's subject 
 **Reused-enum placeholder.** When a model column reuses an existing enum (shorthand `name:enum:enum_type_name`, no inline values), the generator can't see the enum's values and emits a TS-rejecting `'TODO'` placeholder paired with a comment hint:
 
 ```typescript
-// TODO: replace with a value from the `messaging_channels` enum
-resolvedChannel: 'TODO',
+// TODO: replace with a value from the `place_styles` enum
+preferredStyle: 'TODO',
 
 // Array form
-// TODO: replace with a value from the `post_tags` enum
-tags: ['TODO'],
+// TODO: replace with a value from the `bed_types` enum
+preferredBedTypes: ['TODO'],
 ```
 
-`'TODO'` is not in the enum's literal union, so `pnpm build:test-app` fails fast at the factory until the placeholder is replaced — preferable to a runtime NOT NULL / enum-mismatch surprise the first time the factory runs. The declare-with-values shorthand (`name:enum:type:val1,val2`) keeps emitting the first listed value as before.
+`'TODO'` is not in the enum's literal union, so `pnpm build:spec` fails fast at the factory until the placeholder is replaced — preferable to a runtime NOT NULL / enum-mismatch surprise the first time the factory runs. The declare-with-values shorthand (`name:enum:type:val1,val2`) emits the first listed value instead.
 
 ### Factories with Associations
 
@@ -689,7 +689,7 @@ WorkerTestUtils.clean()                                 // Clear queues
 
 Under the default `automatic` invocation, a backgrounded method runs inline and **awaited** inside the call that enqueued it — the framework short-circuits the queue and calls the method directly, with no surrounding try/catch. So if the job throws, the error propagates back through `.background(...)` to the caller. A controller action that backgrounds a job and awaits it therefore returns **500 in tests** when the job throws.
 
-In production the same job runs on a separate BullMQ worker. A throw there moves the job to `failed` (and retries per its config) without touching the HTTP response that was already returned. The "fire-and-forget" mental model — `await this.background(...)` returns once queued, the job's success or failure is independent of the request — holds in prod but **not** in tests.
+In production the same job runs on a separate BullMQ worker. A throw there is retried per the queue's `defaultJobOptions` (set in `conf/initializers/workers.ts`) and lands in `failed` only once attempts are exhausted — none of it touching the HTTP response that was already returned. The "fire-and-forget" mental model — `await this.background(...)` returns once queued, the job's success or failure is independent of the request — holds in prod but **not** in tests.
 
 Two practical consequences:
 
