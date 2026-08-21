@@ -63,11 +63,18 @@ callback runs once per claimed record, under that record's row lock, inside the 
 and returns the attributes to write, or `undefined` to skip that record.
 
 ```typescript
+// Booking#doorCode is @deco.Encrypted: the plaintext property is virtual and the
+// ciphertext is fresh on every write, so there is no column for a `where` to compare
 const rotated = await Booking.where({ id: booking.id }).update(
-  booking => (booking.confirmationCode === expectedCode ? { confirmationCode: newCode } : undefined),
+  booking => (booking.doorCode === issuedCode ? { doorCode: newCode } : undefined),
   { lock: true }
 )
+
+if (rotated === 0) return this.conflict()   // the code had already been rotated
 ```
+
+The guard compares a value the database cannot see, so it has to run in the callback, against the
+freshly locked read. A new value derived from the old one is the other case only this form reaches.
 
 `lock` is mandatory with a callback — omit it and Dream throws
 `MissingRequiredLockOptionForUpdateCallback` — so every call site states out loud whether it takes
