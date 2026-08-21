@@ -193,8 +193,15 @@ Query-level `.update()` is not Rails `update_all`: by default it iterates the ma
 records with `findEach`, calls instance `.update()` on each one, and runs per-record
 hooks and validations. Pass `{ skipHooks: true }` only when you intentionally want one
 raw bulk SQL update with no hooks or validations. This distinction matters in both
-directions: hook-enforced invariants are still enforced by default query updates, and
-large "bulk" updates issue one `UPDATE` per matched row unless you explicitly choose `skipHooks`.
+directions: hook-enforced invariants are still enforced by default query updates, and a
+default update issues one `UPDATE` per matched row.
+
+**`skipHooks` is not a performance knob.** It removes the callback lifecycle, so every record reached
+that way has to be checked against whatever business logic those hooks carry. Two situations warrant
+it: you intentionally want the lifecycle not to run, or you need many records updated in one SQL
+statement and have established that skipping hooks is safe for them. A slow update is not on its own
+a reason. In the second case `lock: true` must not be passed — it restores the per-record path and
+there is no single statement left to gain.
 
 Of the query-level writers, only `update(attrs, { skipHooks: true })` and `delete()` bypass the model
 entirely; `destroy` and `undestroy` instantiate each record even under `skipHooks`, so custom setters
