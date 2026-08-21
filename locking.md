@@ -50,17 +50,24 @@ if (claimed === 0) return this.conflict()   // another request confirmed it firs
 
 `status: 'pending'` is the guard; `status: 'confirmed'` is the write. Each claimed record is written
 through the ordinary per-instance update, so hooks, validations, and custom setters run exactly as
-they would on `booking.update(...)`.
+they would on `booking.update(...)`. `skipHooks: true` composes with `lock: true` and stays on that
+per-instance path: hooks are skipped, but custom setters — including the setters `@deco.Encrypted`
+attributes encrypt through — still run.
+
+When the guard fits the `where` clause and the lifecycle should not run at all, the no-`lock`
+single-statement form, `update(attrs, { skipHooks: true })`, is also a compare-and-set: its one
+`UPDATE ... WHERE` re-checks the conditions under each row's lock, and its count is the rows that
+statement matched. `lock: true` is the claim that keeps the lifecycle.
 
 What this form cannot express: a guard the database can't compare — an `@deco.Encrypted` property has
 no queryable column, and re-encrypts to fresh ciphertext on every write — and attributes that differ
 per record.
 
-## `update(callback, { lock: true })`
+## `update(callback, { lock })`
 
-Reach for this when the guard, or the new value, has to be computed from the record itself. The
-callback runs once per claimed record, under that record's row lock, inside the batch's transaction,
-and returns the attributes to write, or `undefined` to skip that record.
+Reach for this when the guard, or the new value, has to be computed from the record itself. Under
+`lock: true`, the callback runs once per claimed record, under that record's row lock, inside the
+batch's transaction, and returns the attributes to write, or `undefined` to skip that record.
 
 ```typescript
 // Booking#doorCode is @deco.Encrypted: the plaintext property is virtual and the
@@ -76,9 +83,17 @@ if (rotated === 0) return this.conflict()   // the code had already been rotated
 The guard compares a value the database cannot see, so it has to run in the callback, against the
 freshly locked read. A new value derived from the old one is the other case only this form reaches.
 
-`lock` is mandatory with a callback — omit it and Dream throws
+A callback requires an explicit boolean `lock` — omit it and Dream throws
 `MissingRequiredLockOptionForUpdateCallback` — so every call site states out loud whether it takes
-locks. Only the attributes the callback returns are written; assignments made on the record it
+locks. `{ lock: false }` is the derived write without the guarantee: the callback runs once per
+matching record through ordinary batched reads (`batchSize` defaults to 1000, no claim step, no
+compare-and-set) — the right shape for a backfill that derives each record's new value where racing
+writers are not a concern. On a `@ReplicaSafe` model those unlocked reads may come from a lagging
+replica; add `.connection('primary')` to the query to derive from the freshest committed state
+(see [models.md — Replica Safety](models.md#replica-safety-replicasafe)). `lock: true` reads the
+primary already, its reads being transactional.
+
+Only the attributes the callback returns are written; assignments made on the record it
 receives are discarded. The count is the number of records the callback returned attributes for;
 skipped records are not counted.
 
@@ -98,7 +113,7 @@ The same guarantee for removal:
 const cancelled = await Booking.where({ place, status: 'pending' }).destroy({ lock: true })
 ```
 
-Each batch re-selects its rows `FOR UPDATE OF` inside its own transaction and destroys them, so a
+Each batch re-selects its rows `FOR UPDATE` inside its own transaction and destroys them, so a
 record another transaction has moved out of the query is left alone. Destroy hooks and the
 `dependent: 'destroy'` cascade run per record, and on a `@SoftDelete()` model this is still a soft
 delete — see [soft-delete.md](soft-delete.md). `reallyDestroy` takes the same option.

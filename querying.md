@@ -204,9 +204,11 @@ it: you intentionally want the lifecycle not to run, or you need many records up
 statement and have established that skipping hooks is safe for them. A slow update is not on its own
 a reason.
 
-Of the query-level writers, only `update(attrs, { skipHooks: true })` and `delete()` bypass the model
-entirely; `destroy`, `reallyDestroy`, and `undestroy` instantiate each record even under `skipHooks`,
-so default scopes and the `dependent: 'destroy'` cascade still apply.
+Of the query-level writers, only the no-`lock` `update(attrs, { skipHooks: true })` and `delete()`
+bypass the model entirely; `destroy`, `reallyDestroy`, and `undestroy` instantiate each record even
+under `skipHooks`, so default scopes and the `dependent: 'destroy'` cascade still apply. (With
+`lock: true`, `skipHooks` also stays on the per-instance path — hooks skipped, custom setters still
+run; see [locking.md](locking.md).)
 
 Because it goes through `findEach`, a default (non-`skipHooks`) query update always visits matched records in ascending primary-key order and ignores any `order` you applied to the query — see [Batch Processing](models.md#batch-processing) for why `findEach` can't honor an arbitrary order.
 
@@ -216,8 +218,10 @@ incoming values still counts. Under `{ skipHooks: true }` the filter and the wri
 `UPDATE ... WHERE` statement and the count is the rows that statement matched.
 
 When the value being written depends on a value just read — claiming a record out of a state, so a
-concurrent writer must not clobber the result — the tool is `{ lock: true }`, not `skipHooks`. See
-[locking.md](locking.md).
+concurrent writer must not clobber the result — reach for `{ lock: true }`, the compare-and-set that
+keeps the lifecycle. The single-statement `{ skipHooks: true }` form is also a compare-and-set — its
+one `UPDATE ... WHERE` re-checks the conditions under each row's lock — but choosing it is choosing
+to skip the hooks, per the rule above. See [locking.md](locking.md).
 
 ### Range Predicates
 
