@@ -5,7 +5,7 @@
 ### Added
 
 - **`testing.md`** — a new "Stubbing environment values in specs" subsection. `AppEnv.string` / `.integer` / `.boolean` are single methods discriminated by their argument, so `vi.spyOn(AppEnv, 'string')` returns the stubbed value for *every* variable read anywhere under test — the spec passes, then breaks an unrelated one once a second `AppEnv` read appears downstream. The shape to use instead is Dream's typed setter for the named variable, captured in `beforeEach` (`AppEnv.string('BEARBNB_MAPS_API_KEY', { optional: true })`, then `AppEnv.setString(...)`) and restored in an explicit `afterEach`: the setter writes `process.env`, which nothing restores automatically, since the generated app's vite configs set `restoreMocks: true` but not `unstubEnvs`. `vi.spyOn` stays the tool for the derived getters (`AppEnv.isTest`, `.nodeEnv`, `.serviceRole`), which have no setter and are restored for you.
-- **`openapi.md`** — `pnpm psy setup:sync:enums`, the third command in the `setup:sync:*` family: it wires a one-time-generated initializer that rewrites a TypeScript enums file on every `pnpm psy sync`, so the client imports the backend's enum values — in the shape [Critical Rule 16](SKILL.md#critical-rules) teaches for `@src/types/db.js` — instead of hand-writing its own.
+- **`openapi.md`** — `pnpm psy setup:sync:enums`, another command in the `setup:sync:*` family: it wires a one-time-generated initializer that rewrites a TypeScript enums file on every `pnpm psy sync`, so the client imports the backend's enum values — in the shape [Critical Rule 16](SKILL.md#critical-rules) teaches for `@src/types/db.js` — instead of hand-writing its own.
 
 ### Changed
 
