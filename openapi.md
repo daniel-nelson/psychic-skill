@@ -139,13 +139,13 @@ Placing it outside `--output-dir` breaks the generated stub's import, though: th
 import { client } from './bearbnb/client.gen'
 ```
 
-`pnpm psy sync` runs the generated initializer, which spawns `openapi-ts` and generates the store; it never rewrites the client config file, so this fix survives every future sync. Re-running `pnpm psy setup:sync:openapi-zustand` is what replaces it — the command prompts before overwriting, and confirming discards this import fix along with any baseUrl or auth code the config file has picked up.
+Your edit survives: the initializer `pnpm psy sync` runs writes only inside `--output-dir` — re-running `openapi-ts` and regenerating the store there — and the config file is outside it. Re-running `pnpm psy setup:sync:openapi-zustand` is what replaces the config file; the command prompts before overwriting, and confirming discards this import fix along with any baseUrl or auth code the config file has picked up.
 
 `--export-name` only names the initializer function and its log labels, not the generated SDK or store code, which is derived entirely from the OpenAPI spec.
 
 `setup:sync:openapi-redux` is the sibling command for RTK Query / Redux Toolkit frontends. It takes a different flag set (`--schema-file`, `--api-file`, `--api-import`, `--output-file`, `--export-name`) with no `--output-dir`/`--client-config-file` at all, so the placement gotcha above doesn't apply to it.
 
-`pnpm psy setup:sync:enums` is another command in this family. It wires a one-time-generated initializer that rewrites a TypeScript enums file on every `pnpm psy sync`, so the client imports the backend's enum values — in the shape [Critical Rule 16](SKILL.md#critical-rules) teaches for `@src/types/db.js` — instead of hand-writing its own `PlaceStylesEnum`.
+`pnpm psy setup:sync:enums` is another command in this family. It generates a one-time initializer that rewrites a client-side enums file — at a path you pick — on every `pnpm psy sync`, exporting the same `PlaceStylesEnumValues` const and `PlaceStylesEnum` type pair Dream generates in `@src/types/db.js`. Client code imports from that file instead of hand-writing its own; [Critical Rule 16](SKILL.md#critical-rules) is the backend-side counterpart.
 
 ## Customizing default error responses
 
