@@ -139,7 +139,7 @@ Placing it outside `--output-dir` breaks the generated stub's import, though: th
 import { client } from './bearbnb/client.gen'
 ```
 
-The generator only writes this stub once — it early-returns if the config file already exists — so this fix survives every future `pnpm psy sync`.
+`pnpm psy sync` runs the generated initializer, which spawns `openapi-ts` and generates the store; it never rewrites the client config file, so this fix survives every future sync. Re-running `pnpm psy setup:sync:openapi-zustand` is what replaces it — the command prompts before overwriting, and confirming discards this import fix along with any baseUrl or auth code the config file has picked up.
 
 `--export-name` only names the initializer function and its log labels, not the generated SDK or store code, which is derived entirely from the OpenAPI spec.
 
