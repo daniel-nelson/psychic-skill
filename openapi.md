@@ -145,6 +145,8 @@ import { client } from './bearbnb/client.gen'
 
 `setup:sync:openapi-redux` is the sibling command for RTK Query / Redux Toolkit frontends. It takes a different flag set (`--schema-file`, `--api-file`, `--api-import`, `--output-file`, `--export-name`) with no `--output-dir`/`--client-config-file` at all, so the placement gotcha above doesn't apply to it.
 
+`pnpm psy setup:sync:enums` is the third command in this family. It wires a one-time-generated initializer that rewrites a TypeScript enums file on every `pnpm psy sync`, so the client imports the backend's enum values — in the shape [Critical Rule 16](SKILL.md#critical-rules) teaches for `@src/types/db.js` — instead of hand-writing its own `PlaceStylesEnum`.
+
 ## Customizing default error responses
 
 Every operation gets the same default error-response set — `400`, `401`, `403`, `404`, `409`, `500` — and it is merged in uniformly regardless of the controller's auth base. The auth base never adds or tightens responses. So an operation that genuinely can't return one of those (a truly public `GET` that never `401`s or `403`s) still advertises it in the spec unless you intervene.
