@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.82.1 — 2026-08-28
+
+### Changed
+
+- **`workers.md`** — the two-level fan-out example is two fenced blocks, `// services/ReprocessAllPhotosService.ts` and `// services/PhotoProcessingService.ts`, the orchestrator opening with the relative default import of the worker. The two scheduled-jobs examples likewise give their orchestrator and their worker a block each, keeping the existing `// Orchestrator …` / `// Worker …` labels, with `ScheduledJobs` importing `ReconcileService` and `EndOfDayService` through `@services/…`.
+- **`controllers.md`** — the nested-resource base-controller pattern is two fenced blocks, `// V1/Host/BaseController.ts` and `// V1/Host/Places/BaseController.ts`, the doubly-nested one carrying the note about `/places/:placeId/rooms` and importing the base it extends.
+- **`i18n.md`** — the STI localized-text example is two fenced blocks, the base and the STI child, with the child importing `LocalizedText`.
+- **`serializers.md`** — the flattening example gives `BookingSerializer` its own fenced block, separate from the guest serializers, each keeping its existing label.
+
+### Removed
+
+- **`querying.md`** — `scrollPaginate` from both query-terminating method lists and from the client-controlled page-size rule; the model and query lists name `paginate` and `cursorPaginate`, and those two are what the rule clamps.
+- **`controllers.md`** — `scrollPaginate` from the `@OpenAPI` options block, whose pagination choice is `paginate` or `cursorPaginate`.
+
 ## 0.82.0 — 2026-08-26
 
 ### Added
