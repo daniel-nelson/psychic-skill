@@ -299,6 +299,7 @@ The named specs themselves — output files, the `mobile` enum-shaping, the `tes
 ## Nested Resource Base Controller Pattern
 
 ```typescript
+// V1/Host/BaseController.ts
 export default class V1HostBaseController extends V1BaseController {
   protected currentHost: Host
 
@@ -309,8 +310,12 @@ export default class V1HostBaseController extends V1BaseController {
     this.currentHost = host
   }
 }
+```
 
-// For doubly-nested resources (e.g., /places/:placeId/rooms)
+```typescript
+// V1/Host/Places/BaseController.ts — for doubly-nested resources (e.g., /places/:placeId/rooms)
+import V1HostBaseController from '@controllers/V1/Host/BaseController.js'
+
 export default class V1HostPlacesBaseController extends V1HostBaseController {
   protected currentPlace: Place
 

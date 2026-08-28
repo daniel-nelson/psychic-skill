@@ -271,6 +271,9 @@ Keep both tiers of the fan-out below `default`. A bulk run's individual jobs vas
 Because expanders run at `last` priority, they only claim worker slots when no `not_urgent`-priority individual jobs are pending. With 10 workers, that means at most ~10 batches are expanded at a time (producing ~10,000 individual jobs in flight), and the individual jobs are drained before more batches are expanded. The queue depth stays bounded regardless of the total record count. Expander jobs are also infrequent relative to individual jobs — one per 1000 IDs — so sharing the `last` tier with a [check-in/heartbeat job](#priority-levels) doesn't starve it outright; it just interleaves.
 
 ```typescript
+// services/ReprocessAllPhotosService.ts
+import PhotoProcessingService from './PhotoProcessingService.js'
+
 export default class ReprocessAllPhotosService extends ApplicationBackgroundedService {
   public static override get backgroundJobConfig() {
     return { priority: 'last' as const }
@@ -300,7 +303,10 @@ export default class ReprocessAllPhotosService extends ApplicationBackgroundedSe
     }
   }
 }
+```
 
+```typescript
+// services/PhotoProcessingService.ts
 export default class PhotoProcessingService extends ApplicationBackgroundedService {
   public static override get backgroundJobConfig() {
     return { priority: 'not_urgent' as const }
@@ -407,6 +413,8 @@ A scheduled method should do almost nothing itself: select what needs to happen 
 
 ```typescript
 // Orchestrator — extends ApplicationScheduledService (has schedule(), no background())
+import ReconcileService from '@services/ReconcileService.js'
+
 export default class ScheduledJobs extends ApplicationScheduledService {
   public static async scheduleAllJobs() {
     await this.schedule('0 * * * *', 'hourly')
@@ -416,7 +424,9 @@ export default class ScheduledJobs extends ApplicationScheduledService {
     await ReconcileService.reconcileAll()   // delegate to a backgrounded service
   }
 }
+```
 
+```typescript
 // Worker — extends ApplicationBackgroundedService (has background(), no schedule())
 export default class ReconcileService extends ApplicationBackgroundedService {
   public static async reconcileAll() {
@@ -454,6 +464,8 @@ await ReconcileService.schedule('0 13 * * *', 'reconcileAll')
 
 ```typescript
 // Orchestrator — runs every hour; figures out whose local end-of-day this hour is
+import EndOfDayService from '@services/EndOfDayService.js'
+
 export default class ScheduledJobs extends ApplicationScheduledService {
   public static async scheduleAllJobs() {
     await this.schedule('0 * * * *', 'endOfDayFanOut')   // hourly, despite being "daily" work
@@ -463,7 +475,9 @@ export default class ScheduledJobs extends ApplicationScheduledService {
     await EndOfDayService.fanOut(DateTime.now())
   }
 }
+```
 
+```typescript
 // Worker — selects matching users by time zone, enqueues one job each
 export default class EndOfDayService extends ApplicationBackgroundedService {
   public static async fanOut(now: DateTime) {
