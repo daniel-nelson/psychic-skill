@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.82.0 — 2026-08-26
+
+### Added
+
+- **`testing.md`** — a new "Stubbing environment values in specs" subsection. `AppEnv.string` / `.integer` / `.boolean` are single methods discriminated by their argument, so `vi.spyOn(AppEnv, 'string')` returns the stubbed value for *every* variable read anywhere under test — the spec passes, then breaks an unrelated one once a second `AppEnv` read appears downstream. The shape to use instead is Dream's typed setter for the named variable, captured in `beforeEach` (`AppEnv.string('BEARBNB_MAPS_API_KEY', { optional: true })`, then `AppEnv.setString(...)`) and restored in an explicit `afterEach`: the setter writes `process.env`, which nothing restores automatically, since the generated app's vite configs set `restoreMocks: true` but not `unstubEnvs`. `vi.spyOn` stays the tool for the derived getters (`AppEnv.isTest`, `.nodeEnv`, `.serviceRole`), which have no setter and are restored for you.
+- **`openapi.md`** — `pnpm psy setup:sync:enums`, another command in the `setup:sync:*` family: it generates a one-time initializer that rewrites a client-side enums file, at a path you pick, on every `pnpm psy sync`, exporting a `PlaceStylesEnumValues` const and a `PlaceStylesEnum` type, following the same naming convention as `@src/types/db.js`. Client code imports from that file instead of hand-writing its own; [Critical Rule 16](SKILL.md#critical-rules) is the backend-side counterpart. The file carries only the enums the chosen spec's surface reaches, each with only the values that spec renders, so an enum or value missing from it is that boundary working rather than a bug to route around.
+
+### Changed
+
+- **`testing.md`** — testing principle 9 is "Stub the environment through `AppEnv`, not `vi.stubEnv`", and names the discriminator that matters: `AppEnv`'s setters are name-typed to the app's union and restored explicitly, where `vi.stubEnv` is untyped and, in the generated app's default configuration, never restored. It points at the new subsection for the shape.
+- **`models.md`** — the Dirty Tracking section names what the dirty comparison is measured against: the instance's own snapshot from its last load or save, not the row currently in the database.
+- **`openapi.md`** — the Zustand client-config fix survives future syncs because `pnpm psy sync` runs the generated initializer, which spawns `openapi-ts` and generates the store, never rewriting the client config file. Re-running `pnpm psy setup:sync:openapi-zustand` is what replaces it — the command prompts before overwriting, and confirming discards the import fix along with any baseUrl or auth code the config file has picked up.
+- **`SKILL.md`** — ecosystem version baseline: `@rvoh/psychic` to 3.12.x (the other four packages unchanged).
+
 ## 0.81.0 — 2026-08-19
 
 ### Added

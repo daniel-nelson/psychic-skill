@@ -665,7 +665,28 @@ OpenAPI request validation may reject invalid model params before model validati
 6. **Test authorization** - Verify users can only access their own resources
 7. **Test soft deletes by testing behavior** - Verify record is hidden (normal query) AND still present when scopes are removed
 8. **Use Polly** (`setupPolly`) for recording and replaying external API calls rather than stubbing
-9. **Spy on `AppEnv`, don't stub the environment** - To exercise an environment-dependent branch, spy on the accessor the code actually calls (`vi.spyOn(AppEnv, 'isTest', 'get').mockReturnValue(false)`) — app config is read through `AppEnv` ([Critical Rule 13](SKILL.md#critical-rules)), and `vi.stubEnv` also changes what Dream reads, including its test-database machinery
+9. **Stub the environment through `AppEnv`, not `vi.stubEnv`** - app config is read through `AppEnv` ([Critical Rule 13](SKILL.md#critical-rules)), whose setters are name-typed to the app's union and restored explicitly, where `vi.stubEnv` is untyped and, in the generated app's default configuration, never restored — see [Stubbing environment values in specs](#stubbing-environment-values-in-specs)
+
+### Stubbing environment values in specs
+
+`AppEnv.string` / `.integer` / `.boolean` are single methods discriminated by their argument, so `vi.spyOn(AppEnv, 'string')` returns the stubbed value for *every* variable read anywhere under test — the spec passes, then breaks an unrelated one once a second `AppEnv` read appears downstream. Dream ships a typed setter for a named variable; capture and restore it yourself:
+
+```typescript
+let originalMapsApiKey: string | undefined
+
+beforeEach(() => {
+  originalMapsApiKey = AppEnv.string('BEARBNB_MAPS_API_KEY', { optional: true })
+  AppEnv.setString('BEARBNB_MAPS_API_KEY', 'test-maps-key')
+})
+
+afterEach(() => {
+  AppEnv.setString('BEARBNB_MAPS_API_KEY', originalMapsApiKey)
+})
+```
+
+The setter writes `process.env`, which nothing restores automatically — the generated app's vite configs set `restoreMocks: true` but not `unstubEnvs` — so the `afterEach` is required. A spy is restored for you.
+
+The derived getters (`AppEnv.isTest`, `.nodeEnv`, `.serviceRole`) have no setter, so spy on those: `vi.spyOn(AppEnv, 'isTest', 'get').mockReturnValue(false)`.
 
 ## Background Worker Testing
 

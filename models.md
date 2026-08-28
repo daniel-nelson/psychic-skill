@@ -978,7 +978,7 @@ user.hasChanges('email')          // false
 
 `changedAttributes()` works before the first save too. `User.new({ name: 'Alice' })` marks `name` dirty immediately, so `changedAttributes()` is populated on the unpersisted instance.
 
-A persisted instance with nothing dirty issues no `UPDATE` on `save()` or `update()` and leaves `updatedAt` unstamped — `update({})`, or an `update()` assigning values equal to the current ones, is a no-op rather than a touch. Re-assigning the same plaintext to an `@deco.Encrypted()` property is always a real write: each assignment re-encrypts to fresh ciphertext. Before-save hooks and validations still run first, so a hook that dirties the record turns it back into a real write.
+A persisted instance with nothing dirty issues no `UPDATE` on `save()` or `update()` and leaves `updatedAt` unstamped — `update({})`, or an `update()` assigning values equal to the current ones, is a no-op rather than a touch. Re-assigning the same plaintext to an `@deco.Encrypted()` property is always a real write: each assignment re-encrypts to fresh ciphertext. Before-save hooks and validations still run first, so a hook that dirties the record turns it back into a real write. The comparison is against the instance's own snapshot from its last load or save, not against the row currently in the database.
 
 For an `@deco.Encrypted()` field, `changedAttributes()` reports the persisted `encrypted<Name>` key, not the plaintext virtual property. `getAttribute('<plaintext>')` returns `undefined` — it isn't the decrypting accessor; `getAttribute('encrypted<Name>')` returns ciphertext. Read the decrypted value via the instance property (`instance.<plaintext>`) — see [Encrypted](#special-decorators) above.
 
