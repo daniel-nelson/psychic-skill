@@ -785,7 +785,6 @@ this.ok(places)
   // Pagination (use ONE of these)
   paginate: true,                       // Offset-based pagination
   cursorPaginate: true,                 // Cursor-based pagination
-  scrollPaginate: true,                 // Scroll-based pagination
 
   // Documentation
   tags: ['places'],                     // OpenAPI tags
