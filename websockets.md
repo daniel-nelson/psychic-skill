@@ -230,7 +230,7 @@ startWs()
 Common pattern: Background job sends websocket notification:
 
 ```typescript
-export class NotificationService extends ApplicationBackgroundedService {
+export default class NotificationService extends ApplicationBackgroundedService {
   public static async placeBooked(placeId: string, guestId: string) {
     await this.background('_placeBooked', placeId, guestId)
   }
