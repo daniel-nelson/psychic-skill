@@ -8,6 +8,8 @@
 - **`controllers.md`** — the nested-resource base-controller pattern is two fenced blocks, `// V1/Host/BaseController.ts` and `// V1/Host/Places/BaseController.ts`, the doubly-nested one carrying the note about `/places/:placeId/rooms` and importing the base it extends.
 - **`i18n.md`** — the STI localized-text example is two fenced blocks, the base and the STI child, with the child importing `LocalizedText`.
 - **`serializers.md`** — the flattening example gives `BookingSerializer` its own fenced block, separate from the guest serializers, each keeping its existing label.
+- **`workers.md`** and **`websockets.md`** — every service example exports its service as the module default, which is what `importDefault` resolves when Psychic loads a service and gives it its global name.
+- **`workers.md`** — the transaction-race example enqueues through the service's public entry point, `PhotoProcessingService.processOne(...)`, in both the wrong and the right half.
 
 ### Removed
 
