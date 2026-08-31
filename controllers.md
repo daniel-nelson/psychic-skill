@@ -942,7 +942,7 @@ This is the correct tool when no model field participates in the body — not a 
 
 ### Custom Response Envelopes
 
-When an action returns a custom or compound shape — an envelope like `{ place, nearby }`, or a computed array alongside serialized models — model the whole shape as one composing `ObjectSerializer` and pass it to `@OpenAPI`; see [A compound response is still one serializer](serializers.md#a-compound-response-is-still-one-serializer) for how to build it. The action renders the plain data with `this.ok(...)`:
+When an action returns a custom or compound shape — an envelope like `{ place, nearby }`, or a computed array alongside serialized models — model the whole shape as one composing `ObjectSerializer` and pass it to `@OpenAPI`; see [A compound response is still one serializer](serializers.md#a-compound-response-is-still-one-serializer) for how to build it. The action invokes that serializer and renders the result:
 
 ```typescript
 @OpenAPI(PlaceWithNearbySerializer, { status: 200 })

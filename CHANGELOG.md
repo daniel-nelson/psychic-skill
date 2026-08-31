@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.83.0 — 2026-08-31
+
+### Changed
+
+- **`serializers.md`** — "A compound response is still one serializer" names the symptom of never invoking the composing serializer: hand `this.ok` the raw `{ place, nearby }` object and `OpenapiResponseValidationFailure` lands on an ordinary column inside the nested `place`, which reads as a preload miss and is not one. The clue that separates the two is that a genuine preload miss throws `NonLoadedAssociation` during serialization and never reaches response validation.
+- **`controllers.md`** — "Custom Response Envelopes" states that the action invokes the composing serializer and renders the result, matching the example below it.
+
 ## 0.82.1 — 2026-08-28
 
 ### Changed
