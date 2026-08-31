@@ -443,7 +443,7 @@ export const PlaceWithNearbySerializer = (place: Place, nearby: Place[]) =>
     .rendersMany('nearby', { serializer: PlaceSummarySerializer })
 ```
 
-The action is then `@OpenAPI(PlaceWithNearbySerializer, { status: 200 })` over `this.ok(PlaceWithNearbySerializer(place, nearby))`. The schema is derived and validated under test, with no hand-maintained JSON Schema to drift. Even a one-off envelope is worth this — a composing serializer stays the single source of truth where a hand-written `responses` block does not. Forget to invoke it — handing `this.ok` the raw envelope — and `OpenapiResponseValidationFailure` lands deep inside a nested `Place` over an ordinary column, reading like a preload miss it isn't; a genuine preload miss throws `NonLoadedAssociation` during serialization and never reaches response validation.
+The action is then `@OpenAPI(PlaceWithNearbySerializer, { status: 200 })` over `this.ok(PlaceWithNearbySerializer(place, nearby))`. The schema is derived and validated under test, with no hand-maintained JSON Schema to drift. Even a one-off envelope is worth this — a composing serializer stays the single source of truth where a hand-written `responses` block does not. Forget to call `PlaceWithNearbySerializer(...)` — handing `this.ok` the raw `{ place, nearby }` object instead — and `OpenapiResponseValidationFailure` lands on an ordinary column inside the nested `place`, which reads as a preload miss and is not one; a genuine preload miss throws `NonLoadedAssociation` during serialization and never reaches response validation.
 
 ### Rendering an async-computed shape on the model
 
