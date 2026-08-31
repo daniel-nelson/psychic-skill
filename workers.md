@@ -24,7 +24,7 @@ This two-method pattern lets the service encapsulate its implementation and expo
 ```typescript
 import ApplicationBackgroundedService from './ApplicationBackgroundedService.js'
 
-export class IntercomSyncService extends ApplicationBackgroundedService {
+export default class IntercomSyncService extends ApplicationBackgroundedService {
   // Public entry point — called from application code
   public static async syncUser(user: User) {
     await this.background('_syncUser', user.id)
@@ -55,7 +55,7 @@ await IntercomSyncService.syncUser(user)
 
   ```typescript
   // Wrong — the signed URL (with its embedded token) is stored as a job argument
-  export class BookingMailerService extends ApplicationBackgroundedService {
+  export default class BookingMailerService extends ApplicationBackgroundedService {
     public static async sendConfirmation(booking: Booking) {
       const confirmationUrl = await booking.mintConfirmationUrl()
       await this.background('_sendConfirmation', booking.guestId, confirmationUrl)
@@ -69,7 +69,7 @@ await IntercomSyncService.syncUser(user)
   }
 
   // Right — only the booking id crosses the queue; the token is minted inside the job
-  export class BookingMailerService extends ApplicationBackgroundedService {
+  export default class BookingMailerService extends ApplicationBackgroundedService {
     public static async sendConfirmation(booking: Booking) {
       await this.background('_sendConfirmation', booking.id)
     }
@@ -90,7 +90,7 @@ await IntercomSyncService.syncUser(user)
 `backgroundWithDelay` queues a job to run at least the specified amount of time in the future. Supports `seconds`, `minutes`, `hours`, and `days`.
 
 ```typescript
-export class ImageProcessingService extends ApplicationBackgroundedService {
+export default class ImageProcessingService extends ApplicationBackgroundedService {
   public static async processUpload(uploadId: string) {
     // Wait for S3 upload to propagate before processing
     await this.backgroundWithDelay({ seconds: 15 }, '_processUpload', uploadId)
@@ -115,7 +115,7 @@ Use `backgroundWithDelay` when:
 The dedup key's TTL equals the delay, so it has expired by the time the delayed job fires — re-arming the same `jobId` from inside the job's own running handler is safe. A delay of `0` seconds attaches no dedup key at all, so if debouncing matters, floor the delay at 1 second or higher.
 
 ```typescript
-export class IntercomSyncService extends ApplicationBackgroundedService {
+export default class IntercomSyncService extends ApplicationBackgroundedService {
   public static async syncUser(user: User) {
     await this.backgroundWithDelay(
       { minutes: 2, jobId: `intercom-sync-user-${user.id}` },
@@ -190,7 +190,7 @@ The same race applies to **services** that take a `txn` parameter and call `back
 // WRONG — bgjob races the transaction commit
 await ApplicationModel.transaction(async txn => {
   const photo = await Photo.txn(txn).create({ ... })
-  await PhotoProcessingService.background('process', photo.id)
+  await PhotoProcessingService.processOne(photo.id)
   // ↑ Redis sees the job NOW; Postgres won't see `photo` until commit
 })
 
@@ -200,7 +200,7 @@ await ApplicationModel.transaction(async txn => {
   const photo = await Photo.txn(txn).create({ ... })
   photoId = photo.id
 })
-await PhotoProcessingService.background('process', photoId)
+await PhotoProcessingService.processOne(photoId)
 
 // ALSO RIGHT — let the model's @AfterCreateCommit hook do the enqueue
 // (don't ALSO do it manually inside the txn)
@@ -271,6 +271,9 @@ Keep both tiers of the fan-out below `default`. A bulk run's individual jobs vas
 Because expanders run at `last` priority, they only claim worker slots when no `not_urgent`-priority individual jobs are pending. With 10 workers, that means at most ~10 batches are expanded at a time (producing ~10,000 individual jobs in flight), and the individual jobs are drained before more batches are expanded. The queue depth stays bounded regardless of the total record count. Expander jobs are also infrequent relative to individual jobs — one per 1000 IDs — so sharing the `last` tier with a [check-in/heartbeat job](#priority-levels) doesn't starve it outright; it just interleaves.
 
 ```typescript
+// services/ReprocessAllPhotosService.ts
+import PhotoProcessingService from './PhotoProcessingService.js'
+
 export default class ReprocessAllPhotosService extends ApplicationBackgroundedService {
   public static override get backgroundJobConfig() {
     return { priority: 'last' as const }
@@ -300,7 +303,10 @@ export default class ReprocessAllPhotosService extends ApplicationBackgroundedSe
     }
   }
 }
+```
 
+```typescript
+// services/PhotoProcessingService.ts
 export default class PhotoProcessingService extends ApplicationBackgroundedService {
   public static override get backgroundJobConfig() {
     return { priority: 'not_urgent' as const }
@@ -342,7 +348,7 @@ type BackgroundQueuePriority = 'urgent' | 'default' | 'not_urgent' | 'last'
 **Priority ordering and workstreams are an either/or without a BullMQ Pro license.** When a `backgroundJobConfig` sets a `workstream` (or a `groupId`), the priority number is written to the job's `group.priority` instead of the top-level `priority`, and open-source BullMQ ignores `group.priority` — group priority is a BullMQ Pro surface. So a service gets workstream isolation or priority ordering, not both, unless the app runs the `QueuePro`/`WorkerPro` providers.
 
 ```typescript
-export class FileImportService extends ApplicationBackgroundedService {
+export default class FileImportService extends ApplicationBackgroundedService {
   public static get backgroundJobConfig(): BackgroundJobConfig<ApplicationBackgroundedService> {
     return { priority: 'not_urgent' }
   }
@@ -407,6 +413,8 @@ A scheduled method should do almost nothing itself: select what needs to happen 
 
 ```typescript
 // Orchestrator — extends ApplicationScheduledService (has schedule(), no background())
+import ReconcileService from '@services/ReconcileService.js'
+
 export default class ScheduledJobs extends ApplicationScheduledService {
   public static async scheduleAllJobs() {
     await this.schedule('0 * * * *', 'hourly')
@@ -416,7 +424,9 @@ export default class ScheduledJobs extends ApplicationScheduledService {
     await ReconcileService.reconcileAll()   // delegate to a backgrounded service
   }
 }
+```
 
+```typescript
 // Worker — extends ApplicationBackgroundedService (has background(), no schedule())
 export default class ReconcileService extends ApplicationBackgroundedService {
   public static async reconcileAll() {
@@ -454,6 +464,8 @@ await ReconcileService.schedule('0 13 * * *', 'reconcileAll')
 
 ```typescript
 // Orchestrator — runs every hour; figures out whose local end-of-day this hour is
+import EndOfDayService from '@services/EndOfDayService.js'
+
 export default class ScheduledJobs extends ApplicationScheduledService {
   public static async scheduleAllJobs() {
     await this.schedule('0 * * * *', 'endOfDayFanOut')   // hourly, despite being "daily" work
@@ -463,7 +475,9 @@ export default class ScheduledJobs extends ApplicationScheduledService {
     await EndOfDayService.fanOut(DateTime.now())
   }
 }
+```
 
+```typescript
 // Worker — selects matching users by time zone, enqueues one job each
 export default class EndOfDayService extends ApplicationBackgroundedService {
   public static async fanOut(now: DateTime) {
@@ -527,7 +541,7 @@ A named workstream can carry its own `queueConnection` and `workerConnection`. W
 After adding a named workstream, run `pnpm psy sync` to update types. Then assign services to the workstream via `backgroundJobConfig`:
 
 ```typescript
-export class IntercomSyncService extends ApplicationBackgroundedService {
+export default class IntercomSyncService extends ApplicationBackgroundedService {
   public static get backgroundJobConfig(): BackgroundJobConfig<ApplicationBackgroundedService> {
     return { workstream: 'Intercom' }
   }
@@ -611,7 +625,7 @@ workersApp.set('background', {
 Run `pnpm psy sync` after changing the queue names, then route a service to one:
 
 ```typescript
-export class BookingNotificationService extends ApplicationBackgroundedService {
+export default class BookingNotificationService extends ApplicationBackgroundedService {
   public static get backgroundJobConfig(): BackgroundJobConfig<ApplicationBackgroundedService> {
     return { queue: 'BookingNotifications' }
   }
@@ -656,7 +670,7 @@ This config is sent directly to BullMQ and can be customized in `conf/initialize
 There is no per-service retry budget — `backgroundJobConfig` carries `priority` and a routing key, nothing more. When one job's expected failure is worth retrying, but not twenty times over six days (an external service billed per attempt, say), the service owns the budget: the `_` implementation method takes an `attempt` argument defaulting to `1`, catches its one expected error, and re-enqueues itself with the count incremented while it is under the threshold:
 
 ```typescript
-export class PlaceGeocodingService extends ApplicationBackgroundedService {
+export default class PlaceGeocodingService extends ApplicationBackgroundedService {
   public static async geocodePlace(place: Place) {
     await this.background('_geocodePlace', place.id)
   }
@@ -689,7 +703,7 @@ Background methods can optionally receive a BullMQ `Job` parameter as their last
 ```typescript
 import { Job } from 'bullmq'
 
-export class DataProcessingService extends ApplicationBackgroundedService {
+export default class DataProcessingService extends ApplicationBackgroundedService {
   public static async processDataset(datasetId: string) {
     await this.background('_processDataset', datasetId)
   }

@@ -282,7 +282,9 @@ export const FlattenableGuestSerializer = (guest: Guest) =>
 export const GuestSerializer = (guest: Guest) =>
   FlattenableGuestSerializer(guest)
     .attribute('id')
+```
 
+```typescript
 // BookingSerializer — flattens guest data without the guest's id
 export const BookingSerializer = (booking: Booking) =>
   DreamSerializer(Booking, booking)

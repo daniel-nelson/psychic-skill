@@ -89,7 +89,6 @@ These are also query-oriented convenience methods on the model class:
 - `Model.pluckEach(...)`
 - `Model.paginate(...)`
 - `Model.cursorPaginate(...)`
-- `Model.scrollPaginate(...)`
 - `Model.sql()`
 - `Model.toKysely(...)`
 
@@ -153,13 +152,12 @@ Terminal or result-producing query methods include:
 - `query.pluckEach(...)`
 - `query.paginate(...)`
 - `query.cursorPaginate(...)`
-- `query.scrollPaginate(...)`
 - `query.sql()`
 - `query.toKysely(...)`
 
 ### Client-controlled page size is capped, not unbounded
 
-`paginate`/`cursorPaginate`/`scrollPaginate` resolve the effective page size as `requestedPageSize || paginationPageSize` (default 25 when the caller passes none), then clamp the result to `paginationMaxPageSize` (default 200). So forwarding a request's `pageSize` straight into one of these methods is already safe against a client asking for the whole table in one page — the framework caps it regardless. Configure either default as a Dream-app option in `conf/dream.ts`:
+`paginate`/`cursorPaginate` resolve the effective page size as `requestedPageSize || paginationPageSize` (default 25 when the caller passes none), then clamp the result to `paginationMaxPageSize` (default 200). So forwarding a request's `pageSize` straight into one of these methods is already safe against a client asking for the whole table in one page — the framework caps it regardless. Configure either default as a Dream-app option in `conf/dream.ts`:
 
 ```typescript
 app.set('paginationPageSize', 25)
