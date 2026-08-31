@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.83.0 — 2026-08-31
+
+### Added
+
+- **`serializers.md`** — "A compound response is still one serializer" names the symptom of never invoking the envelope: hand `this.ok` the raw envelope and `OpenapiResponseValidationFailure` lands deep inside a nested `Place` over an ordinary column, which reads as a preload miss and is not one. The clue that separates the two is that a genuine preload miss throws `NonLoadedAssociation` during serialization and never reaches response validation.
+
 ## 0.82.1 — 2026-08-28
 
 ### Changed
