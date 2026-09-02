@@ -907,7 +907,14 @@ The nested `for:` sentinel is **request-only**; response shapes are modeled as a
 **BearBnB worked example.** A single `POST /host/places` that creates a `Place` and an array of `Room`s atomically:
 
 ```typescript
-import { Bathroom, Bedroom, Den, Kitchen, LivingRoom, Place, Room } from '@app/models'
+import ApplicationModel from '@models/ApplicationModel.js'
+import Place from '@models/Place.js'
+import Room from '@models/Room.js'
+import Bathroom from '@models/Room/Bathroom.js'
+import Bedroom from '@models/Room/Bedroom.js'
+import Den from '@models/Room/Den.js'
+import Kitchen from '@models/Room/Kitchen.js'
+import LivingRoom from '@models/Room/LivingRoom.js'
 import { OpenAPI } from '@rvoh/psychic'
 import { RoomTypesEnum } from '@src/types/db.js'
 
