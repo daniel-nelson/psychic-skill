@@ -563,7 +563,7 @@ Psychic strips leading and trailing whitespace from string params before validat
 
 ### An absent key and an explicit `null` differ
 
-With `{ allowNull: true }`, `castParam` returns `undefined` for a top-level key absent from the body and `null` when the body carries an explicit `null` — that difference is what lets a partial update tell "leave this column alone" apart from "clear it". On a dot-notation key whose intermediate object is absent, `castParam` returns `null`, not `undefined`. Both are falsy, so a truthiness test collapses them — branch on each separately.
+With `{ allowNull: true }`, `castParam` returns `undefined` for an absent top-level key and `null` for an explicit `null` — the difference that lets a [partial update](#worked-example--update-with-a-nullable-fk) tell "leave this column alone" apart from "clear it". A dot-notation key whose intermediate object is absent returns `null`, so that distinction exists only at the top level; for a nested field, cast the intermediate object itself and branch on that. Both values are falsy, so test `=== undefined` where the two must stay apart, and collapse them freely where they need not — an `index` action's optional filters.
 
 ### extractParams
 
@@ -591,8 +591,10 @@ this.extractParams(Place, ['name', 'style'], { key: 'place' })
 
 // Extract an array of nested objects from a key in the body
 // (e.g., body: { rooms: [{ type: 'Bedroom', ... }, { type: 'Kitchen', ... }] })
-// Each element is validated against the allowlist.
-const roomsParams = this.extractParams(Room, ['type', 'name'], { key: 'rooms', array: true })
+// Each element is validated against the allowlist. The STI `type` discriminator is
+// always excluded, so pull it per item from the raw body — see
+// [STI bulk creation](sti.md#bulk-creation-from-a-request-body-array).
+const roomsParams = this.extractParams(Room, ['name', 'sleeps'], { key: 'rooms', array: true })
 ```
 
 Nothing widens extraction past the model's safe set: the positional array is the entire allowlist, always intersected with the model's param-safe set (its declared `paramSafeColumns`, or the default safe set otherwise). An excluded column can't be extracted at all; to surface one in the spec instead, see [Always-excluded columns](#always-excluded-columns) below.
@@ -841,11 +843,11 @@ One important STI nuance: when `@OpenAPI(BaseModel, ...)` documents an STI-dispa
 
 #### Worked example — UPDATE with a nullable FK
 
-The most-mistaken case: an `update` action whose body needs to express "the FK can be set or cleared." Reach for `including`, not `combining` — column nullability is inferred from the model's `@deco.BelongsTo('City', { optional: true })` declaration.
+The most-mistaken case: an `update` action whose body needs to express "the FK can be set or cleared." Reach for `including`, not `combining` — the FK's nullability is read from the `cityId` column in the generated schema, so the derived shape already advertises it as nullable. The action side is the partial-update case from [An absent key and an explicit `null` differ](#an-absent-key-and-an-explicit-null-differ).
 
 ```typescript
-// `@deco.BelongsTo('City', { optional: true })` on Place makes cityId nullable.
-// `including: ['cityId']` advertises the FK in the OpenAPI shape with the right nullability.
+// `including: ['cityId']` advertises the FK in the OpenAPI shape, taking its
+// nullability from the nullable cityId column.
 // Don't reach for `combining: { cityId: ['string', 'null'] }` — `combining` shadows the
 // model-derived shape with a hand-typed copy that drifts.
 @OpenAPI(Place, {
@@ -867,8 +869,10 @@ public async update() {
     ...(cityId === undefined
       ? {}
       : {
-          // A City is shared reference data — every host may reference every city, so
-          // there is no per-user access question to answer. An unscoped findOrFail is
+          // The default is to scope a param-id lookup through the current user, the way
+          // the currentHost query above does, so verification and authorization are one
+          // query. A City is shared reference data — every host may reference every city,
+          // so there is no per-user access question to answer. An unscoped findOrFail is
           // the exception, and every one of them deserves scrutiny.
           city: cityId === null ? null : await City.findOrFail(cityId),
         }),
@@ -903,8 +907,9 @@ The nested `for:` sentinel is **request-only**; response shapes are modeled as a
 **BearBnB worked example.** A single `POST /host/places` that creates a `Place` and an array of `Room`s atomically:
 
 ```typescript
-import { Place, Room } from '@app/models'
+import { Bathroom, Bedroom, Den, Kitchen, LivingRoom, Place, Room } from '@app/models'
 import { OpenAPI } from '@rvoh/psychic'
+import { RoomTypesEnum } from '@src/types/db.js'
 
 @OpenAPI(Place, {
   status: 201,
@@ -913,12 +918,15 @@ import { OpenAPI } from '@rvoh/psychic'
   requestBody: {
     params: ['name', 'style', 'sleeps'],
     combining: {
-      // Nested array of Room shapes, each derived from Room's paramSafeColumns.
-      // OpenAPI.forDream's generic narrows `required` to Room column names —
-      // a typo here is a compile error.
+      // Nested array of Room shapes, each derived from Room's columns. `including`
+      // re-adds the auto-excluded STI `type` discriminator to the spec.
+      // OpenAPI.forDream's generic narrows `params` / `including` / `required` to
+      // Room column names — a typo here is a compile error.
       rooms: {
         type: 'array',
         items: OpenAPI.forDream(Room, {
+          params: ['name', 'sleeps'],
+          including: ['type'],
           required: ['type', 'name'],
         }),
       },
@@ -927,13 +935,30 @@ import { OpenAPI } from '@rvoh/psychic'
 })
 public async create() {
   const placeAttrs = this.extractParams(Place, ['name', 'style', 'sleeps'])
-  const roomsAttrs = this.extractParams(Room, ['type', 'name'], { key: 'rooms', array: true })
+  // Extraction always strips the STI `type` discriminator, so read it per item from the
+  // raw body and dispatch to the child class — see
+  // [STI bulk creation](sti.md#bulk-creation-from-a-request-body-array).
+  const roomsAttrs = this.extractParams(Room, ['name', 'sleeps'], { key: 'rooms', array: true })
+  const rawRooms = (this.params as { rooms?: { type?: string }[] }).rooms ?? []
 
   const place = await ApplicationModel.transaction(async txn => {
     const created = await Place.txn(txn).create({ ...placeAttrs, host: this.currentHost })
-    for (const r of roomsAttrs) {
-      await Room.txn(txn).create({ ...r, place: created })
+
+    for (const [i, roomAttrs] of roomsAttrs.entries()) {
+      const roomType = rawRooms[i]?.type as RoomTypesEnum
+      switch (roomType) {
+        case 'Bathroom':   await Bathroom.txn(txn).create({ place: created, ...roomAttrs }); break
+        case 'Bedroom':    await Bedroom.txn(txn).create({ place: created, ...roomAttrs }); break
+        case 'Kitchen':    await Kitchen.txn(txn).create({ place: created, ...roomAttrs }); break
+        case 'Den':        await Den.txn(txn).create({ place: created, ...roomAttrs }); break
+        case 'LivingRoom': await LivingRoom.txn(txn).create({ place: created, ...roomAttrs }); break
+        default: {
+          const _never: never = roomType
+          throw new Error(`Unhandled RoomTypesEnum: ${_never as string}`)
+        }
+      }
     }
+
     return created
   })
 
@@ -941,7 +966,7 @@ public async create() {
 }
 ```
 
-The OpenAPI shape and the `extractParams` calls stay aligned: the spec advertises `{ name, style, sleeps, rooms: [{ type, name }, ...] }`, and the action extracts each model's params with its own allowlist. Wrap the writes in `ApplicationModel.transaction` so a failed Room rolls back the Place — partial-creation is rarely the desired failure mode for bundled requests.
+The OpenAPI shape and the `extractParams` calls stay aligned: the spec advertises `{ name, style, sleeps, rooms: [{ type, name, sleeps }, ...] }`, and the action extracts each model's params with its own allowlist, pulling the one advertised field extraction excludes — `type` — from the raw body and dispatching on it to the STI child class. Wrap the writes in `ApplicationModel.transaction` so a failed Room rolls back the Place — partial-creation is rarely the desired failure mode for bundled requests.
 
 #### Anti-patterns
 
