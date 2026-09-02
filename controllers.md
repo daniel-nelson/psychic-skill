@@ -854,20 +854,16 @@ The most-mistaken case: an `update` action whose body needs to express "the FK c
   requestBody: { params: ['name'], including: ['cityId'] },
 })
 public async update() {
-  // Loading the Place through currentHost makes the lookup and the authorization one query.
   const place = await this.currentHost
     .associationQuery('places')
     .findOrFail(this.castParam('id', 'uuid'))
-
-  // A FK can't go in the extractParams allowlist, so pull it with castParam and pass
-  // the loaded City as an association.
   const cityId = this.castParam('cityId', 'uuid', { allowNull: true })
 
   await place.update({
     ...this.extractParams(Place, ['name']),
-    // Three cases that must stay distinct: key absent (leave cityId alone), explicit
-    // null (clear it), an id (set it). The spread is what expresses "leave alone" —
-    // `city: undefined` is a type error under exactOptionalPropertyTypes.
+    // The conditional spread is what keeps an absent key ("leave cityId alone")
+    // distinct from an explicit null ("clear it") — `city: undefined` is a type
+    // error under exactOptionalPropertyTypes.
     ...(cityId === undefined
       ? {}
       : {
