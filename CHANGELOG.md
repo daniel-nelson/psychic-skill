@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.84.0 — 2026-09-02
+
+### Added
+
+- **`controllers.md`** — a new "An absent key and an explicit `null` differ" subsection under Parameter Handling. With `{ allowNull: true }`, `castParam` returns `undefined` for a top-level key absent from the body and `null` when the body carries an explicit `null` — the difference that lets a partial update tell "leave this column alone" apart from "clear it". On a dot-notation key whose intermediate object is absent, `castParam` returns `null` rather than `undefined`. Both values are falsy, so a truthiness test collapses them; branch on each separately.
+
+### Changed
+
+- **`controllers.md`** — the "UPDATE with a nullable FK" worked example. It named `cityId` inside `extractParams`, which the `allowed` type forbids — a compile error at the call site, so the example could not be copied into a controller as written. It now pulls the foreign key with `castParam`, loads the `Place` through a visible `this.currentHost.associationQuery('places').findOrFail(...)` chain so the lookup and the authorization are one query, and passes the loaded `City` as an association, using a conditional spread to keep an absent key distinct from an explicit `null`.
+
 ## 0.83.0 — 2026-08-31
 
 ### Changed
