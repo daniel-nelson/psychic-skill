@@ -561,6 +561,10 @@ For array casts (`'string[]'`, `'integer[]'`, …) the bounds apply **element-wi
 
 Psychic strips leading and trailing whitespace from string params before validation and casting. Both `castParam` and `extractParams` resolve strings through the same `Params.cast` path, so `'  Cozy Cabin  '` arrives as `'Cozy Cabin'`. This applies to scalar `'string'` params, `enum` strings, Virtual string params, and the elements of string and enum arrays (`'string[]'`, array enum columns). Don't re-trim in a controller, a model setter, or a hook — it's already done.
 
+### An absent key and an explicit `null` differ
+
+With `{ allowNull: true }`, `castParam` returns `undefined` for a top-level key absent from the body and `null` when the body carries an explicit `null` — that difference is what lets a partial update tell "leave this column alone" apart from "clear it". On a dot-notation key whose intermediate object is absent, `castParam` returns `null`, not `undefined`. Both are falsy, so a truthiness test collapses them — branch on each separately.
+
 ### extractParams
 
 `extractParams(Model, allowedParams, opts?)` validates an incoming request body against a Dream model's writable params and returns a typed, safe-to-write attributes object. The `allowedParams` array is an explicit positional allowlist, TS-checked at compile time against the model's safe params: real columns, Encrypted columns, and Virtual columns. Encrypted params are accepted as `string` or `string | null` based on the backing encrypted column's nullability; Virtual params use the type declared in `@deco.Virtual(...)`. The runtime intersects the allowlist with the model's `paramSafeColumns` (when declared) and the always-excluded set described below.
