@@ -649,7 +649,7 @@ public static hideArchived(query: Query<Post>) {
 
 ### Removing Default Scopes
 
-Removing a default scope is for reaching records the scope deliberately hides, when the operation is about those records — restoring a soft-deleted record from a trash can is one such case (see [soft-delete.md](soft-delete.md)).
+Removing a default scope is for reaching records the scope deliberately hides, when the operation is about those records — see [soft-delete.md](soft-delete.md) for one case.
 
 Use `removeDefaultScope('scopeName')` to remove a specific scope, or `removeAllDefaultScopes()` to remove all of them. Both work on model classes and query chains.
 
