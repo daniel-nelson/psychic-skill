@@ -653,7 +653,7 @@ Removing a default scope is for reaching records the scope deliberately hides, w
 
 Use `removeDefaultScope('scopeName')` to remove a specific scope, or `removeAllDefaultScopes()` to remove all of them. Both work on model classes and query chains.
 
-**Which to use:** Use `removeDefaultScope` when querying for a plurality (e.g. `.all()`) so that other default scopes remain in effect and don't bring extra records into scope. Use `removeAllDefaultScopes` when targeting a specific record (e.g. `.find(id)`, `.findOrFail(id)`) where you want to ensure the record is found regardless of any default scope.
+**Which to use:** Use `removeDefaultScope` when querying for a plurality (e.g. `.all()`) so that other default scopes remain in effect and don't bring extra records into scope. Use `removeAllDefaultScopes` when targeting a specific record (e.g. `.find(id)`, `.findOrFail(id)`).
 
 ```typescript
 // Plurality — remove only the scope you need to bypass
