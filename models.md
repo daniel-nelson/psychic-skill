@@ -649,16 +649,18 @@ public static hideArchived(query: Query<Post>) {
 
 ### Removing Default Scopes
 
+Removing a default scope is for reaching records the scope deliberately hides, when the operation is about those records — see [soft-delete.md](soft-delete.md) for one case.
+
 Use `removeDefaultScope('scopeName')` to remove a specific scope, or `removeAllDefaultScopes()` to remove all of them. Both work on model classes and query chains.
 
-**Which to use:** Use `removeDefaultScope` when querying for a plurality (e.g. `.all()`) so that other default scopes remain in effect and don't bring extra records into scope. Use `removeAllDefaultScopes` when targeting a specific record (e.g. `.find(id)`, `.findOrFail(id)`) where you want to ensure the record is found regardless of any default scope.
+**Which to use:** Use `removeDefaultScope` when querying for a plurality (e.g. `.all()`) so that other default scopes remain in effect and don't bring extra records into scope. Use `removeAllDefaultScopes` when targeting a specific record (e.g. `.find(id)`, `.findOrFail(id)`).
 
 ```typescript
 // Plurality — remove only the scope you need to bypass
 await Place.removeDefaultScope('dream:SoftDelete').where({ style: 'cabin' }).all()
 await Post.removeDefaultScope('hideArchived').all()
 
-// Specific record — safe to remove all scopes since you're targeting one record
+// Specific record — lifts every filter, so this returns whatever the table holds under that id
 await Place.removeAllDefaultScopes().findOrFail(id)
 ```
 
