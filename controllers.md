@@ -563,7 +563,7 @@ Psychic strips leading and trailing whitespace from string params before validat
 
 ### An absent key and an explicit `null` differ
 
-Without `allowNull`, a primitive-literal or RegExp cast rejects both shapes — an absent key as well as an explicit `null`. With `{ allowNull: true }`, `castParam` returns `undefined` for an absent key and `null` for an explicit `null`, at every depth — including a `null` nested inside a present object. That difference lets a [partial update](#worked-example--update-with-a-nullable-fk) tell "leave this column alone" apart from "clear it". Both values are falsy, so test `=== undefined` where the two must stay apart, and collapse them freely where they need not — an `index` action's optional filters.
+With `{ allowNull: true }`, `castParam` returns `undefined` for an absent key and `null` for an explicit `null`, at every depth — including a `null` nested inside a present object. That difference lets a [partial update](#worked-example--update-with-a-nullable-fk) tell "leave this column alone" apart from "clear it". Both values are falsy, so test `=== undefined` where the two must stay apart, and collapse them freely where they need not — an `index` action's optional filters.
 
 ### extractParams
 
