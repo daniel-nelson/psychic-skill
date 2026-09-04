@@ -618,7 +618,7 @@ public static active(query: Query<Place>) {
 
 // Default scope - applied to ALL queries automatically
 @deco.Scope({ default: true })
-public static hideArchived(query: Query<Post>) {
+public static hideArchived(query: Query<Booking>) {
   return query.where({ archivedAt: null })
 }
 
@@ -626,7 +626,7 @@ public static hideArchived(query: Query<Post>) {
 const places = await Place.scope('active').all()
 
 // Bypass default scopes
-const withArchived = await Post.removeDefaultScope('hideArchived').all()
+const withArchived = await Booking.removeDefaultScope('hideArchived').all()
 const specificPlace = await Place.removeAllDefaultScopes().findOrFail(id)
 ```
 
@@ -642,7 +642,7 @@ Models can also define custom default scopes:
 
 ```typescript
 @deco.Scope({ default: true })
-public static hideArchived(query: Query<Post>) {
+public static hideArchived(query: Query<Booking>) {
   return query.where({ archivedAt: null })
 }
 ```
@@ -658,7 +658,7 @@ Use `removeDefaultScope('scopeName')` to remove a specific scope, or `removeAllD
 ```typescript
 // Plurality — remove only the scope you need to bypass
 await Place.removeDefaultScope('dream:SoftDelete').where({ style: 'cabin' }).all()
-await Post.removeDefaultScope('hideArchived').all()
+await Booking.removeDefaultScope('hideArchived').all()
 
 // Specific record — lifts every filter, so this returns whatever the table holds under that id
 await Place.removeAllDefaultScopes().findOrFail(id)
