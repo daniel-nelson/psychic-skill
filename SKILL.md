@@ -332,7 +332,7 @@ export default function routes(r: PsychicRouter) {
 - **Every model in a `dependent: 'destroy'` chain must also have `@SoftDelete()`** — otherwise destroying the parent permanently deletes those children. Dream does not check this for you.
 - **STI children never carry `@SoftDelete()`** — it lives on the STI parent and all children inherit it.
 
-**Before you add soft delete to an existing model, query soft-deleted rows, or build a `dependent: 'destroy'` chain, read [soft-delete.md](soft-delete.md).** It owns the setup, the `restrict`-not-`cascade` FK rule, `undestroy` / `reallyDestroy`, and the `removeDefaultScope` vs `removeAllDefaultScopes` distinction.
+**Before you add soft delete to an existing model, query soft-deleted rows, or build a `dependent: 'destroy'` chain, read [soft-delete.md](soft-delete.md).** It owns the setup, the `restrict`-not-`cascade` FK rule, and `undestroy` / `reallyDestroy`; [models.md — Default Scopes](models.md#removing-default-scopes) owns which scope-removal form to reach for.
 
 **Before you write a claim — an update or destroy whose new value depends on a value you just read — read [locking.md](locking.md).** It owns `{ lock: true }` on `update` and `destroy`, the attributes and callback forms, and what a lock costs. Most writes need none of it; that file says so first.
 
@@ -340,7 +340,7 @@ export default function routes(r: PsychicRouter) {
 
 Default scopes are conditions automatically applied to every query on a model. Two are built in — **`dream:SoftDelete`** (added by `@SoftDelete()`, hides `deletedAt` rows) and **`dream:STI`** (added by `@STI()`, restricts a child query to its type); define your own with `@deco.Scope({ default: true })`.
 
-- **Bypass one with `removeDefaultScope('name')` when querying a plurality** (it preserves other scopes) and **`removeAllDefaultScopes()` when targeting one specific record.**
+- **Bypass one by name with `removeDefaultScope('name')`** — prefer it over `removeAllDefaultScopes()`, which lifts every default scope on every model in the query, yours included.
 
 Full reference: [models.md — Default Scopes](models.md#default-scopes).
 

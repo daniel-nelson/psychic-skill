@@ -571,7 +571,7 @@ public removeFromSearchIndex(this: Place) { ... }
 
 A destroy runs the record's own `beforeDestroy` hooks **first**, then the `dependent: 'destroy'` cascade, then `afterDestroy` — so a `beforeDestroy` on `Place` still sees its `Room` records present, and an `afterDestroy` sees them gone. Work that must read, count, or archive the children belongs in `beforeDestroy`; work that assumes they are already deleted belongs in `afterDestroy`, which still runs inside the destroy's transaction.
 
-`undestroy()` goes the other way: the deepest descendants are restored first and the record itself last. A child's `afterUpdate` therefore runs while its parent still carries a non-null `deletedAt`, so an association read back to the parent through the parent's own default scopes finds nothing. Read it with `.removeAllDefaultScopes()`, or move the work to the parent's `afterUpdate`, which runs after the whole cascade.
+`undestroy()` goes the other way: the deepest descendants are restored first and the record itself last. A child's `afterUpdate` therefore runs while its parent still carries a non-null `deletedAt`, so an association read back to the parent through the parent's own default scopes finds nothing. Read it with `.removeDefaultScope('dream:SoftDelete')`, or move the work to the parent's `afterUpdate`, which runs after the whole cascade.
 
 ## Validations
 
@@ -627,7 +627,7 @@ const places = await Place.scope('active').all()
 
 // Bypass default scopes
 const withArchived = await Booking.removeDefaultScope('hideArchived').all()
-const specificPlace = await Place.removeAllDefaultScopes().findOrFail(id)
+const specificPlace = await Place.removeDefaultScope('dream:SoftDelete').findOrFail(id)
 ```
 
 ### Default Scopes
@@ -653,16 +653,18 @@ Removing a default scope is for reaching records the scope deliberately hides, w
 
 Use `removeDefaultScope('scopeName')` to remove a specific scope, or `removeAllDefaultScopes()` to remove all of them. Both work on model classes and query chains.
 
-**Which to use:** Use `removeDefaultScope` when querying for a plurality (e.g. `.all()`) so that other default scopes remain in effect and don't bring extra records into scope. Use `removeAllDefaultScopes` when targeting a specific record (e.g. `.find(id)`, `.findOrFail(id)`).
+**Which to use:** reach for the targeted `removeDefaultScope('scopeName')`. `removeAllDefaultScopes()` names nothing, so the call site cannot show what it lifted — and it lifts your application's own default scopes too, which may be the thing enforcing access control.
+
+Either form travels: the bypass carries into everything the query loads (`preload`, `preloadFor`, `leftJoinPreload`, `innerJoin`, `leftJoin`), and a removal by name lifts that scope on every model in the query, not just the root. An association read off an already-loaded instance (`load`, `loadFor`, `associationQuery`) does not carry it.
 
 ```typescript
-// Plurality — remove only the scope you need to bypass
+// Name the scope you need to bypass
 await Place.removeDefaultScope('dream:SoftDelete').where({ style: 'cabin' }).all()
 await Booking.removeDefaultScope('hideArchived').all()
-
-// Specific record — lifts every filter, so this returns whatever the table holds under that id
-await Place.removeAllDefaultScopes().findOrFail(id)
+await Place.removeDefaultScope('dream:SoftDelete').findOrFail(id)
 ```
+
+If a targeted removal comes back empty, another default scope is still hiding the record; chain its name too.
 
 Both methods also work on query chains:
 

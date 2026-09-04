@@ -111,7 +111,7 @@ Soft-deleted records can be restored with `undestroy()`, which sets `deletedAt` 
 
 ```typescript
 // Must bypass the SoftDelete scope to find the record
-const place = await Place.removeAllDefaultScopes().findOrFail(id)
+const place = await Place.removeDefaultScope('dream:SoftDelete').findOrFail(id)
 await place.undestroy()
 // place.deletedAt is now null; record is visible again in normal queries
 ```
@@ -125,7 +125,7 @@ await place.undestroyAssociation('rooms')
 Query-level undestroy is also available:
 
 ```typescript
-await Place.removeAllDefaultScopes().where({ id }).undestroy()
+await Place.where({ id }).undestroy()
 ```
 
 ### Permanent delete (reallyDestroy)
@@ -176,7 +176,7 @@ await place.destroy()
 await Room.where({ place }).count() // 0
 
 // Still in the database
-await Room.removeAllDefaultScopes().where({ place }).count() // 3
+await Room.removeDefaultScope('dream:SoftDelete').where({ place }).count() // 3
 
 // Undestroy also cascades — restores the place AND its rooms and hostPlaces
 await place.undestroy()
@@ -185,15 +185,12 @@ await Room.where({ place }).count() // 3
 
 ## Querying Soft-Deleted Records
 
-The `@SoftDelete` decorator adds a [default scope](models.md#default-scopes) (`dream:SoftDelete`) that filters out records where `deletedAt` is not null. To include soft-deleted records, remove the scope. Use `removeDefaultScope` when querying for a plurality and `removeAllDefaultScopes` when targeting a specific record (see [default scopes](models.md#default-scopes) for the rationale):
+The `@SoftDelete` decorator adds a [default scope](models.md#default-scopes) (`dream:SoftDelete`) that filters out records where `deletedAt` is not null. To include soft-deleted records, remove that scope by name (see [default scopes](models.md#default-scopes) for what a blanket removal costs):
 
 ```typescript
-// Querying for multiple soft-deleted records — use removeDefaultScope to preserve other scopes
 await Place.removeDefaultScope('dream:SoftDelete').where({ style: 'cabin' }).all()
 await user.associationQuery('places').removeDefaultScope('dream:SoftDelete').all()
-
-// Finding a specific soft-deleted record — use removeAllDefaultScopes
-await Place.removeAllDefaultScopes().findOrFail(id)
+await Place.removeDefaultScope('dream:SoftDelete').findOrFail(id)
 ```
 
 ## STI and SoftDelete
@@ -209,7 +206,7 @@ describe('Place', () => {
       const place = await createPlace()
       await place.destroy()
       expect(await Place.where({ id: place.id }).exists()).toBe(false)
-      expect(await Place.removeAllDefaultScopes().where({ id: place.id }).exists()).toBe(true)
+      expect(await Place.removeDefaultScope('dream:SoftDelete').where({ id: place.id }).exists()).toBe(true)
     })
 
     it('cascades soft delete to dependent associations', async () => {
@@ -219,7 +216,7 @@ describe('Place', () => {
       await place.destroy()
 
       expect(await Room.where({ id: room.id }).exists()).toBe(false)
-      expect(await Room.removeAllDefaultScopes().where({ id: room.id }).exists()).toBe(true)
+      expect(await Room.removeDefaultScope('dream:SoftDelete').where({ id: room.id }).exists()).toBe(true)
     })
   })
 })
