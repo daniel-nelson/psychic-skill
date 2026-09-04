@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.85.0 — 2026-09-03
+
+### Changed
+
+- **`models.md`**, **`SKILL.md`**, **`soft-delete.md`**, **`testing.md`** — the skill recommends the targeted `removeDefaultScope('scopeName')` over `removeAllDefaultScopes()`, and every example that bypasses the soft-delete scope names `'dream:SoftDelete'`. "Removing Default Scopes" in `models.md` owns the recommendation and its rationale: the blanket form names nothing, so the call site cannot show what it lifted, and it lifts your application's own default scopes too, which may be the thing enforcing access control. Two facts land with it — either form's bypass carries into everything the query loads (`preload`, `preloadFor`, `leftJoinPreload`, `innerJoin`, `leftJoin`), and a removal by name lifts that scope on every model in the query rather than only the root, while an association read off an already-loaded instance does not carry it; and a targeted removal that comes back empty means another default scope is still hiding the record, so chain its name too. `soft-delete.md` keeps a one-line soft-delete prescription and `SKILL.md` a one-line preference, both deferring to `models.md`, and `SKILL.md`'s two cross-references no longer disagree about which file owns the distinction.
+- **`controllers.md`** — "An absent key and an explicit `null` differ" opens on the default rather than only the `{ allowNull: true }` case: without `allowNull`, a primitive-literal or RegExp cast rejects both shapes — an absent key as well as an explicit `null`.
+- **`controllers.md`**, **`models.md`** — two examples move onto BearBnB nouns. The shared `paramSafeColumns` generator block is a `Place` with `['name', 'style']`, matching the same generator behaviour already narrated later in `controllers.md`; `models.md`'s custom default scope is declared on `Booking`, which keeps its contrast against `Place`'s built-in `dream:SoftDelete`.
+
+### Removed
+
+- **`soft-delete.md`** — the scope bypass in the query-level undestroy example. `Query#undestroy` removes the soft-delete scope itself, so the example reads `await Place.where({ id }).undestroy()`.
+
 ## 0.84.0 — 2026-09-02
 
 ### Added
