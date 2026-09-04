@@ -651,26 +651,21 @@ public static hideArchived(query: Query<Booking>) {
 
 Removing a default scope is for reaching records the scope deliberately hides, when the operation is about those records — see [soft-delete.md](soft-delete.md) for one case.
 
-Use `removeDefaultScope('scopeName')` to remove a specific scope, or `removeAllDefaultScopes()` to remove all of them. Both work on model classes and query chains.
+Both `removeDefaultScope('scopeName')` and `removeAllDefaultScopes()` work on model classes and query chains, but reach for the targeted form. `removeAllDefaultScopes()` names nothing, so the call site cannot show what it lifted — and it lifts your application's own default scopes too, which may be the thing enforcing access control.
 
-**Which to use:** reach for the targeted `removeDefaultScope('scopeName')`. `removeAllDefaultScopes()` names nothing, so the call site cannot show what it lifted — and it lifts your application's own default scopes too, which may be the thing enforcing access control.
-
-Either form travels: the bypass carries into everything the query loads (`preload`, `preloadFor`, `leftJoinPreload`, `innerJoin`, `leftJoin`), and a removal by name lifts that scope on every model in the query, not just the root. An association read off an already-loaded instance (`load`, `loadFor`, `associationQuery`) does not carry it.
+A removal by name lifts that scope on every model the query reaches — anything loaded in the same query (`preload`, `preloadFor`, `leftJoinPreload`, `innerJoin`, `leftJoin`) comes back unscoped too, not just the root. Reading an association off an already-loaded instance starts a fresh query and carries nothing.
 
 ```typescript
 // Name the scope you need to bypass
 await Place.removeDefaultScope('dream:SoftDelete').where({ style: 'cabin' }).all()
 await Booking.removeDefaultScope('hideArchived').all()
 await Place.removeDefaultScope('dream:SoftDelete').findOrFail(id)
+
+// Chains too, including association queries
+await user.associationQuery('places').removeDefaultScope('dream:SoftDelete').all()
 ```
 
 If a targeted removal comes back empty, another default scope is still hiding the record; chain its name too.
-
-Both methods also work on query chains:
-
-```typescript
-await user.associationQuery('places').removeDefaultScope('dream:SoftDelete').all()
-```
 
 ### Inspecting Default Scopes (for AI agents)
 

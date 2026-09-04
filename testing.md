@@ -249,7 +249,7 @@ describe('Place', () => {
       // Soft deleted - hidden from default queries
       expect(await Place.where({ id: place.id }).exists()).toBe(false)
       // Still in database
-      expect(await Place.where({ id: place.id }).removeDefaultScope('dream:SoftDelete').exists()).toBe(true)
+      expect(await Place.removeDefaultScope('dream:SoftDelete').where({ id: place.id }).exists()).toBe(true)
 
       // Cascaded to dependents
       expect(await HostPlace.where({ id: hostPlace.id }).exists()).toBe(false)

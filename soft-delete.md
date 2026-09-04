@@ -185,7 +185,7 @@ await Room.where({ place }).count() // 3
 
 ## Querying Soft-Deleted Records
 
-The `@SoftDelete` decorator adds a [default scope](models.md#default-scopes) (`dream:SoftDelete`) that filters out records where `deletedAt` is not null. To include soft-deleted records, remove that scope by name (see [default scopes](models.md#default-scopes) for what a blanket removal costs):
+The `@SoftDelete` decorator adds a default scope (`dream:SoftDelete`) that filters out records where `deletedAt` is not null. To include soft-deleted records, remove that scope by name — see [removing default scopes](models.md#removing-default-scopes) for what a blanket removal costs:
 
 ```typescript
 await Place.removeDefaultScope('dream:SoftDelete').where({ style: 'cabin' }).all()
