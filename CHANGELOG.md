@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.85.0 — 2026-09-03
+
+### Changed
+
+- **`models.md`**, **`SKILL.md`**, **`soft-delete.md`**, **`testing.md`** — the skill recommends the targeted `removeDefaultScope('scopeName')` over `removeAllDefaultScopes()`, and every example that bypasses the soft-delete scope names `'dream:SoftDelete'`. "Removing Default Scopes" in `models.md` owns the recommendation and its rationale: the blanket form names nothing, so the call site cannot show what it lifted, and it lifts your application's own default scopes too, which may be the thing enforcing access control. Two facts land with it — either removal form propagates to every model the query reaches, so anything loaded in the same query (`preload`, `preloadFor`, `leftJoinPreload`) comes back with the same scopes lifted and not just the root, while the bypass does not outlive the query; and an empty result after a targeted removal may be the correct answer, another default scope being only one of the reasons for it. `soft-delete.md` keeps a one-line soft-delete prescription and `SKILL.md` a one-line preference pointing at `models.md`, plus the one constraint the by-name rule cannot omit: `dream:STI` cannot be removed by name. `soft-delete.md`'s cross-reference points at "Removing Default Scopes" rather than the broader "Default Scopes" section, and `SKILL.md`'s two cross-references carry distinct labels naming the sections they reach.
+- **`controllers.md`**, **`models.md`** — two examples move onto BearBnB nouns. The shared `paramSafeColumns` generator block is a `Place` with `['name', 'style']`, matching the same generator behaviour already narrated later in `controllers.md`; `models.md`'s custom default scope is declared on `Booking`, which keeps its contrast against `Place`'s built-in `dream:SoftDelete`.
+
+### Removed
+
+- **`soft-delete.md`** — the scope bypass in the query-level undestroy example. `Query#undestroy` removes the soft-delete scope itself, so the example reads `await Place.where({ id }).undestroy()`.
+- **`models.md`** — the `removeAllDefaultScopes()` example from "Removing Default Scopes"; the prose above the remaining examples states when the blanket form is the wrong reach.
+
 ## 0.84.0 — 2026-09-02
 
 ### Added

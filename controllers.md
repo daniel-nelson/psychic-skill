@@ -652,40 +652,40 @@ Passing the loaded parent rather than the raw id is the general rule, not a cont
 ```typescript
 import { OpenAPI } from '@rvoh/psychic'
 import { DreamParamSafeColumnNames } from '@rvoh/dream/types'
-import Post from '@models/Post.js'
+import Place from '@models/Place.js'
 
-const openApiTags = ['posts']
+const openApiTags = ['places']
 
-const paramSafeColumns: DreamParamSafeColumnNames<Post>[] = ['title', 'body']
+const paramSafeColumns: DreamParamSafeColumnNames<Place>[] = ['name', 'style']
 
-export default class PostsController extends AuthedController {
-  @OpenAPI(Post, {
+export default class PlacesController extends AuthedController {
+  @OpenAPI(Place, {
     status: 201,
     tags: openApiTags,
-    description: 'Create a Post',
+    description: 'Create a Place',
     fastJsonStringify: true,
     requestBody: { params: paramSafeColumns },
   })
   public async create() {
-    const post = await Post.create(this.extractParams(Post, paramSafeColumns))
-    this.created(post)
+    const place = await Place.create(this.extractParams(Place, paramSafeColumns))
+    this.created(place)
   }
 
-  @OpenAPI(Post, {
+  @OpenAPI(Place, {
     status: 204,
     tags: openApiTags,
-    description: 'Update a Post',
+    description: 'Update a Place',
     fastJsonStringify: true,
     requestBody: { params: paramSafeColumns },
   })
   public async update() {
-    await (await this.post()).update(this.extractParams(Post, paramSafeColumns))
+    await (await this.place()).update(this.extractParams(Place, paramSafeColumns))
     this.noContent()
   }
 }
 ```
 
-The const is typed `DreamParamSafeColumnNames<Model>[]`, which gives autocomplete of valid columns and a compile error on anything not param-safe right at the assignment. It is emitted only when the controller has a `create` and/or `update` action and the model is known (index/show/destroy-only controllers don't get it), and when no columns survive the param-safe filter it is still emitted, typed and empty: `const paramSafeColumns: DreamParamSafeColumnNames<Post>[] = []`. The real scaffold emits the action bodies commented-out as hints; they're shown uncommented here for readability. Admin and non-admin scaffolds emit the same shape.
+The const is typed `DreamParamSafeColumnNames<Model>[]`, which gives autocomplete of valid columns and a compile error on anything not param-safe right at the assignment. It is emitted only when the controller has a `create` and/or `update` action and the model is known (index/show/destroy-only controllers don't get it), and when no columns survive the param-safe filter it is still emitted, typed and empty: `const paramSafeColumns: DreamParamSafeColumnNames<Place>[] = []`. The real scaffold emits the action bodies commented-out as hints; they're shown uncommented here for readability. Admin and non-admin scaffolds emit the same shape.
 
 **Single edit point:** narrowing `paramSafeColumns` updates both the runtime `extractParams` allowlist *and* the documented `@OpenAPI` request body in one place — the documented request shape and the runtime extraction can't silently diverge. Note this is `requestBody`, not the response: `create`'s 201 still returns the full serializer and `update` is 204 (no body) — the allowlist constrains *input*. The `requestBody: { params }` here is the generator pre-wiring the request body for scaffolded CRUD; the [`requestBody.including`](#always-excluded-columns) escape hatch ("re-add what extraction excluded") still applies on top of it unchanged.
 

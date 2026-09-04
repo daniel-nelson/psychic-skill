@@ -571,7 +571,7 @@ public removeFromSearchIndex(this: Place) { ... }
 
 A destroy runs the record's own `beforeDestroy` hooks **first**, then the `dependent: 'destroy'` cascade, then `afterDestroy` — so a `beforeDestroy` on `Place` still sees its `Room` records present, and an `afterDestroy` sees them gone. Work that must read, count, or archive the children belongs in `beforeDestroy`; work that assumes they are already deleted belongs in `afterDestroy`, which still runs inside the destroy's transaction.
 
-`undestroy()` goes the other way: the deepest descendants are restored first and the record itself last. A child's `afterUpdate` therefore runs while its parent still carries a non-null `deletedAt`, so an association read back to the parent through the parent's own default scopes finds nothing. Read it with `.removeAllDefaultScopes()`, or move the work to the parent's `afterUpdate`, which runs after the whole cascade.
+`undestroy()` goes the other way: the deepest descendants are restored first and the record itself last. A child's `afterUpdate` therefore runs while its parent still carries a non-null `deletedAt`, so an association read back to the parent through the parent's own default scopes finds nothing. Read it with `.removeDefaultScope('dream:SoftDelete')`, or move the work to the parent's `afterUpdate`, which runs after the whole cascade.
 
 ## Validations
 
@@ -618,7 +618,7 @@ public static active(query: Query<Place>) {
 
 // Default scope - applied to ALL queries automatically
 @deco.Scope({ default: true })
-public static hideArchived(query: Query<Post>) {
+public static hideArchived(query: Query<Booking>) {
   return query.where({ archivedAt: null })
 }
 
@@ -626,8 +626,8 @@ public static hideArchived(query: Query<Post>) {
 const places = await Place.scope('active').all()
 
 // Bypass default scopes
-const withArchived = await Post.removeDefaultScope('hideArchived').all()
-const specificPlace = await Place.removeAllDefaultScopes().findOrFail(id)
+const withArchived = await Booking.removeDefaultScope('hideArchived').all()
+const specificPlace = await Place.removeDefaultScope('dream:SoftDelete').findOrFail(id)
 ```
 
 ### Default Scopes
@@ -642,7 +642,7 @@ Models can also define custom default scopes:
 
 ```typescript
 @deco.Scope({ default: true })
-public static hideArchived(query: Query<Post>) {
+public static hideArchived(query: Query<Booking>) {
   return query.where({ archivedAt: null })
 }
 ```
@@ -651,24 +651,21 @@ public static hideArchived(query: Query<Post>) {
 
 Removing a default scope is for reaching records the scope deliberately hides, when the operation is about those records — see [soft-delete.md](soft-delete.md) for one case.
 
-Use `removeDefaultScope('scopeName')` to remove a specific scope, or `removeAllDefaultScopes()` to remove all of them. Both work on model classes and query chains.
+Both `removeDefaultScope('scopeName')` and `removeAllDefaultScopes()` work on model classes and query chains, but reach for the targeted form. `removeAllDefaultScopes()` names nothing, so the call site cannot show what it lifted — and it lifts your application's own default scopes too, which may be the thing enforcing access control.
 
-**Which to use:** Use `removeDefaultScope` when querying for a plurality (e.g. `.all()`) so that other default scopes remain in effect and don't bring extra records into scope. Use `removeAllDefaultScopes` when targeting a specific record (e.g. `.find(id)`, `.findOrFail(id)`).
+Either form propagates to every model the query reaches — anything loaded in the same query (`preload`, `preloadFor`, `leftJoinPreload`) comes back with the same scopes lifted, not just the root. It does not outlive the query: a later `associationQuery` or `load` off a returned instance starts from the defaults again.
 
 ```typescript
-// Plurality — remove only the scope you need to bypass
+// Name the scope you need to bypass
 await Place.removeDefaultScope('dream:SoftDelete').where({ style: 'cabin' }).all()
-await Post.removeDefaultScope('hideArchived').all()
+await Booking.removeDefaultScope('hideArchived').all()
+await Place.removeDefaultScope('dream:SoftDelete').findOrFail(id)
 
-// Specific record — lifts every filter, so this returns whatever the table holds under that id
-await Place.removeAllDefaultScopes().findOrFail(id)
-```
-
-Both methods also work on query chains:
-
-```typescript
+// Chains too, including association queries
 await user.associationQuery('places').removeDefaultScope('dream:SoftDelete').all()
 ```
+
+An empty result after a targeted removal may be the correct answer — the row may not exist, or the `where` may not match. If another default scope is hiding it, chain that scope's name too.
 
 ### Inspecting Default Scopes (for AI agents)
 
