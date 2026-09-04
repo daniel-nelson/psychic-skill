@@ -122,7 +122,7 @@ Associations can be restored with `undestroyAssociation()`:
 await place.undestroyAssociation('rooms')
 ```
 
-Query-level undestroy is also available:
+Query-level undestroy is also available — it removes the soft-delete scope itself:
 
 ```typescript
 await Place.where({ id }).undestroy()

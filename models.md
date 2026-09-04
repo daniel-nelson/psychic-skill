@@ -653,7 +653,7 @@ Removing a default scope is for reaching records the scope deliberately hides, w
 
 Both `removeDefaultScope('scopeName')` and `removeAllDefaultScopes()` work on model classes and query chains, but reach for the targeted form. `removeAllDefaultScopes()` names nothing, so the call site cannot show what it lifted — and it lifts your application's own default scopes too, which may be the thing enforcing access control.
 
-A removal by name lifts that scope on every model the query reaches — anything loaded in the same query (`preload`, `preloadFor`, `leftJoinPreload`, `innerJoin`, `leftJoin`) comes back unscoped too, not just the root. Reading an association off an already-loaded instance starts a fresh query and carries nothing.
+Either form propagates to every model the query reaches — anything loaded in the same query (`preload`, `preloadFor`, `leftJoinPreload`) comes back with the same scopes lifted, not just the root. It does not outlive the query: a later `associationQuery` or `load` off a returned instance starts from the defaults again.
 
 ```typescript
 // Name the scope you need to bypass
@@ -665,7 +665,7 @@ await Place.removeDefaultScope('dream:SoftDelete').findOrFail(id)
 await user.associationQuery('places').removeDefaultScope('dream:SoftDelete').all()
 ```
 
-If a targeted removal comes back empty, another default scope is still hiding the record; chain its name too.
+An empty result after a targeted removal may be the correct answer — the row may not exist, or the `where` may not match. If another default scope is hiding it, chain that scope's name too.
 
 ### Inspecting Default Scopes (for AI agents)
 
