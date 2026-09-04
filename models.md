@@ -651,9 +651,11 @@ public static hideArchived(query: Query<Booking>) {
 
 Removing a default scope is for reaching records the scope deliberately hides, when the operation is about those records — see [soft-delete.md](soft-delete.md) for one case.
 
-Both `removeDefaultScope('scopeName')` and `removeAllDefaultScopes()` work on model classes and query chains, but reach for the targeted form. `removeAllDefaultScopes()` names nothing, so the call site cannot show what it lifted — and it lifts your application's own default scopes too, which may be the thing enforcing access control.
+`removeDefaultScope('scopeName')` works on model classes and query chains, and names the one scope it lifts, so the call site shows what it bypassed and every other default scope — including any enforcing access control — stays on.
 
-Either form propagates to every model the query reaches — anything loaded in the same query (`preload`, `preloadFor`, `leftJoinPreload`) comes back with the same scopes lifted, not just the root. It does not outlive the query: a later `associationQuery` or `load` off a returned instance starts from the defaults again.
+`dream:STI` cannot be bypassed. An STI child query always carries its type discriminator; to span a base model's registered children, query the base model.
+
+A removal propagates to every model the query reaches — anything loaded in the same query (`preload`, `preloadFor`, `leftJoinPreload`) comes back with that scope lifted, not just the root. It does not outlive the query: a later `associationQuery` or `load` off a returned instance starts from the defaults again.
 
 ```typescript
 // Name the scope you need to bypass

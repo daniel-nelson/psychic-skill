@@ -49,7 +49,6 @@ These start a query or return a query-like builder from a Dream model class:
 - `Model.whereNot(...)`
 - `Model.scope(...)`
 - `Model.removeDefaultScope(...)`
-- `Model.removeAllDefaultScopes()`
 - `Model.connection(...)`
 - `Model.txn(...)`
 - `Model.order(...)`
@@ -119,7 +118,6 @@ Chaining and query-shaping methods include:
 - `query.preload(...)`
 - `query.preloadFor(...)`
 - `query.removeDefaultScope(...)`
-- `query.removeAllDefaultScopes()`
 - `query.connection(...)`
 - `query.txn(...)`
 - `query.passthrough(...)`

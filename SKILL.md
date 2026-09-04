@@ -340,7 +340,7 @@ export default function routes(r: PsychicRouter) {
 
 Default scopes are conditions automatically applied to every query on a model. Two are built in — **`dream:SoftDelete`** (added by `@SoftDelete()`, hides `deletedAt` rows) and **`dream:STI`** (added by `@STI()`, restricts a child query to its type); define your own with `@deco.Scope({ default: true })`.
 
-- **Bypass one by name with `removeDefaultScope('name')`**, not `removeAllDefaultScopes()`, which lifts your own scopes too, including any enforcing access control. `dream:STI` is the exception — it cannot be removed by name.
+- **Bypass one by name with `removeDefaultScope('name')`**, which lifts that scope and leaves every other one on, including any enforcing access control. `dream:STI` is the exception — it cannot be bypassed; query the STI base model to span its children.
 
 Full reference: [models.md — Default Scopes](models.md#default-scopes).
 

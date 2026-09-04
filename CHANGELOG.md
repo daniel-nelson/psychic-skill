@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.86.0 — 2026-09-04
+
+### Removed
+
+- **`querying.md`**, **`models.md`**, **`SKILL.md`** — every reference to `removeAllDefaultScopes()`. The two query-surface inventories in `querying.md` no longer list it alongside `removeDefaultScope(...)`, and neither "Removing Default Scopes" in `models.md` nor the Default Scopes rule in `SKILL.md` names it. `removeDefaultScope('scopeName')` is the whole documented way to bypass a default scope.
+
+### Changed
+
+- **`models.md`**, **`SKILL.md`** — the `dream:STI` constraint is stated as absolute: the scope cannot be bypassed, and spanning an STI base model's registered children means querying the base model. Both files previously scoped the constraint to removal *by name*.
+- **`models.md`** — "Removing Default Scopes" states the targeted form's guarantee directly rather than as a contrast: naming the scope shows the call site what was bypassed and leaves every other default scope on, including any enforcing access control.
+
 ## 0.85.0 — 2026-09-03
 
 ### Changed
