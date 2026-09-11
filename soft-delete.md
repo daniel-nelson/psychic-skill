@@ -105,6 +105,8 @@ await place.destroy()
 // place.deletedAt is now set; row still exists in the database
 ```
 
+**Setting `deletedAt` yourself is not a substitute for `destroy()`.** A raw SQL `UPDATE`, a data-repair migration, or `Place.where({ id }).update({ deletedAt: DateTime.now() })` really does soft-delete the row: the `dream:SoftDelete` scope hides it from then on, and a query-level update still runs the model's *update* hooks, so the write reads as though it worked. What it skips is the rest of the destroy lifecycle — no `beforeDestroy` / `afterDestroy`, and no `dependent: 'destroy'` cascade, so dependent rows are left live pointing at a parent nothing returns.
+
 ### Restore (undestroy)
 
 Soft-deleted records can be restored with `undestroy()`, which sets `deletedAt` back to null:
