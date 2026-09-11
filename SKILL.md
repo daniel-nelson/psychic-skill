@@ -1,9 +1,11 @@
 ---
 name: psychic-skill
 description: >
-  Comprehensive guide for developing applications with Dream ORM and Psychic web framework.
+  Comprehensive guide for building, understanding, and debugging applications with Dream ORM and Psychic web framework.
   TRIGGER when: code imports from '@rvoh/dream', '@rvoh/psychic', '@rvoh/psychic-workers', or '@rvoh/psychic-websockets',
   or project has Dream models, Psychic controllers, or uses 'psy' commands.
+  Applies whether writing code, reading an unfamiliar Psychic codebase, inspecting or querying data,
+  or working out why a query returns the records it returns.
   Covers models, associations, validations, hooks, scopes, serializers, controllers, routing,
   migrations, background workers, websockets, OpenAPI, testing, and code generation.
 user-invocable: false
