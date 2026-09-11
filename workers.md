@@ -47,9 +47,9 @@ export default class IntercomSyncService extends ApplicationBackgroundedService 
 await IntercomSyncService.syncUser(user)
 ```
 
-**`backgroundJobConfig` sets the class's defaults; only `priority` can be overridden per call.** `backgroundWith(opts, method, ...args)` takes `{ delay, priority }`, and `opts.priority` replaces the priority from the getter for that one job — so a single class can send one method out `urgent` while everything else on it stays `not_urgent`. That override is subject to the either/or in [Priority Levels](#priority-levels): once a service carries a `workstream` (or `groupId`), the priority — per-call or class-level — is written to `group.priority`, which open-source BullMQ ignores.
+**`backgroundJobConfig` sets the class's defaults; only `priority` can be overridden per call.** `backgroundWith(opts, method, ...args)` takes `{ delay, priority }`, and `opts.priority` replaces the getter's priority for that one job — but that override is subject to the either/or in [Priority Levels](#priority-levels): once a service carries a `workstream` (or `groupId`), the priority — per-call or class-level — is written to `group.priority`, which open-source BullMQ ignores.
 
-Routing is not per-call. `opts` carries no `workstream`, `queue` or `groupId`, so the getter's routing governs *every* backgrounded method on the class. To isolate a subset of a service's jobs onto their own workstream, **extract those methods into a separate backgrounded service** with its own `backgroundJobConfig`; splitting the class is the only mechanism.
+`opts` carries no routing. To isolate a subset of a service's jobs onto their own workstream, **extract those methods into a separate backgrounded service** with its own `backgroundJobConfig`; splitting the class is the only mechanism.
 
 **Key rules:**
 - **NEVER pass model data as background job arguments.** Almost always pass only the model's ID and look up the record in the implementation method. This applies to any data stored in a Dream model. Passing model data as arguments has serious downsides: it bloats Redis memory (a full JSON payload vs. a single ID string), loses all type information when serialized to JSON (e.g., Dream date/time objects become plain strings, enums become untyped values), and creates a snapshot that is immediately stale if the record is updated after the job is queued. The only arguments to `this.background(...)` should be IDs and simple scalar values (strings, numbers, booleans) that are not sourced from model columns. For model instance methods, `ApplicationBackgroundedModel` handles this automatically by storing only the primary key.
@@ -89,7 +89,7 @@ Routing is not per-call. `opts` carries no `workstream`, `queue` or `groupId`, s
 
 ## backgroundWith
 
-`backgroundWith({ delay, priority }, method, ...args)` is the per-call form. `delay` queues the job to run at least that far in the future, supporting `seconds`, `minutes`, `hours`, and `days`; `priority` overrides `backgroundJobConfig` for that job. Both are optional, and either may be used alone. (`backgroundWithDelay` is deprecated in favor of it.)
+`backgroundWith({ delay, priority }, method, ...args)` is the per-call form. `delay` queues the job to run at least that far in the future, supporting `seconds`, `minutes`, `hours`, and `days`; `priority` overrides `backgroundJobConfig` for that job. Both are optional, and either may be used alone.
 
 ```typescript
 export default class ImageProcessingService extends ApplicationBackgroundedService {
@@ -109,8 +109,6 @@ export default class ImageProcessingService extends ApplicationBackgroundedServi
 Use a `delay` when:
 - A job may be queued before an external dependency is ready (e.g., waiting for a direct-to-S3 upload to exist before image processing begins)
 - You want to add a grace period before processing
-
-`backgroundWith` sits on the same surfaces as `background`: backgrounded-service statics, and backgrounded-model statics and instances (`await booking.backgroundWith({ priority: 'urgent' }, 'sendReminder')`).
 
 ### Debounce with jobId
 
@@ -600,28 +598,11 @@ Workers attach to the legacy queues and work them down, while enqueueing reaches
 
 Dropping a `namedWorkstreams` entry and running `pnpm psy sync` regenerates `workstreamNames`, so every service still routing to that workstream becomes a TypeScript error. What the compiler cannot reach is whatever is already queued, and each route leaves it somewhere different:
 
-- **Registration and class removed together.** With no entry, Psychic builds neither the queue nor its workers. A delayed job is only ever promoted by a worker attached to that queue — the keys are per queue, so no other workstream's workers can drain it — and nothing in Psychic reports a queue it no longer builds. Whatever was waiting silently never runs.
-- **Class removed, registration kept.** The workers stay attached and keep pulling, and the handler resolves the class by global name at execution, so the remaining work surfaces in BullMQ's `failed` set (see [Process-level error semantics](#process-level-error-semantics)) — countable, and attributable to the name you just deleted.
+- **Registration and class removed together.** With no entry, Psychic builds neither the queue nor its workers. A delayed job is only ever promoted by a worker attached to that queue — the keys are per queue, so no other workstream's workers can drain it — and nothing in Psychic reports a queue it no longer builds. Whatever was waiting silently never runs. Right only when the queue's remaining contents are disposable.
+- **Class removed, registration kept.** The workers stay attached and keep pulling, so the remaining work surfaces in BullMQ's `failed` set (see [Process-level error semantics](#process-level-error-semantics)) — countable, and attributable to the name you just deleted.
 - **Entry moved to `transitionalWorkstreams`.** Queue and workers are still built under the same name, so the backlog keeps draining, while the name is gone from `workstreamNames` and every typed enqueue site is a compile error.
 
-Nothing in the framework requires a particular order or a particular number of releases. Removing both at once is the right move when the queue's remaining contents are disposable; when they are not, the routes above are what buy you the chance to see them.
-
-**A workstream carrying scheduled work never drains.** Working an occurrence is what mints the next one, so watching that queue go quiet proves nothing — the scheduler entry has to be removed. `unscheduleId` returns the id `schedule` registered a method under, and `unschedule` removes it:
-
-```typescript
-// Read the id off the class while it still exists
-ScheduledJobs.unscheduleId('endOfDayFanOut')
-// => 'services/ScheduledJobs:endOfDayFanOut'
-```
-
-```typescript
-// db/seed.ts — the literal id, so the class can be deleted in the same deploy
-await ApplicationScheduledService.unschedule('services/ScheduledJobs:endOfDayFanOut')
-```
-
-`unschedule` sweeps every queue the app builds, transitional ones included, and returns `true` if it removed an entry — so it still finds a job whose workstream changed or whose class is gone. It cannot reach a queue that is no longer built, which orders it against the routes above: unschedule while the `namedWorkstreams` entry still exists, or while it sits in `transitionalWorkstreams`.
-
-The id contains the method name, so renaming a scheduled method registers a new entry and leaves the old one live and firing — the case the literal-id form exists for.
+**A workstream carrying scheduled work never drains.** Working an occurrence is what mints the next one, so watching that queue go quiet proves nothing — the scheduler entry has to be removed with `ApplicationScheduledService.unschedule(...)`, whose TSDoc, with `unscheduleId`'s, carries the id-literal workflow that lets the class be deleted in the same deploy. It sweeps every queue the app builds, transitional ones included, but cannot reach a queue that is no longer built — so unschedule while the `namedWorkstreams` entry still exists, or while it sits in `transitionalWorkstreams`. The id contains the method name, so renaming a scheduled method registers a new entry and leaves the old one live and firing.
 
 ## Native BullMQ Mode
 
