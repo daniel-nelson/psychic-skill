@@ -680,15 +680,15 @@ This config is sent directly to BullMQ and can be customized in `conf/initialize
 
 ### App-Owned Retry Budgets
 
-There is no per-service retry budget — `backgroundJobConfig` carries `priority` and a routing key, nothing more. When one job's expected failure is worth retrying, but not twenty times over six days (an external service billed per attempt, say), the service owns the budget: the `_` implementation method takes an `attempt` argument defaulting to `1`, catches its one expected error, and re-enqueues itself with the count incremented while it is under the threshold:
+There is no per-service retry budget — `backgroundJobConfig` carries `priority` and a routing key, nothing more. When one job's expected failure is worth retrying, but not twenty times over six days (an external service billed per attempt, say), the service owns the budget: the `_` implementation method takes a required `attempt` argument — the public entry method seeds it with `1` — catches its one expected error, and re-enqueues itself with the count incremented while it is under the threshold:
 
 ```typescript
 export default class PlaceGeocodingService extends ApplicationBackgroundedService {
   public static async geocodePlace(place: Place) {
-    await this.background('_geocodePlace', place.id)
+    await this.background('_geocodePlace', place.id, 1)
   }
 
-  public static async _geocodePlace(placeId: string, attempt: number = 1) {
+  public static async _geocodePlace(placeId: string, attempt: number) {
     const place = await Place.find(placeId)
     if (!place) return
 
