@@ -228,7 +228,7 @@ export default class Bedroom extends Room {
 - Children **cannot use `@Sortable()`** - must be on the parent. If you need position sorting scoped per STI type, declare `@Sortable` on the base model with `type` in the scope array (e.g., `scope: ['place', 'type']`)
 - STI is **exactly one level deep**: `@STI()` always names the base, even when the TypeScript `extends` chain is deeper. `class Bunkroom extends Bedroom` must still be decorated `@STI(Room)`. `@STI(Bedroom)` compiles and imports, then fails silently: `Bedroom.all()` matches only rows whose `type` is exactly `'Bedroom'`, and `Bunkroom` never joins `Room`'s child list, so it is invisible to `preloadFor` and to the generated OpenAPI.
 - Children can override `get serializers()` (and should)
-- Children can add child-specific **physical** columns (they live on the shared parent table), including one that is **required for that child alone** — see [STI Child Migration](#sti-child-migration-alters-parent-table) for the generated shape that carries the requirement, and [models.md — Adding a variant of an existing concept](models.md#adding-a-variant-of-an-existing-concept) for what it costs the column's generated type. **Virtual attributes behave differently** — a child's `@deco.Virtual` does not filter up to the base class; see [Virtual attributes don't filter up to the base class](#virtual-attributes-dont-filter-up-to-the-base-class).
+- Children can add child-specific **physical** columns (they live on the shared parent table), including one that is **required for that child alone** — see [STI Child Migration](#sti-child-migration-alters-parent-table) for the generated shape that carries the requirement and what it costs the column's generated type. **Virtual attributes behave differently** — a child's `@deco.Virtual` does not filter up to the base class; see [Virtual attributes don't filter up to the base class](#virtual-attributes-dont-filter-up-to-the-base-class).
 
 ### Targeting an STI child
 
@@ -413,6 +413,8 @@ export async function down(db: Kysely<any>): Promise<void> {
   await db.schema.dropType('bath_or_shower_styles_enum').execute()
 }
 ```
+
+For an ordinary required **scalar** column, `g:sti-child` omits the inline `NOT NULL` and carries the requirement in that per-type check constraint instead. The database still enforces it, but the column's generated type stays nullable, so the child's own code carries a null check for a case the database has already ruled out. Booleans and arrays keep their inline non-null defaults, and an `:optional` column gets no requiredness check either way.
 
 ### Array Enum Child Migration
 

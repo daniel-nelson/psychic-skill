@@ -65,7 +65,7 @@ import BasePlace from '@models/Place/Base.js'
 export default class Place extends BasePlace {}
 ```
 
-What that costs: STI children cannot declare associations, so everything `Place` declares relocates to the base. And for an ordinary required **scalar** column only one child needs, `g:sti-child` omits the inline `NOT NULL` and emits a per-type check constraint instead (see [sti.md — STI Child Migration](sti.md#sti-child-migration-alters-parent-table)) — the database still enforces the requirement, but the generated column type stays nullable, so the child's own code carries a null check for a case the database has already ruled out. Booleans and arrays keep their inline non-null defaults; optional columns get no requiredness check either way.
+What that costs: STI children cannot declare associations, so everything `Place` declares relocates to the base; and a column only one child requires costs that child's own code a null check even though the database still enforces the requirement — see [sti.md — STI Child Migration](sti.md#sti-child-migration-alters-parent-table) for the generated shape.
 
 These two are not the whole menu — a status enum, or a genuinely separate model where a stronger boundary earns it, stay available. The one shape that does not belong on the list is a second `draft_places` table carrying its own copy of `Place`'s columns and associations. That is not a trade-off: one concept now lives in two schemas that drift apart, and every association, validation, serializer, and query written for `Place` has to be written and maintained twice.
 
