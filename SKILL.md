@@ -100,22 +100,21 @@ All CLI commands in this document are run via the local project's package manage
 
     ```typescript
     // CORRECT — defaults live in the signature, applied once
-    public static async _reconcilePlace(
-      placeId: string,
-      { dryRun = true, notifyHost = false }: { dryRun?: boolean; notifyHost?: boolean } = {},
+    export function quoteStayCents(
+      place: Place,
+      { nights = 1, includeCleaningFee = true }: { nights?: number; includeCleaningFee?: boolean } = {},
     ) {
-      const place = await Place.find(placeId)
-      if (!place) return
-      // ...use dryRun / notifyHost directly
+      const base = place.nightlyRateCents * nights
+      return includeCleaningFee ? base + place.cleaningFeeCents : base
     }
 
     // WRONG — option bag passed through, then defaulted after the fact
-    public static async _reconcilePlace(
-      placeId: string,
-      options: { dryRun?: boolean; notifyHost?: boolean } = {},
+    export function quoteStayCents(
+      place: Place,
+      options: { nights?: number; includeCleaningFee?: boolean } = {},
     ) {
-      const dryRun = options.dryRun ?? true
-      const notifyHost = options.notifyHost ?? false
+      const nights = options.nights ?? 1
+      const includeCleaningFee = options.includeCleaningFee ?? true
       // ...
     }
     ```

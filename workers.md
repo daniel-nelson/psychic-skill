@@ -85,6 +85,7 @@ await IntercomSyncService.syncUser(user)
   }
   ```
 - **Use `find` (not `findOrFail`) in background job implementations**, and return early when the record is not found. Model deletion is a normal part of many application flows — a record may be deleted between when the job was queued and when the worker picks it up. Using `findOrFail` would throw an error, causing the job to be retried repeatedly for ~6 days before finally failing, wasting resources on a record that will never exist again.
+- **Every dispatch appends the BullMQ `Job` as a final argument, and no parameter may carry a default or a `?`.** `this.background(...)` and `this.backgroundWith(...)` pass only the arguments before it, and a method that wants the `Job` takes it as a final parameter (see [Job Logging](#job-logging)). Give the last parameter a default or a `?` and the appended `Job` lands in that slot instead: the default never applies, and the method runs with a `Job` where it expected its own value — in specs too, which dispatch through the same path. The prohibition is deliberately wider than the failure, so the safe shape is never in question. Scheduled methods are dispatched the same way but must not declare the `Job`: `schedule()` requires every parameter the method declares, so a final `job: Job` becomes an argument the call site has to pass.
 - Always call the public entry method from application code, not `this.background(...)` directly from outside the service.
 
 ## backgroundWith
@@ -500,9 +501,9 @@ export default class EndOfDayService extends ApplicationBackgroundedService {
 
 End-of-week works the same way, with the user's chosen end-of-week day folded into the query alongside the time zone, so the single hourly orchestrator covers every user's preference without a separate scheduler per variant.
 
-### Scheduled and backgrounded methods run inline in tests
+### Backgrounded methods run inline in tests
 
-In `NODE_ENV=test` with the default `testInvocation: 'automatic'`, `schedule(...)`, `background(...)`, and `backgroundWith(...)` all invoke the underlying method immediately and synchronously — the delay is ignored (see the [Testing Workers](#testing-workers) section). A spec that calls any of them executes the work with no queue flush needed. The flip side: any environment guard inside the method (e.g. `if (serverEnvironment !== 'production') return`) also fires in tests, so a guarded method needs a `force`-style override to be exercised in a spec. Switching to `testInvocation: 'manual'` (see [Manual Mode](#manual-mode)) queues jobs instead of running them inline, requiring an explicit `WorkerTestUtils.work()` to process them.
+In `NODE_ENV=test` with the default `testInvocation: 'automatic'`, `background(...)` and `backgroundWith(...)` invoke the underlying method immediately and synchronously — the delay is ignored (see the [Testing Workers](#testing-workers) section). A spec that calls either executes the work with no queue flush needed. `schedule(...)` is not inline work: in test as in every other environment it registers a BullMQ job scheduler, so a spec that calls it runs nothing. The flip side: any environment guard inside the method (e.g. `if (serverEnvironment !== 'production') return`) also fires in tests, so a guarded method needs a `force`-style override to be exercised in a spec. Switching to `testInvocation: 'manual'` (see [Manual Mode](#manual-mode)) queues jobs instead of running them inline, requiring an explicit `WorkerTestUtils.work()` to process them.
 
 ## Two Configuration Modes
 
@@ -679,15 +680,15 @@ This config is sent directly to BullMQ and can be customized in `conf/initialize
 
 ### App-Owned Retry Budgets
 
-There is no per-service retry budget — `backgroundJobConfig` carries `priority` and a routing key, nothing more. When one job's expected failure is worth retrying, but not twenty times over six days (an external service billed per attempt, say), the service owns the budget: the `_` implementation method takes an `attempt` argument defaulting to `1`, catches its one expected error, and re-enqueues itself with the count incremented while it is under the threshold:
+There is no per-service retry budget — `backgroundJobConfig` carries `priority` and a routing key, nothing more. When one job's expected failure is worth retrying, but not twenty times over six days (an external service billed per attempt, say), the service owns the budget: the `_` implementation method takes a required `attempt` argument — the public entry method seeds it with `1` — catches its one expected error, and re-enqueues itself with the count incremented while it is under the threshold:
 
 ```typescript
 export default class PlaceGeocodingService extends ApplicationBackgroundedService {
   public static async geocodePlace(place: Place) {
-    await this.background('_geocodePlace', place.id)
+    await this.background('_geocodePlace', place.id, 1)
   }
 
-  public static async _geocodePlace(placeId: string, attempt: number = 1) {
+  public static async _geocodePlace(placeId: string, attempt: number) {
     const place = await Place.find(placeId)
     if (!place) return
 
@@ -715,25 +716,28 @@ This is the narrow catch [Never Rescue Exceptions Inside Backgrounded Services](
 
 ## Job Logging
 
-Background methods can optionally receive a BullMQ `Job` parameter as their last argument to access logging:
+A backgrounded method that declares a final `Job` parameter can use it to log progress:
 
 ```typescript
 import { Job } from 'bullmq'
 
-export default class DataProcessingService extends ApplicationBackgroundedService {
-  public static async processDataset(datasetId: string) {
-    await this.background('_processDataset', datasetId)
+export default class CityPlaceSyncService extends ApplicationBackgroundedService {
+  public static async syncCityPlaces(city: City) {
+    await this.background('_syncCityPlaces', city.id)
   }
 
-  public static async _processDataset(datasetId: string, job: Job) {
-    await job.log(`Starting processing of dataset ${datasetId}`)
-    // ...do work...
-    await job.log(`Completed processing`)
+  public static async _syncCityPlaces(cityId: string, job: Job) {
+    const city = await City.find(cityId)
+    if (!city) return
+
+    await job.log(`Starting place sync for city ${cityId}`)
+    // ...sync each of the city's places...
+    await job.log(`Completed place sync for city ${cityId}`)
   }
 }
 ```
 
-The `Job` parameter is optional and always comes last. Job logs are accessible through BullMQ dashboards and can be retrieved programmatically.
+Job logs are accessible through BullMQ dashboards and can be retrieved programmatically.
 
 ## Worker Configuration
 

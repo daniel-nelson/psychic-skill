@@ -11,7 +11,7 @@ you lock. A plain update is the right tool for both:
 
 ```typescript
 await booking.update({ notes })
-await Booking.where({ place }).update({ cleaningFee: 4500 })
+await Booking.where({ place }).update({ cleaningFeeCents: 4500 })
 ```
 
 Uniqueness and interval-overlap invariants are also not a locking problem. Enforce them with a
