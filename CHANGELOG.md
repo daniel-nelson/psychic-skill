@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.87.0 — 2026-09-11
+
+### Added
+
+- **`workers.md`** — "Retiring a Named Workstream" describes what each route costs rather than prescribing an order. Removing the registration and the class together means Psychic builds neither the queue nor its workers, and a delayed job is only ever promoted by a worker attached to that queue, so whatever was waiting silently never runs; removing the class while keeping the registration surfaces the remainder in BullMQ's `failed` set; moving the entry to `transitionalWorkstreams` keeps the backlog draining while every typed enqueue site becomes a compile error. A workstream carrying scheduled work never drains at all — working an occurrence mints the next — so the scheduler entry has to be removed with `unschedule`, which cannot reach a queue that is no longer built.
+- **`models.md`** — "Adding a variant of an existing concept" solves one requirement twice, as examples to consider: a `draft` boolean on `Place`, with the choice between per-call filtering and a central default scope that then needs lifting by name; and `Place` and `DraftPlace` as siblings under a shared STI base, where the concrete class keeps its path and global name so existing references go on working. Both costs are stated, including that an ordinary required scalar column only one child needs takes a per-type check constraint while its generated type stays nullable. Neither is presented as the whole menu; the one shape that does not belong is a second table duplicating the concept.
+- **`models.md`** — `dependent: 'destroy'` goes on the association that sees every child, never on one carrying an `and` condition: the cascade reaches exactly what that association's definition matches, so on a conditioned association the remaining children stay live under a soft-deleted parent and a hard delete is refused by their `RESTRICT` foreign key.
+- **`sti.md`** — "Naming the base: two STI shapes". When the base is a real general category nobody instantiates it takes the concept's name and path (`Room.ts` holding `Room`); when the children are peers at the same level the base is a technical artifact inside the namespace (`Place/Base.ts` holding `BasePlace`). Choosing the first shape for a retrofit makes the existing model the base, and a base query returns every child, so the variant leaks into every existing read.
+- **`sti.md`** — "Targeting an STI child" as its own subsection: naming the child by its global name filters to that child with no `type` clause and types the association property as the child, where the `and`-clause form types it as the base and costs a cast. Across a `through` chain an outer child may narrow an inner base; an outer base may not broaden an inner child, and sibling targets are incompatible, failing at query time rather than at decoration time.
+- **`soft-delete.md`** — setting `deletedAt` through an update really does soft-delete the row, and skips the rest of the destroy lifecycle: no destroy hooks and no `dependent: 'destroy'` cascade, so dependents are left live pointing at a parent nothing returns.
+- **`openapi.md`** — one absence from the client enums file is not the disclosure boundary: only pg-enum-backed Dream columns reach it, so an enum declared inline on an `ObjectSerializer` attribute renders into the document and the client's property type but produces no values const or type, and widening the spec will never produce one.
+
+### Changed
+
+- **`SKILL.md`** — the trigger covers reading an unfamiliar Psychic codebase, inspecting or querying data, and working out why a query returns the records it returns, not only writing code. Every gating condition is unchanged.
+- **`SKILL.md`** — the `models.md` pointer also fires on adding a variant of an existing concept.
+- **`SKILL.md`** — ecosystem baseline: `@rvoh/dream` 2.30.x, `@rvoh/psychic-workers` 2.6.x.
+- **`workers.md`** — `backgroundWith({ delay, priority }, method, ...args)` replaces `backgroundWithDelay` as the documented per-call form, taking both in one call. `backgroundJobConfig` sets class defaults and only `priority` is overridable per call, subject to the workstream/group either-or: on a service carrying a `workstream`, the priority is written to `group.priority`, which open-source BullMQ ignores. Routing stays class-level, so isolating a subset of a service's jobs still means splitting the class.
+- **`models.md`** — traversing a soft-deleted intermediate in a `through` chain means naming the scope at the root of the query, which lifts it on every hop. The previous instruction to walk the hops as explicit queries contradicted the same file's statement about how far a removal propagates.
+- **`sti.md`** — the STI Limitations bullet about children not defining associations returns to one line and links out, rather than carrying four topics.
+
 ## 0.86.0 — 2026-09-04
 
 ### Removed

@@ -47,7 +47,9 @@ export default class IntercomSyncService extends ApplicationBackgroundedService 
 await IntercomSyncService.syncUser(user)
 ```
 
-**`backgroundJobConfig` is class-level — a backgrounded service exposes no per-method or per-call override.** Both `background(method, ...args)` and `backgroundWithDelay(delay, method, ...args)` read `this.backgroundJobConfig`, and their only tail is the variadic `...args` — neither accepts a config argument. So the getter's `workstream` and `priority` govern *every* backgrounded method on the service (immediate and delayed alike); you cannot route one method to its own workstream, or make one method `urgent` and another `not_urgent`, from a single class. To isolate a subset of a service's jobs, **extract those methods into a separate backgrounded service** with its own `backgroundJobConfig`. Through the backgrounded-service API, splitting the class is the only mechanism.
+**`backgroundJobConfig` sets the class's defaults; only `priority` can be overridden per call.** `backgroundWith(opts, method, ...args)` takes `{ delay, priority }`, and `opts.priority` replaces the getter's priority for that one job — but that override is subject to the either/or in [Priority Levels](#priority-levels): once a service carries a `workstream` (or `groupId`), the priority — per-call or class-level — is written to `group.priority`, which open-source BullMQ ignores.
+
+`opts` carries no routing. To isolate a subset of a service's jobs onto their own workstream, **extract those methods into a separate backgrounded service** with its own `backgroundJobConfig`; splitting the class is the only mechanism.
 
 **Key rules:**
 - **NEVER pass model data as background job arguments.** Almost always pass only the model's ID and look up the record in the implementation method. This applies to any data stored in a Dream model. Passing model data as arguments has serious downsides: it bloats Redis memory (a full JSON payload vs. a single ID string), loses all type information when serialized to JSON (e.g., Dream date/time objects become plain strings, enums become untyped values), and creates a snapshot that is immediately stale if the record is updated after the job is queued. The only arguments to `this.background(...)` should be IDs and simple scalar values (strings, numbers, booleans) that are not sourced from model columns. For model instance methods, `ApplicationBackgroundedModel` handles this automatically by storing only the primary key.
@@ -85,15 +87,15 @@ await IntercomSyncService.syncUser(user)
 - **Use `find` (not `findOrFail`) in background job implementations**, and return early when the record is not found. Model deletion is a normal part of many application flows — a record may be deleted between when the job was queued and when the worker picks it up. Using `findOrFail` would throw an error, causing the job to be retried repeatedly for ~6 days before finally failing, wasting resources on a record that will never exist again.
 - Always call the public entry method from application code, not `this.background(...)` directly from outside the service.
 
-## backgroundWithDelay
+## backgroundWith
 
-`backgroundWithDelay` queues a job to run at least the specified amount of time in the future. Supports `seconds`, `minutes`, `hours`, and `days`.
+`backgroundWith({ delay, priority }, method, ...args)` is the per-call form. `delay` queues the job to run at least that far in the future, supporting `seconds`, `minutes`, `hours`, and `days`; `priority` overrides `backgroundJobConfig` for that job. Both are optional, and either may be used alone.
 
 ```typescript
 export default class ImageProcessingService extends ApplicationBackgroundedService {
   public static async processUpload(uploadId: string) {
     // Wait for S3 upload to propagate before processing
-    await this.backgroundWithDelay({ seconds: 15 }, '_processUpload', uploadId)
+    await this.backgroundWith({ delay: { seconds: 15 } }, '_processUpload', uploadId)
   }
 
   public static async _processUpload(uploadId: string) {
@@ -104,21 +106,21 @@ export default class ImageProcessingService extends ApplicationBackgroundedServi
 }
 ```
 
-Use `backgroundWithDelay` when:
+Use a `delay` when:
 - A job may be queued before an external dependency is ready (e.g., waiting for a direct-to-S3 upload to exist before image processing begins)
 - You want to add a grace period before processing
 
 ### Debounce with jobId
 
-`backgroundWithDelay` supports debounce behavior via `jobId`. If a job with the same `jobId` is already queued with a delay, re-backgrounding with that `jobId` overwrites the previous job but resets the delay timer from the current time. This reduces duplicate work when events fire in quick succession.
+`delay` carries an optional `jobId`, which gives debounce behavior. If a job with the same `jobId` is already queued with a delay, re-backgrounding with that `jobId` overwrites the previous job but resets the delay timer from the current time. This reduces duplicate work when events fire in quick succession.
 
 The dedup key's TTL equals the delay, so it has expired by the time the delayed job fires — re-arming the same `jobId` from inside the job's own running handler is safe. A delay of `0` seconds attaches no dedup key at all, so if debouncing matters, floor the delay at 1 second or higher.
 
 ```typescript
 export default class IntercomSyncService extends ApplicationBackgroundedService {
   public static async syncUser(user: User) {
-    await this.backgroundWithDelay(
-      { minutes: 2, jobId: `intercom-sync-user-${user.id}` },
+    await this.backgroundWith(
+      { delay: { minutes: 2, jobId: `intercom-sync-user-${user.id}` } },
       '_syncUser',
       user.id
     )
@@ -500,7 +502,7 @@ End-of-week works the same way, with the user's chosen end-of-week day folded in
 
 ### Scheduled and backgrounded methods run inline in tests
 
-In `NODE_ENV=test` with the default `testInvocation: 'automatic'`, `schedule(...)`, `background(...)`, and `backgroundWithDelay(...)` all invoke the underlying method immediately and synchronously — the delay is ignored (see the [Testing Workers](#testing-workers) section). A spec that calls any of them executes the work with no queue flush needed. The flip side: any environment guard inside the method (e.g. `if (serverEnvironment !== 'production') return`) also fires in tests, so a guarded method needs a `force`-style override to be exercised in a spec. Switching to `testInvocation: 'manual'` (see [Manual Mode](#manual-mode)) queues jobs instead of running them inline, requiring an explicit `WorkerTestUtils.work()` to process them.
+In `NODE_ENV=test` with the default `testInvocation: 'automatic'`, `schedule(...)`, `background(...)`, and `backgroundWith(...)` all invoke the underlying method immediately and synchronously — the delay is ignored (see the [Testing Workers](#testing-workers) section). A spec that calls any of them executes the work with no queue flush needed. The flip side: any environment guard inside the method (e.g. `if (serverEnvironment !== 'production') return`) also fires in tests, so a guarded method needs a `force`-style override to be exercised in a spec. Switching to `testInvocation: 'manual'` (see [Manual Mode](#manual-mode)) queues jobs instead of running them inline, requiring an explicit `WorkerTestUtils.work()` to process them.
 
 ## Two Configuration Modes
 
@@ -591,6 +593,16 @@ workersApp.set('background', {
 ```
 
 Workers attach to the legacy queues and work them down, while enqueueing reaches only the top-level workstreams, so every new job lands on the new instance. The old side can only drain, never be added to, which is what makes the cutover finish. Delete the key once those queues are empty.
+
+### Retiring a Named Workstream
+
+Dropping a `namedWorkstreams` entry and running `pnpm psy sync` regenerates `workstreamNames`, so every service still routing to that workstream becomes a TypeScript error. What the compiler cannot reach is whatever is already queued, and each route leaves it somewhere different:
+
+- **Registration and class removed together.** With no entry, Psychic builds neither the queue nor its workers. A delayed job is only ever promoted by a worker attached to that queue — the keys are per queue, so no other workstream's workers can drain it — and nothing in Psychic reports a queue it no longer builds. Whatever was waiting silently never runs. Right only when the queue's remaining contents are disposable.
+- **Class removed, registration kept.** The workers stay attached and keep pulling, so the remaining work surfaces in BullMQ's `failed` set (see [Process-level error semantics](#process-level-error-semantics)) — countable, and attributable to the name you just deleted.
+- **Entry moved to `transitionalWorkstreams`.** Queue and workers are still built under the same name, so the backlog keeps draining, while the name is gone from `workstreamNames` and every typed enqueue site is a compile error.
+
+**A workstream carrying scheduled work never drains.** Working an occurrence is what mints the next one, so watching that queue go quiet proves nothing — the scheduler entry has to be removed with `ApplicationScheduledService.unschedule(...)`, whose TSDoc, with `unscheduleId`'s, carries the id-literal workflow that lets the class be deleted in the same deploy. It sweeps every queue the app builds, transitional ones included, but cannot reach a queue that is no longer built — so unschedule while the `namedWorkstreams` entry still exists, or while it sits in `transitionalWorkstreams`. The id contains the method name, so renaming a scheduled method registers a new entry and leaves the old one live and firing.
 
 ## Native BullMQ Mode
 
@@ -685,7 +697,12 @@ export default class PlaceGeocodingService extends ApplicationBackgroundedServic
       if (!(error instanceof GeocoderUnavailableError)) throw error
 
       if (attempt < 3) {
-        await this.backgroundWithDelay({ minutes: 5 * attempt }, '_geocodePlace', placeId, attempt + 1)
+        await this.backgroundWith(
+          { delay: { minutes: 5 * attempt } },
+          '_geocodePlace',
+          placeId,
+          attempt + 1,
+        )
       } else {
         // report the exhausted failure to the app's error-reporting service
       }

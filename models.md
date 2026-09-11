@@ -35,6 +35,40 @@ Use a `Parent/Child` namespace in two cases:
 
 Getting the namespace wrong is expensive to undo: the model file path bakes into the class name, the table name, every import, the serializer/controller paths, and the migration. A later rename touches all of those plus generated types, OpenAPI, and front-end clients. Decide the namespace deliberately at generation time.
 
+## Adding a variant of an existing concept
+
+Some variants arrive as a new state of something that already exists: a listing a host is still working on — a draft `Place` that must not turn up in search, availability, or bookings. More than one shape is right here. Two of the ones people use, with what each actually costs:
+
+**A `draft` boolean on `Place`.** One table, one model, one set of associations. Existing queries have to account for the flag, either at each call site or centrally with a `@deco.Scope({ default: true })` that filters drafts out of every `Place` query. The central scope is its own trade: code that is *about* drafts then has to lift it by name (`Place.removeDefaultScope('hideDrafts')`).
+
+**`Place` and `DraftPlace` as siblings under a shared STI base.** Both are concrete children of a new base, so each filters to its own type and existing `Place.where(...)` still means only real places without a condition at any call site. `Place` keeps its own path and global name, so every existing reference to it keeps working — see [sti.md — Naming the base](sti.md#naming-the-base-two-sti-shapes) for where the base lives and what it is called. The direction matters: making `Place` itself the base and `DraftPlace` a child would *not* hide drafts from existing `Place` reads, because a base query deliberately returns every child.
+
+```typescript
+// app/models/Place/Base.ts — shared columns, and every association both children need
+export default class BasePlace extends ApplicationModel {
+  public type: DreamColumn<BasePlace, 'type'>
+
+  @deco.BelongsTo('Host')
+  public host: Host
+  public hostId: DreamColumn<BasePlace, 'hostId'>
+
+  @deco.HasMany('Booking')
+  public bookings: Booking[]
+}
+```
+
+```typescript
+// app/models/Place.ts — DraftPlace is declared the same way in app/models/Place/Draft.ts
+import BasePlace from '@models/Place/Base.js'
+
+@STI(BasePlace)
+export default class Place extends BasePlace {}
+```
+
+What that costs: STI children cannot declare associations, so everything `Place` declares relocates to the base; and a column only one child requires costs that child's own code a null check even though the database still enforces the requirement — see [sti.md — STI Child Migration](sti.md#sti-child-migration-alters-parent-table) for the generated shape.
+
+These two are not the whole menu — a status enum, or a genuinely separate model where a stronger boundary earns it, stay available. The one shape that does not belong on the list is a second `draft_places` table carrying its own copy of `Place`'s columns and associations. That is not a trade-off: one concept now lives in two schemas that drift apart, and every association, validation, serializer, and query written for `Place` has to be written and maintained twice.
+
 ## Column Types
 
 Use `DreamColumn<ModelClass, 'columnName'>` for all database-backed columns. The type is inferred from the database schema via Kysely codegen.
@@ -236,7 +270,7 @@ public allBookings: Booking[]  // includes soft-deleted bookings
 | `and` | conditions object | WHERE conditions on the associated model's columns. Supports `DreamConst.passthrough` and `DreamConst.required` values |
 | `andAny` | conditions object[] | OR conditions — association matches records satisfying ANY of the condition sets |
 | `andNot` | conditions object | NOT conditions — excludes associated records matching these conditions |
-| `dependent` | `'destroy'` | Cascade-delete the associated record(s) when this record is destroyed. **This is the standard answer when destroying a parent fails because of an FK constraint from a child.** Add `dependent: 'destroy'` to the parent's HasMany/HasOne — do not write a `BeforeDestroy` hook to manually delete children, and do not change the FK to `ON DELETE CASCADE` at the database level (which would bypass Dream's lifecycle and soft-delete handling). |
+| `dependent` | `'destroy'` | Cascade-delete the associated record(s) when this record is destroyed. **This is the standard answer when destroying a parent fails because of an FK constraint from a child.** Add `dependent: 'destroy'` to the parent's HasMany/HasOne — do not write a `BeforeDestroy` hook to manually delete children, and do not change the FK to `ON DELETE CASCADE` at the database level (which would bypass Dream's lifecycle and soft-delete handling). It goes on the association that sees every child, never on one carrying an `and` condition — see below |
 | `distinct` | column name \| boolean | Apply DISTINCT to the query (pass `true` for the primary key, or a specific column name) |
 | `on` | column name | Custom foreign key column name on the associated model |
 | `order` | column name \| order object | Default ordering for the association |
@@ -249,6 +283,8 @@ public allBookings: Booking[]  // includes soft-deleted bookings
 | `withoutDefaultScopes` | scope name[] | Default scopes to skip when loading this association |
 
 **Through associations** (`through` option) cannot use: `dependent`, `primaryKeyOverride`, `withoutDefaultScopes`, `on`, or `polymorphic`.
+
+**`dependent: 'destroy'` goes on the unconditioned association.** The cascade reaches exactly what that association's own definition matches, so where `Place` declares both `@deco.HasMany('Booking', { and: { status: 'confirmed' } })` and a plain `@deco.HasMany('Booking')`, it belongs on the plain one. On the conditioned one, the remaining bookings stay live under a soft-deleted place, and a hard delete is refused outright by their `ON DELETE RESTRICT` foreign key, rolling the transaction back.
 
 **`through` names an association declared on the *same* model** — Dream resolves it against this model's own association metadata, so the named association must exist here or the through has nothing to walk. Every hop in a chain is therefore an ordinary association on the model at that hop; a multi-hop reach is built by declaring one through per model, each naming the next model's association.
 
@@ -280,7 +316,7 @@ public host: Host
 
 #### Every hop applies its own default scopes, including soft delete
 
-A `through` chain joins each intermediate under that model's default scopes, so a soft-deleted intermediate makes the chain resolve `null` (`HasOne`) or `[]` (`HasMany`) with no error — as if the row never existed. `through` cannot take `withoutDefaultScopes`, so when you need to traverse one, walk the hops as explicit queries under `removeDefaultScope('dream:SoftDelete')`.
+A `through` chain joins each intermediate under that model's default scopes, so a soft-deleted intermediate makes the chain resolve `null` (`HasOne`) or `[]` (`HasMany`) with no error — as if the row never existed. `through` cannot take `withoutDefaultScopes`; to traverse a hidden intermediate, name the scope at the root of the query — `removeDefaultScope` lifts it on every hop (see [Removing Default Scopes](#removing-default-scopes)).
 
 #### Where a hop belongs: compose across models, or stack on the origin
 
@@ -360,7 +396,7 @@ public profileIncludingDeleted: Profile
 | `and` | conditions object | WHERE conditions on the associated model's columns. Supports `DreamConst.passthrough` and `DreamConst.required` values |
 | `andAny` | conditions object[] | OR conditions — association matches records satisfying ANY of the condition sets |
 | `andNot` | conditions object | NOT conditions — excludes associated records matching these conditions |
-| `dependent` | `'destroy'` | Cascade-delete the associated record when this record is destroyed |
+| `dependent` | `'destroy'` | Cascade-delete the associated record when this record is destroyed. Same rule as [HasMany](#hasmany-options) — it goes on the association that sees every child, so not on a `HasOne` carrying an `and` condition; returning at most one record either way does not make that condition harmless |
 | `on` | column name | Custom foreign key column name on the associated model |
 | `polymorphic` | boolean | Enables polymorphic association (requires `on`) |
 | `primaryKeyOverride` | column name \| null | Override the primary key column used for the join |

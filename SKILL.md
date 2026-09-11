@@ -1,9 +1,11 @@
 ---
 name: psychic-skill
 description: >
-  Comprehensive guide for developing applications with Dream ORM and Psychic web framework.
+  Comprehensive guide for building, understanding, and debugging applications with Dream ORM and Psychic web framework.
   TRIGGER when: code imports from '@rvoh/dream', '@rvoh/psychic', '@rvoh/psychic-workers', or '@rvoh/psychic-websockets',
   or project has Dream models, Psychic controllers, or uses 'psy' commands.
+  Applies whether writing code, reading an unfamiliar Psychic codebase, inspecting or querying data,
+  or working out why a query returns the records it returns.
   Covers models, associations, validations, hooks, scopes, serializers, controllers, routing,
   migrations, background workers, websockets, OpenAPI, testing, and code generation.
 user-invocable: false
@@ -22,7 +24,7 @@ All CLI commands in this document are run via the local project's package manage
 
 **Note on examples:** Code examples throughout this skill use BearBnB, a demo app that creates an AirBnB clone for bears (https://github.com/daniel-nelson/bearbnb). In this domain, **Guest** and **Host** are application roles (a Guest books a place to stay, a Host lists a place) — not to be confused with "visitor" (unauthenticated user) or "server" (the machine).
 
-**Ecosystem versions & staleness policy.** This skill is written against `@rvoh/dream` 2.28.x, `@rvoh/psychic` 3.13.x, `@rvoh/psychic-workers` 2.4.x, `@rvoh/psychic-websockets` 3.5.x, and `@rvoh/psychic-spec-helpers` 3.4.x. Features and generator behavior described here assume versions at or above these. **Stay current.** If something documented in this skill fails — a generator flag is unrecognized, shorthand produces malformed output (e.g. an `@alias` passing through literally into identifiers), an API is missing — the first corrective action is to update the out-of-date `@rvoh/*` packages, not to work around the skill. Minor and patch bumps within these majors are low-risk and cheap to apply; treat keeping these packages up to date as the default. This skill deliberately does **not** annotate which version each individual feature landed in — assume current, and upgrade if reality disagrees with the skill.
+**Ecosystem versions & staleness policy.** This skill is written against `@rvoh/dream` 2.30.x, `@rvoh/psychic` 3.13.x, `@rvoh/psychic-workers` 2.6.x, `@rvoh/psychic-websockets` 3.5.x, and `@rvoh/psychic-spec-helpers` 3.4.x. Features and generator behavior described here assume versions at or above these. **Stay current.** If something documented in this skill fails — a generator flag is unrecognized, shorthand produces malformed output (e.g. an `@alias` passing through literally into identifiers), an API is missing — the first corrective action is to update the out-of-date `@rvoh/*` packages, not to work around the skill. Minor and patch bumps within these majors are low-risk and cheap to apply; treat keeping these packages up to date as the default. This skill deliberately does **not** annotate which version each individual feature landed in — assume current, and upgrade if reality disagrees with the skill.
 
 **Always update peer dependencies alongside `@rvoh/*`.** A scoped command like `pnpm up -L "@rvoh/*"` upgrades only the `@rvoh` scope and leaves peer dependencies behind, which can leave a peer pinned at a version the upgraded `@rvoh/*` no longer accepts. After any `@rvoh/*` upgrade, also bump the peers needed to satisfy the new peer ranges — in practice `kysely` and `kysely-codegen` (both `@rvoh/dream` peers) are the ones that bite, but the rule is general: resolve every unmet peer requirement the upgrade introduces, don't stop at the `@rvoh` scope.
 
@@ -231,7 +233,7 @@ A Dream model is the source of truth for one table — its columns, associations
 - **Inside a transaction, bind every operation with `.txn(txn)`** — creates, updates, queries, and association calls alike. Miss it and that operation runs outside the transaction and won't roll back.
 - **Name a model by what it *is*, not by its route or its owner** — a nested route plus `--owning-model` does not imply a `Parent/Child` namespace.
 
-**Before you add an association, write a hook or validation, run a multi-step or preloaded query, or open a transaction, read [models.md](models.md)** — and [querying.md](querying.md) for queries that reach past Dream's public API. It owns the column and decorator setup, the full association reference (including the required-`BelongsTo` two-way contract that throws `MissingRequiredBelongsToAssociation` at runtime when violated, `selfAnd`/`selfAndNot`, polymorphism, and `through` restrictions), hooks, scopes, find-or-create/upsert, and the transaction rules. Guessing association options or transaction binding from memory produces code that compiles and then fails or corrupts data at runtime.
+**Before you add an association, write a hook or validation, run a multi-step or preloaded query, open a transaction, or add a variant of an existing concept (a draft, a proposal, a deactivated kind), read [models.md](models.md)** — and [querying.md](querying.md) for queries that reach past Dream's public API. It owns the column and decorator setup, the full association reference (including the required-`BelongsTo` two-way contract that throws `MissingRequiredBelongsToAssociation` at runtime when violated, `selfAnd`/`selfAndNot`, polymorphism, and `through` restrictions), hooks, scopes, find-or-create/upsert, and the transaction rules. Guessing association options or transaction binding from memory produces code that compiles and then fails or corrupts data at runtime.
 
 ## Controllers
 
