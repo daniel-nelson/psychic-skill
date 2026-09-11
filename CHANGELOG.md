@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.88.0 — 2026-09-11
+
+### Added
+
+- **`workers.md`** — a "Key rules" entry: every dispatch appends the BullMQ `Job` as a final argument, a backgrounded service or model method receives it by declaring a final parameter typed `Job`, and no parameter may carry a default or a `?`. Give the last parameter either and the appended `Job` lands in that slot, so the default never applies and the method runs with a `Job` where it expected its own value — in specs too, which dispatch through the same path. The prohibition is stated wider than the failure on purpose, and one clause says so. Scheduled methods are dispatched the same way but must not declare the `Job`: `schedule()` requires every parameter the method declares, so a final `job: Job` becomes an argument the call site has to pass.
+
+### Changed
+
+- **`workers.md`** — the "App-Owned Retry Budgets" geocoding example seeds its attempt count at the enqueue site, `this.background('_geocodePlace', place.id, 1)`, and `_geocodePlace` declares `attempt` as required. A one-argument enqueue against a two-parameter handler puts the appended `Job` in `attempt`, so the budget the section teaches never runs; the prose describes a required argument the public entry method seeds rather than one defaulting to `1`.
+- **`workers.md`** — "Job Logging" introduces the `Job` as something a method gets by declaring a final `Job` parameter, and its example is a `CityPlaceSyncService` syncing one `City`'s `Place`s, on BearBnB nouns and with the `City.find` / return-early lookup background implementations take.
+- **`SKILL.md`** — Critical Rule #20 makes its signature-defaults case on `quoteStayCents(place, { nights = 1, includeCleaningFee = true } = {})`, a plain exported function with no enqueue entry point. The advice is unchanged; the example is now a method that is never dispatched through `background`, where a defaulted trailing options bag is the one shape the appended `Job` would take over.
+
 ## 0.87.0 — 2026-09-11
 
 ### Added
