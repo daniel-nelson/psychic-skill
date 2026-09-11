@@ -35,6 +35,40 @@ Use a `Parent/Child` namespace in two cases:
 
 Getting the namespace wrong is expensive to undo: the model file path bakes into the class name, the table name, every import, the serializer/controller paths, and the migration. A later rename touches all of those plus generated types, OpenAPI, and front-end clients. Decide the namespace deliberately at generation time.
 
+## Adding a variant of an existing concept
+
+Some variants arrive as a new state of something that already exists: a listing a host is still working on — a draft `Place` that must not turn up in search, availability, or bookings. More than one shape is right here. Two of the ones people use, with what each actually costs:
+
+**A `draft` boolean on `Place`.** One table, one model, one set of associations. Existing queries have to account for the flag, either at each call site or centrally with a `@deco.Scope({ default: true })` that filters drafts out of every `Place` query. The central scope is its own trade: code that is *about* drafts then has to lift it by name (`Place.removeDefaultScope('hideDrafts')`).
+
+**`Place` and `DraftPlace` as siblings under a shared STI base.** Both are concrete children of a new base, so each carries its own `dream:STI` filter and existing `Place.where(...)` still means only real places without a condition at any call site. The base goes *under* the concept — `app/models/Place/Base.ts` holding `BasePlace` — while `Place` stays at `app/models/Place.ts` and `DraftPlace` joins it at `app/models/Place/Draft.ts`, so `Place` keeps its global name and every existing reference to it keeps working. The direction matters: making `Place` itself the base and `DraftPlace` a child would *not* hide drafts from existing `Place` reads, because a base query deliberately returns every child.
+
+```typescript
+// app/models/Place/Base.ts — shared columns, and every association both children need
+export default class BasePlace extends ApplicationModel {
+  public type: DreamColumn<BasePlace, 'type'>
+
+  @deco.BelongsTo('Host')
+  public host: Host
+  public hostId: DreamColumn<BasePlace, 'hostId'>
+
+  @deco.HasMany('Booking')
+  public bookings: Booking[]
+}
+```
+
+```typescript
+// app/models/Place.ts — DraftPlace is declared the same way in app/models/Place/Draft.ts
+import BasePlace from '@models/Place/Base.js'
+
+@STI(BasePlace)
+export default class Place extends BasePlace {}
+```
+
+What that costs: STI children cannot declare associations, so everything `Place` declares relocates to the base. And for an ordinary required **scalar** column only one child needs, `g:sti-child` omits the inline `NOT NULL` and emits a per-type check constraint instead (see [sti.md — STI Child Migration](sti.md#sti-child-migration-alters-parent-table)) — the database still enforces the requirement, but the generated column type stays nullable, so the child's own code carries a null check for a case the database has already ruled out. Booleans and arrays keep their inline non-null defaults; optional columns get no requiredness check either way.
+
+These two are not the whole menu — a status enum, or a genuinely separate model where a stronger boundary earns it, stay available. The one shape that does not belong on the list is a second `draft_places` table carrying its own copy of `Place`'s columns and associations. That is not a trade-off: one concept now lives in two schemas that drift apart, and every association, validation, serializer, and query written for `Place` has to be written and maintained twice.
+
 ## Column Types
 
 Use `DreamColumn<ModelClass, 'columnName'>` for all database-backed columns. The type is inferred from the database schema via Kysely codegen.
