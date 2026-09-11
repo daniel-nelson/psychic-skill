@@ -721,15 +721,18 @@ A backgrounded method that declares a final `Job` parameter can use it to log pr
 ```typescript
 import { Job } from 'bullmq'
 
-export default class DataProcessingService extends ApplicationBackgroundedService {
-  public static async processDataset(datasetId: string) {
-    await this.background('_processDataset', datasetId)
+export default class CityPlaceSyncService extends ApplicationBackgroundedService {
+  public static async syncCityPlaces(city: City) {
+    await this.background('_syncCityPlaces', city.id)
   }
 
-  public static async _processDataset(datasetId: string, job: Job) {
-    await job.log(`Starting processing of dataset ${datasetId}`)
-    // ...do work...
-    await job.log(`Completed processing`)
+  public static async _syncCityPlaces(cityId: string, job: Job) {
+    const city = await City.find(cityId)
+    if (!city) return
+
+    await job.log(`Starting place sync for city ${cityId}`)
+    // ...sync each of the city's places...
+    await job.log(`Completed place sync for city ${cityId}`)
   }
 }
 ```
