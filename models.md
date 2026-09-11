@@ -236,7 +236,7 @@ public allBookings: Booking[]  // includes soft-deleted bookings
 | `and` | conditions object | WHERE conditions on the associated model's columns. Supports `DreamConst.passthrough` and `DreamConst.required` values |
 | `andAny` | conditions object[] | OR conditions — association matches records satisfying ANY of the condition sets |
 | `andNot` | conditions object | NOT conditions — excludes associated records matching these conditions |
-| `dependent` | `'destroy'` | Cascade-delete the associated record(s) when this record is destroyed. **This is the standard answer when destroying a parent fails because of an FK constraint from a child.** Add `dependent: 'destroy'` to the parent's HasMany/HasOne — do not write a `BeforeDestroy` hook to manually delete children, and do not change the FK to `ON DELETE CASCADE` at the database level (which would bypass Dream's lifecycle and soft-delete handling). |
+| `dependent` | `'destroy'` | Cascade-delete the associated record(s) when this record is destroyed. **This is the standard answer when destroying a parent fails because of an FK constraint from a child.** Add `dependent: 'destroy'` to the parent's HasMany/HasOne — do not write a `BeforeDestroy` hook to manually delete children, and do not change the FK to `ON DELETE CASCADE` at the database level (which would bypass Dream's lifecycle and soft-delete handling). Cascade when the children are the parent's own; an `optional: true` `BelongsTo` on the child is a signal that some of them may not be. Put it on the association that sees every child, never on a variant carrying an `and` condition — the cascade reaches exactly what that association's own definition matches. Where `Place` declares both `@deco.HasMany('Booking', { and: { status: 'confirmed' } })` and a plain `@deco.HasMany('Booking')`, `dependent: 'destroy'` belongs on the plain one; on the conditioned one the remaining bookings stay live under a soft-deleted place, and a hard delete is refused outright by their `ON DELETE RESTRICT` foreign key, rolling the transaction back. |
 | `distinct` | column name \| boolean | Apply DISTINCT to the query (pass `true` for the primary key, or a specific column name) |
 | `on` | column name | Custom foreign key column name on the associated model |
 | `order` | column name \| order object | Default ordering for the association |
@@ -360,7 +360,7 @@ public profileIncludingDeleted: Profile
 | `and` | conditions object | WHERE conditions on the associated model's columns. Supports `DreamConst.passthrough` and `DreamConst.required` values |
 | `andAny` | conditions object[] | OR conditions — association matches records satisfying ANY of the condition sets |
 | `andNot` | conditions object | NOT conditions — excludes associated records matching these conditions |
-| `dependent` | `'destroy'` | Cascade-delete the associated record when this record is destroyed |
+| `dependent` | `'destroy'` | Cascade-delete the associated record when this record is destroyed. Same ownership rule as [HasMany](#hasmany-options) — it belongs on the association that sees every child, so when this `HasOne` carries an `and` condition the all-encompassing owner is a separate `HasMany`: dropping the condition from a `HasOne` still selects at most one record |
 | `on` | column name | Custom foreign key column name on the associated model |
 | `polymorphic` | boolean | Enables polymorphic association (requires `on`) |
 | `primaryKeyOverride` | column name \| null | Override the primary key column used for the join |
