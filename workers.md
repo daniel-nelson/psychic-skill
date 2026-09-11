@@ -85,6 +85,7 @@ await IntercomSyncService.syncUser(user)
   }
   ```
 - **Use `find` (not `findOrFail`) in background job implementations**, and return early when the record is not found. Model deletion is a normal part of many application flows — a record may be deleted between when the job was queued and when the worker picks it up. Using `findOrFail` would throw an error, causing the job to be retried repeatedly for ~6 days before finally failing, wasting resources on a record that will never exist again.
+- **Every dispatch appends the BullMQ `Job` as a final argument, and no parameter may carry a default or a `?`.** A backgrounded service or model method receives the `Job` by declaring a final parameter typed `Job` (`import { Job } from 'bullmq'`); `this.background(...)` passes only the arguments before it. Give the last parameter a default or a `?` and the appended `Job` lands in that slot instead: the default never applies, and the method runs with a `Job` where it expected its own value — in specs too, which dispatch through the same path. The prohibition is deliberately wider than the failure, so the safe shape is never in question. Scheduled methods are dispatched the same way but must not declare the `Job`: `schedule()` requires every parameter the method declares, so a final `job: Job` becomes an argument the call site has to pass.
 - Always call the public entry method from application code, not `this.background(...)` directly from outside the service.
 
 ## backgroundWith
@@ -715,7 +716,7 @@ This is the narrow catch [Never Rescue Exceptions Inside Backgrounded Services](
 
 ## Job Logging
 
-Background methods can optionally receive a BullMQ `Job` parameter as their last argument to access logging:
+A backgrounded method that declares a final `Job` parameter can use it to log progress:
 
 ```typescript
 import { Job } from 'bullmq'
@@ -733,7 +734,7 @@ export default class DataProcessingService extends ApplicationBackgroundedServic
 }
 ```
 
-The `Job` parameter is optional and always comes last. Job logs are accessible through BullMQ dashboards and can be retrieved programmatically.
+Job logs are accessible through BullMQ dashboards and can be retrieved programmatically.
 
 ## Worker Configuration
 
