@@ -149,6 +149,15 @@ spec/
         ...
 ```
 
+### Naming the base: two STI shapes
+
+The structure above is one of two, and which one you have decides what the base is called and where it lives.
+
+- **A general category with kinds under it.** `Room` is never instantiated; `Bedroom`, `Bathroom` and `Kitchen` are. The base *is* the concept, so it takes the concept's name and path: `Room.ts` holding `Room`, children at `Room/Bedroom.ts`.
+- **Peers at the same level.** `Place` and `DraftPlace` are both kinds of place, and neither is a general category. The base is a technical artifact holding what they share, so it lives inside the namespace: `Place/Base.ts` holding `BasePlace`, with the concrete peers at `Place.ts` and `Place/Draft.ts`.
+
+The peers shape is not an exception to the path-equals-class-name convention [models.md](models.md#model-organization--namespacing) opens with: the base there is not a domain concept, so naming it after one would assert a category that does not exist. That shape is also what keeps the change cheap — the concrete class stays at its original path under its original global name, so every existing association and query still means what it meant. [models.md — Adding a variant of an existing concept](models.md#adding-a-variant-of-an-existing-concept) works it through.
+
 ## Model Patterns
 
 ### Parent Model (generated with `--sti-base-serializer`)
@@ -213,14 +222,21 @@ export default class Bedroom extends Room {
 
 ### STI Limitations
 
-- Children **cannot define new associations** - all associations must be on the parent. `g:sti-child` enforces this at generation time by rejecting `belongs_to` columns; declare the association on the parent instead. A child can still be *targeted* by an association another model declares — that doesn't define a new association on the child, it points a declaration at one subtype. Target the child by its namespaced global name: on `Place` (which `HasMany('Room')`), `@deco.HasMany('Room/Bedroom')` loads only bedrooms, with no `type` clause written anywhere. That filtering holds for direct associations and for `through`, across `preload`, `leftJoinPreload` and `innerJoin`. For several child types at once, scope the parent-declared association with an `and` clause on the `type` column, whose values are bare class names: `@deco.HasMany('Room', { and: { type: ['Bedroom', 'Bathroom'] } })`. There is no child-targeting equivalent for several — `HasMany`/`HasOne` take a single global name, and a `BelongsTo` array is polymorphic-only. Loaded records come back instantiated as their child class (from the `type` column) and render through the child's serializer.
-  - Across a `through` chain, an outer child may **narrow** an inner base: on `Host`, `@deco.HasMany('Room/Bedroom', { through: 'places', source: 'rooms' })` returns only bedrooms even though `Place.rooms` targets `Room`. An outer base may **not** broaden an inner child, and sibling STI targets are incompatible — those throw `IncompatibleThroughAssociationTarget` at **query** time. TypeScript accepts the declaration and nothing fires at decoration time, so an invalid chain surfaces later than you expect.
+- Children **cannot define new associations** - all associations must be on the parent. `g:sti-child` enforces this at generation time by rejecting `belongs_to` columns; declare the association on the parent instead. A child can still be *targeted* by an association another model declares — see [Targeting an STI child](#targeting-an-sti-child).
 - Children **cannot use `@SoftDelete()`** - must be on the parent
 - Children **cannot use `@ReplicaSafe()`** - must be on the parent
 - Children **cannot use `@Sortable()`** - must be on the parent. If you need position sorting scoped per STI type, declare `@Sortable` on the base model with `type` in the scope array (e.g., `scope: ['place', 'type']`)
 - STI is **exactly one level deep**: `@STI()` always names the base, even when the TypeScript `extends` chain is deeper. `class Bunkroom extends Bedroom` must still be decorated `@STI(Room)`. `@STI(Bedroom)` compiles and imports, then fails silently: `Bedroom.all()` matches only rows whose `type` is exactly `'Bedroom'`, and `Bunkroom` never joins `Room`'s child list, so it is invisible to `preloadFor` and to the generated OpenAPI.
 - Children can override `get serializers()` (and should)
 - Children can add child-specific **physical** columns (they live on the shared parent table), including one that is **required for that child alone** — see [STI Child Migration](#sti-child-migration-alters-parent-table) for the generated shape that carries the requirement, and [models.md — Adding a variant of an existing concept](models.md#adding-a-variant-of-an-existing-concept) for what it costs the column's generated type. **Virtual attributes behave differently** — a child's `@deco.Virtual` does not filter up to the base class; see [Virtual attributes don't filter up to the base class](#virtual-attributes-dont-filter-up-to-the-base-class).
+
+### Targeting an STI child
+
+Pointing another model's association at one subtype doesn't define a new association on the child. Name the child by its namespaced global name: on `Place` (which `HasMany('Room')`), `@deco.HasMany('Room/Bedroom')` loads only bedrooms, with no `type` clause written anywhere.
+
+Prefer that over the `and`-clause form whenever a single child is the target, because it types the association property as the child — `@deco.HasMany('Room/Bedroom')` declares `public bedrooms: Bedroom[]`, so child-specific columns are reachable without a cast. For several child types at once, scope the parent-declared association with an `and` clause on the `type` column, whose values are bare class names — `@deco.HasMany('Room', { and: { type: ['Bedroom', 'Bathroom'] } })` — which types the property as `Room` and costs a cast at each child-specific access. Either way, loaded records come back instantiated as their child class (from the `type` column) and render through the child's serializer.
+
+Across a `through` chain, an outer child may **narrow** an inner base: on `Host`, `@deco.HasMany('Room/Bedroom', { through: 'places', source: 'rooms' })` returns only bedrooms even though `Place.rooms` targets `Room`. An outer base may not broaden an inner child, and sibling targets are incompatible. Those fail at **query** time — TypeScript accepts the declaration and nothing fires at decoration time, so an invalid chain surfaces later than you expect.
 
 ### Virtual attributes don't filter up to the base class
 
