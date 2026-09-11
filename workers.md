@@ -592,6 +592,16 @@ workersApp.set('background', {
 
 Workers attach to the legacy queues and work them down, while enqueueing reaches only the top-level workstreams, so every new job lands on the new instance. The old side can only drain, never be added to, which is what makes the cutover finish. Delete the key once those queues are empty.
 
+### Retiring a Named Workstream
+
+Dropping a `namedWorkstreams` entry and running `pnpm psy sync` regenerates `workstreamNames`, so every service still routing to that workstream becomes a TypeScript error. What the compiler cannot reach is whatever is already queued, and each route leaves it somewhere different:
+
+- **Registration and class removed together.** With no entry, Psychic builds neither the queue nor its workers. A delayed job is only ever promoted by a worker attached to that queue — the keys are per queue, so no other workstream's workers can drain it — and nothing in Psychic reports a queue it no longer builds. Whatever was waiting silently never runs.
+- **Class removed, registration kept.** The workers stay attached and keep pulling, and the handler resolves the class by global name at execution, so the remaining work surfaces in BullMQ's `failed` set (see [Process-level error semantics](#process-level-error-semantics)) — countable, and attributable to the name you just deleted.
+- **Entry moved to `transitionalWorkstreams`.** Queue and workers are still built under the same name, so the backlog keeps draining, while the name is gone from `workstreamNames` and every typed enqueue site is a compile error.
+
+Nothing in the framework requires a particular order or a particular number of releases. Removing both at once is the right move when the queue's remaining contents are disposable; when they are not, the routes above are what buy you the chance to see them.
+
 ## Native BullMQ Mode
 
 Native mode is for apps that need to hand BullMQ its own options per queue — a distinct Redis instance or cluster node per queue, or BullMQ Pro group settings Psychic's workstream shape does not express. Queues are declared by name, and workers are declared separately against those names:
