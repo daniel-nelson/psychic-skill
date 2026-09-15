@@ -6,7 +6,7 @@ When a `@SoftDelete` model is destroyed, Dream sets the `deletedAt` column inste
 
 Common use cases:
 - **Undo** — immediately reverse an accidental deletion with `undestroy()`
-- **Trash can** — hide deleted records from normal queries for a retention period (e.g. 30 days), allow users to browse and restore them, then permanently delete expired records via a scheduled job using `reallyDestroy()`
+- **Trash can** — hide deleted records from normal queries for a retention period (e.g. 30 days), allow users to browse and restore them, then permanently delete expired records via a scheduled job using [`reallyDestroy()`](#permanent-delete-reallydestroy)
 - **Data preservation** — retain records for auditing, analytics, or compliance while removing them from the application's active data
 
 **Don't hand-roll a deactivate/delete mechanism.** When you need "removed but recoverable / auditable" semantics, that is exactly what `@SoftDelete()` provides — and generators apply it by default, so a custom `removed`/`isDeleted`/`deactivatedAt` column is almost always redundant and fights the lifecycle (your column won't be honored by `destroy()`/`undestroy()`, the `dream:SoftDelete` default scope, or `dependent: 'destroy'` cascades). A domain status flag is only warranted when it means something *other than* deletion — e.g. an `active` flag that means "currently bookable" while the row is still a live, queryable record. If the flag's real meaning is "this record is gone," delete the flag and use `@SoftDelete`.
@@ -146,6 +146,16 @@ await place.reallyDestroyAssociation('rooms', { and: { name: 'my room' } })
 ```
 
 `reallyDestroy()` cascades through this record's `dependent: 'destroy'` associations, hard-deleting each one (depth-first, children before the parent) rather than soft-deleting it — and it bypasses the `dream:SoftDelete` default scope while loading that cascade, so children already soft-deleted are loaded and hard-deleted too. A `restrict`-FK child that isn't reachable through a `dependent: 'destroy'` association is never loaded or touched by the cascade: if such a row still references the parent, `reallyDestroy()` throws a foreign-key violation rather than deleting it.
+
+The query form selects the rows it will delete under the model's default scopes, `dream:SoftDelete` among them. The bypass just described governs which *children* the cascade loads once a record is selected; it does not reach which records the query itself selects. So `Place.where({ ... }).reallyDestroy()` matches only live rows: run against a population that is already soft-deleted, it returns `0` and deletes nothing, with no error. Remove the scope to select those rows, which is what a retention prune needs:
+
+```typescript
+await Place.removeDefaultScope('dream:SoftDelete')
+  .where({ deletedAt: ops.lessThan(DateTime.now().minus({ days: 30 })) })
+  .reallyDestroy()
+```
+
+The instance form needs none of this — `place.reallyDestroy()` already holds the row.
 
 `destroy()` and `reallyDestroy()` accept `{ lock: true }`, which makes the destroy a guarded
 (compare-and-set) removal. That is a concurrency concern rather than a soft-delete one — see
