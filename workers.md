@@ -2,7 +2,7 @@
 
 ## Overview
 
-Psychic Workers is built on **BullMQ** (Redis-based job queue). It provides type-safe backgrounding of service and model methods, with automatic retry, priority levels, scheduled/cron jobs, multiple named queues, and (with BullMQ pro) queue based rate limiting.
+Psychic Workers is built on **BullMQ** (Redis-based job queue). It provides type-safe backgrounding of service and model methods, with automatic retry, priority levels, scheduled/cron jobs, multiple named queues, and queue-based rate limiting.
 
 Background work should be used to offload costly, process-intensive, or failure-prone operations from the web server, keeping API responses fast and resilient (e.g. an external service may be temporarily down, which would result in an API error, but a background job will simply retry).
 
@@ -335,7 +335,7 @@ Key points:
 - **The expander and individual-worker services must route to the same queue.** Priority is only meaningful within a single BullMQ queue: jobs in different queues have separate worker pools and never compete for the same slots, so putting expanders and individual jobs on different queues silently defeats the backpressure — each queue just drains independently, and you're back to unbounded fan-out.
 - **To isolate this fan-out to its own queue** (keeping it off the default queue entirely, e.g. so it can't crowd out unrelated default-queue work even at `not_urgent`/`last`):
   - **Open-source BullMQ** — route both services to the same **native-mode** `queue`, not a named **`workstream`**. A `workstream` sets that job's BullMQ `group.id` to the workstream name, which moves `priority` into `group.priority` instead of the top-level field — and open-source BullMQ silently ignores `group.priority` (it's a BullMQ Pro-only feature), so the expander/individual backpressure stops working with no error or warning. A native-mode `queue` (with no `groupId` set) keeps `priority` top-level and the backpressure intact.
-  - **BullMQ Pro** — a named `workstream` works fine instead, *because* Pro honors `group.priority`, so isolation and backpressure both hold. Pro is also the only way to rate-limit the individual jobs against an external dependency (see [Rate Limiting (BullMQ Pro)](#rate-limiting-bullmq-pro)) — worth adopting for a bulk job that calls a rate-limited API or otherwise needs to throttle pressure on a shared resource (the database included), since `not_urgent`/`last` priority only affects worker-slot ordering, not the rate of requests once a job is running.
+  - **BullMQ Pro** — a named `workstream` works fine instead, *because* Pro honors `group.priority`, so isolation and backpressure both hold.
 - **If the kickoff is interrupted,** only the expanders already enqueued will run, and if the kickoff job itself is retried it will re-pluck from the beginning — but because each individual job is independent and idempotent (via the `find`/early-return pattern), re-runs are safe.
 - **Individual jobs still follow the standard rule of passing IDs, not model instances.** Hydrate inside `_processOne`.
 
@@ -356,6 +356,20 @@ export default class FileImportService extends ApplicationBackgroundedService {
     return { priority: 'not_urgent' }
   }
 }
+```
+
+The `QueuePro`/`WorkerPro` providers replace the `{ Queue, Worker }` entry in `conf/initializers/workers.ts` (see [Worker Configuration](#worker-configuration)):
+
+```typescript
+import { QueuePro, WorkerPro } from '@taskforcesh/bullmq-pro'
+
+workersApp.set('background', {
+  providers: {
+    Queue: QueuePro,
+    Worker: WorkerPro,
+  },
+  // ...
+})
 ```
 
 Use `last` for check-in/heartbeat jobs (e.g., Dead Man's Snitch) so they only run after all other work is processed, giving confidence that the queue is healthy. Keep bulk work — like the [fan-out pattern](#fanning-out-background-jobs-for-very-large-record-sets) — off `default`, so a large bulk run doesn't hold up genuinely important application jobs at that tier.
@@ -551,29 +565,48 @@ export default class IntercomSyncService extends ApplicationBackgroundedService 
 }
 ```
 
-### Rate Limiting (BullMQ Pro)
+### Rate Limiting
 
-Named workstreams can be rate limited when using a BullMQ Pro license. Requires `QueuePro` and `WorkerPro` providers:
+A named workstream's `rateLimit` bounds how many of its jobs start per time window:
 
 ```typescript
-import { QueuePro, WorkerPro } from '@taskforcesh/bullmq-pro'
-
 workersApp.set('background', {
-  providers: {
-    Queue: QueuePro,
-    Worker: WorkerPro,
-  },
-
   namedWorkstreams: [
     {
       name: 'Twilio',
       workerCount: 1,
       concurrency: 10,
-      rateLimit: { max: 20, duration: 1000 },  // 20 requests/sec
+      rateLimit: { max: 20, duration: 1000 },  // 20 jobs/sec
     },
   ],
 })
 ```
+
+`max` and `duration` (milliseconds) are both required positive integers; a `rateLimit` missing either fails `connect()` with an error naming the workstream and the field. The limit is per queue, not per worker: every one of the workstream's workers, in every process running it, shares one counter in Redis. It composes with `concurrency` — `concurrency` caps how many jobs each worker runs at once, `rateLimit` caps how many may start per window across the whole workstream. A rate limit targets one external service, so give each rate-limited service its own named workstream rather than the default one.
+
+A job the external service tells to slow down — an HTTP 429 carrying a retry-after — throws `RateLimitedPsychicJob` to pause the whole workstream for that duration without burning a retry attempt:
+
+```typescript
+import { RateLimitedPsychicJob } from '@rvoh/psychic-workers/errors'
+
+export default class BookingSmsService extends ApplicationBackgroundedService {
+  public static get backgroundJobConfig(): BackgroundJobConfig<ApplicationBackgroundedService> {
+    return { workstream: 'Twilio' }
+  }
+
+  public static async sendConfirmation(bookingId: string) {
+    const response = await fetch(smsEndpointFor(bookingId), { method: 'POST' })
+
+    if (response.status === 429) {
+      // Retry-After is in seconds
+      const retryAfterSeconds = Number(response.headers.get('retry-after') ?? 1)
+      throw new RateLimitedPsychicJob({ retryAfterMs: retryAfterSeconds * 1000 })
+    }
+  }
+}
+```
+
+`maxStartedAttempts` bounds how many times one job may cycle through that pause. It is a BullMQ worker option set on the global `defaultBullMQWorkerOptions` (`{ maxStartedAttempts: 10 }`, say) — simple mode has no per-workstream slot for it — and any workstream whose jobs throw the signal wants it set.
 
 ### Transitional Workstreams
 
