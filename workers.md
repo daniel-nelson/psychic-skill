@@ -864,6 +864,26 @@ The boilerplate `defaultJobOptions` ships `attempts: 20` with exponential `backo
 
 **Redis is a trust boundary equal to the app process.** Dispatch reads `{ globalName, method, args }` off the job payload and invokes the resolved class method with no allow-list — anyone who can write to the jobs Redis can run any registered method with full app privileges. Never route request input into a `globalName`/`method` position, and lock down Redis access accordingly.
 
+## Inspecting Queues Outside a Booted Server
+
+`background.connect()` is wired to the `server:init:after-routes` hook. In a `psy console` session, a one-off script, or any other process that initializes the Psychic app without starting the server, nothing has connected, so `background.queues` is an empty array — no error, no warning, and an inspection or maintenance script reports success having done nothing.
+
+Connect explicitly first. `connect()` defaults to `activateWorkers: false`, so it opens the producer connections and builds the `Queue` objects without making the process a worker:
+
+```typescript
+import { background } from '@rvoh/psychic-workers'
+
+background.connect()
+
+for (const queue of background.queues) {
+  console.log(queue.name, await queue.getJobCounts())
+}
+```
+
+This is scoped to reading `background.queues` and the inspection surface hanging off it — enqueueing and scheduling connect on their own.
+
+Read the queue name off the `Queue` object, as above, rather than hardcoding it or deriving it from `Background.defaultQueueName`.
+
 ## Testing Workers
 
 ### Default: Immediate Invocation
