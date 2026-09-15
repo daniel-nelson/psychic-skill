@@ -890,6 +890,8 @@ This is scoped to reading `background.queues` and the inspection surface hanging
 
 Read the queue name off the `Queue` object, as above, rather than hardcoding it or deriving it from `Background.defaultQueueName`.
 
+The name is decided at connect time from the connection type. Under an ioredis `Cluster` — the usual production shape on ElastiCache or MemoryDB in cluster mode — it is wrapped in Redis Cluster hash tags, `{BearBnBBackgroundJobQueue}`, which pin every key for that queue to one hash slot so BullMQ's multi-key Lua scripts can run. Under a plain `Redis` connection it is the bare `BearBnBBackgroundJobQueue`, plus a parallel-test suffix under test. `Background.defaultQueueName` returns the logical name, since the wrapping happens per connection — so a script carrying a hardcoded name finds no queue in production and, if it guards the lookup, reports zero jobs.
+
 ## Testing Workers
 
 ### Default: Immediate Invocation
