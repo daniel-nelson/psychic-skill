@@ -539,8 +539,8 @@ Configure in `conf/initializers/workers.ts`:
 ```typescript
 workersApp.set('background', {
   defaultWorkstream: {
-    workerCount: os.cpus().length,
-    concurrency: 100,
+    workerCount: 1,
+    concurrency: 10,
   },
 
   namedWorkstreams: [
@@ -651,8 +651,8 @@ workersApp.set('background', {
     defaultQueueOptions: {
       defaultJobOptions: { attempts: 20, backoff: { type: 'exponential', delay: 1000 } },
     },
-    defaultWorkerCount: os.cpus().length,
-    defaultWorkerOptions: { concurrency: 100 },
+    defaultWorkerCount: 1,
+    defaultWorkerOptions: { concurrency: 10 },
 
     namedQueueOptions: {
       BookingNotifications: {
@@ -777,7 +777,6 @@ Job logs are accessible through BullMQ dashboards and can be retrieved programma
 Worker configuration lives in `conf/initializers/workers.ts`. This is the simple-mode shape a typical app runs:
 
 ```typescript
-import os from 'os'
 import { PsychicApp } from '@rvoh/psychic'
 import { PsychicAppWorkers } from '@rvoh/psychic-workers'
 import { Queue, Worker } from 'bullmq'
@@ -804,8 +803,8 @@ function initializeWorkers(workersApp: PsychicAppWorkers) {
     },
 
     defaultWorkstream: {
-      workerCount: os.cpus().length,
-      concurrency: 100,
+      workerCount: 1,
+      concurrency: 10,
     },
 
     namedWorkstreams: [
@@ -835,6 +834,13 @@ function initializeWorkers(workersApp: PsychicAppWorkers) {
 ```
 
 `defaultBullMQWorkerOptions` — the worker-side counterpart to `defaultBullMQQueueOptions` — also belongs in this block, but in simple mode a `concurrency` or `connection` placed inside it is always overwritten by the workstream's own value.
+
+The two worker options:
+
+- **`workerCount`** is how many BullMQ `Worker` objects this process builds. Each one opens its own blocking Redis connection, and all of them share the process's event loop.
+- **`concurrency`** is how many fetched jobs a single `Worker` runs at once.
+
+Their product bounds how many jobs are in flight in the process, so size it against the database pool. CPU parallelism comes from running more worker processes.
 
 ### Redis TLS
 
