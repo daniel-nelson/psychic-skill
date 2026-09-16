@@ -602,14 +602,7 @@ The purpose of this pattern is to collapse queries across **multiple polymorphic
 
 Key points:
 - Assign `null` (not `undefined`) for missing associations — `undefined` causes `NonLoadedAssociation` errors.
-- The modifier callback receives `(associationName, dreamClass)`. Use `dreamClass.typeof(Place)` to scope the omit when needed. `typeof` is Dream's class-level equivalent of `instanceof` — use it when comparing a **class** against another class (since `instanceof` only works on instances):
-  ```typescript
-  const places = await Place.query()
-    .preloadFor('forGuests', (assoc, dreamClass) =>
-      dreamClass.typeof(Place) && assoc === 'currentLocalizedText' ? 'omit' : undefined
-    )
-    .all()
-  ```
+- The modifier callback receives `(associationName, dreamClass)`. Use `dreamClass.typeof(Place)` to scope the omit when needed. `typeof` is Dream's class-level equivalent of `instanceof` — use it when comparing a **class** against another class (since `instanceof` only works on instances).
 - If the omitted association itself has nested associations via `rendersOne`/`rendersMany` in its serializer, those are also pruned — load them in your batch helper too.
 
 ## File Organization

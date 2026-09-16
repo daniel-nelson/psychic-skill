@@ -147,15 +147,13 @@ await place.reallyDestroyAssociation('rooms', { and: { name: 'my room' } })
 
 `reallyDestroy()` cascades through this record's `dependent: 'destroy'` associations, hard-deleting each one (depth-first, children before the parent) rather than soft-deleting it — and it bypasses the `dream:SoftDelete` default scope while loading that cascade, so children already soft-deleted are loaded and hard-deleted too. A `restrict`-FK child that isn't reachable through a `dependent: 'destroy'` association is never loaded or touched by the cascade: if such a row still references the parent, `reallyDestroy()` throws a foreign-key violation rather than deleting it.
 
-The query form selects the rows it will delete under the model's default scopes, `dream:SoftDelete` among them. The bypass just described governs which *children* the cascade loads once a record is selected; it does not reach which records the query itself selects. So `Place.where({ ... }).reallyDestroy()` matches only live rows: run against a population that is already soft-deleted, it returns `0` and deletes nothing, with no error. Remove the scope to select those rows, which is what a retention prune needs:
+The query form selects under the model's default scopes, `dream:SoftDelete` among them — the bypass just described governs which *children* the cascade loads, not which records the query selects. So `Place.where({ ... }).reallyDestroy()` matches only live rows: a prune over already-soft-deleted rows returns `0` and deletes nothing, with no error. Remove the scope to select them:
 
 ```typescript
 await Place.removeDefaultScope('dream:SoftDelete')
   .where({ deletedAt: ops.lessThan(DateTime.now().minus({ days: 30 })) })
   .reallyDestroy()
 ```
-
-The instance form needs none of this — `place.reallyDestroy()` already holds the row.
 
 `destroy()` and `reallyDestroy()` accept `{ lock: true }`, which makes the destroy a guarded
 (compare-and-set) removal. That is a concurrency concern rather than a soft-delete one — see

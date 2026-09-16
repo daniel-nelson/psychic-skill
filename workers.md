@@ -115,7 +115,11 @@ Use a `delay` when:
 
 `delay` carries an optional `jobId`, which gives debounce behavior. If a job with the same `jobId` is already queued with a delay, re-backgrounding with that `jobId` overwrites the previous job but resets the delay timer from the current time. This reduces duplicate work when events fire in quick succession.
 
-The dedup key's TTL equals the delay, so it has expired by the time the delayed job fires — re-arming the same `jobId` from inside the job's own running handler is safe. A delay of `0` seconds attaches no dedup key at all, so if debouncing matters, floor the delay at 1 second or higher.
+Debounce guarantees the job runs at least once, at or after the moment it was last scheduled. It is for collapsing repeated expensive work when events fire in quick succession, not for guaranteeing the work happens only once. Re-arming the same `jobId` from inside the job's own running handler is safe.
+
+The debounce delay must be at least 10 seconds; a shorter one throws.
+
+When the work must happen only once, record that it happened — a boolean or a `DateTime` column on the model — and return early when a later run finds it set. A job that fires while a new event re-arms the timer is not a problem under that pattern: the second run reads the flag and does nothing. If the timing itself is what matters rather than the collapsing, reach for a scheduled job with a datetime check on the model instead.
 
 ```typescript
 export default class IntercomSyncService extends ApplicationBackgroundedService {
@@ -331,7 +335,7 @@ export default class PhotoProcessingService extends ApplicationBackgroundedServi
 Key points:
 
 - **`pluckEach` selects only the `id` column** — no hydration, minimal memory.
-- **Priorities create natural backpressure.** Expanders (`last`) yield to individual jobs (`not_urgent`), so the in-flight count of individual jobs never exceeds roughly `worker_count * concurrency * batch_size`.
+- **Priorities create natural backpressure.** Expanders (`last`) yield to individual jobs (`not_urgent`), so the in-flight count of individual jobs never exceeds roughly `worker_count * concurrency * batch_size`. Priority orders worker slots; it does not throttle a running job's request rate. To bound pressure on an external service, put those jobs on a named workstream with a [`rateLimit`](#rate-limiting).
 - **The expander and individual-worker services must route to the same queue.** Priority is only meaningful within a single BullMQ queue: jobs in different queues have separate worker pools and never compete for the same slots, so putting expanders and individual jobs on different queues silently defeats the backpressure — each queue just drains independently, and you're back to unbounded fan-out.
 - **To isolate this fan-out to its own queue** (keeping it off the default queue entirely, e.g. so it can't crowd out unrelated default-queue work even at `not_urgent`/`last`):
   - **Open-source BullMQ** — route both services to the same **native-mode** `queue`, not a named **`workstream`**. A `workstream` sets that job's BullMQ `group.id` to the workstream name, which moves `priority` into `group.priority` instead of the top-level field — and open-source BullMQ silently ignores `group.priority` (it's a BullMQ Pro-only feature), so the expander/individual backpressure stops working with no error or warning. A native-mode `queue` (with no `groupId` set) keeps `priority` top-level and the backpressure intact.
@@ -358,19 +362,7 @@ export default class FileImportService extends ApplicationBackgroundedService {
 }
 ```
 
-The `QueuePro`/`WorkerPro` providers replace the `{ Queue, Worker }` entry in `conf/initializers/workers.ts` (see [Worker Configuration](#worker-configuration)):
-
-```typescript
-import { QueuePro, WorkerPro } from '@taskforcesh/bullmq-pro'
-
-workersApp.set('background', {
-  providers: {
-    Queue: QueuePro,
-    Worker: WorkerPro,
-  },
-  // ...
-})
-```
+Running Pro means passing `QueuePro` and `WorkerPro` as the `Queue` and `Worker` providers in the workers initializer (see [Worker Configuration](#worker-configuration)).
 
 Use `last` for check-in/heartbeat jobs (e.g., Dead Man's Snitch) so they only run after all other work is processed, giving confidence that the queue is healthy. Keep bulk work — like the [fan-out pattern](#fanning-out-background-jobs-for-very-large-record-sets) — off `default`, so a large bulk run doesn't hold up genuinely important application jobs at that tier.
 
@@ -582,31 +574,19 @@ workersApp.set('background', {
 })
 ```
 
-`max` and `duration` (milliseconds) are both required positive integers; a `rateLimit` missing either fails `connect()` with an error naming the workstream and the field. The limit is per queue, not per worker: every one of the workstream's workers, in every process running it, shares one counter in Redis. It composes with `concurrency` — `concurrency` caps how many jobs each worker runs at once, `rateLimit` caps how many may start per window across the whole workstream. A rate limit targets one external service, so give each rate-limited service its own named workstream rather than the default one.
-
 A job the external service tells to slow down — an HTTP 429 carrying a retry-after — throws `RateLimitedPsychicJob` to pause the whole workstream for that duration without burning a retry attempt:
 
 ```typescript
 import { RateLimitedPsychicJob } from '@rvoh/psychic-workers/errors'
 
-export default class BookingSmsService extends ApplicationBackgroundedService {
-  public static get backgroundJobConfig(): BackgroundJobConfig<ApplicationBackgroundedService> {
-    return { workstream: 'Twilio' }
-  }
-
-  public static async sendConfirmation(bookingId: string) {
-    const response = await fetch(smsEndpointFor(bookingId), { method: 'POST' })
-
-    if (response.status === 429) {
-      // Retry-After is in seconds
-      const retryAfterSeconds = Number(response.headers.get('retry-after') ?? 1)
-      throw new RateLimitedPsychicJob({ retryAfterMs: retryAfterSeconds * 1000 })
-    }
-  }
+if (response.status === 429) {
+  throw new RateLimitedPsychicJob({
+    pauseQueueForSeconds: Number(response.headers.get('retry-after') ?? 1),
+  })
 }
 ```
 
-`maxStartedAttempts` bounds how many times one job may cycle through that pause. It is a BullMQ worker option set on the global `defaultBullMQWorkerOptions` (`{ maxStartedAttempts: 10 }`, say) — simple mode has no per-workstream slot for it — and any workstream whose jobs throw the signal wants it set.
+`maxStartedAttempts` bounds how many times one job may cycle through that pause. Set it on the global `defaultBullMQWorkerOptions`; any workstream whose jobs throw the signal wants it.
 
 ### Transitional Workstreams
 
@@ -886,11 +866,9 @@ for (const queue of background.queues) {
 }
 ```
 
-This is scoped to reading `background.queues` and the inspection surface hanging off it — enqueueing and scheduling connect on their own.
+This is about reading `background.queues`; enqueueing and scheduling connect on their own.
 
 Read the queue name off the `Queue` object, as above, rather than hardcoding it or deriving it from `Background.defaultQueueName`.
-
-The name is decided at connect time from the connection type. Under an ioredis `Cluster` — the usual production shape on ElastiCache or MemoryDB in cluster mode — it is wrapped in Redis Cluster hash tags, `{BearBnBBackgroundJobQueue}`, which pin every key for that queue to one hash slot so BullMQ's multi-key Lua scripts can run. Under a plain `Redis` connection it is the bare `BearBnBBackgroundJobQueue`, plus a parallel-test suffix under test. `Background.defaultQueueName` returns the logical name, since the wrapping happens per connection — so a script carrying a hardcoded name finds no queue in production and, if it guards the lookup, reports zero jobs.
 
 ## Testing Workers
 
