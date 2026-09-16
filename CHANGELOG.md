@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.89.0 — 2026-09-16
+
+### Added
+
+- **`soft-delete.md`** — the query form of `reallyDestroy()` selects under the model's default scopes, `dream:SoftDelete` among them; the documented bypass governs which *children* the `dependent: 'destroy'` cascade loads, not which records the query selects. So a prune written as `Place.where({ ... }).reallyDestroy()` matches only live rows — over already-soft-deleted rows it returns `0` and deletes nothing, with no error. The retention-sweep example selects them with `Place.removeDefaultScope('dream:SoftDelete').where({ deletedAt: ops.lessThan(...) }).reallyDestroy()`, and the "Trash can" use case links to the section rather than naming the method in passing.
+- **`workers.md`** — "Inspecting Queues Outside a Booted Server". `background.connect()` is wired to the `server:init:after-routes` hook, so in a `psy console` session, a one-off script, or any other process that initializes the app without starting the server, `background.queues` is an empty array — no error, no warning, and an inspection or maintenance script reports success having done nothing. Calling `background.connect()` first opens the producer connections and builds the `Queue` objects; it defaults to `activateWorkers: false`, so the process does not become a worker. Enqueueing and scheduling connect on their own — this is about reading `background.queues` — and the queue name is read off the `Queue` object rather than hardcoded or derived from `Background.defaultQueueName`.
+- **`workers.md`** — a workstream whose external service answers with an HTTP 429 throws `RateLimitedPsychicJob` (from `@rvoh/psychic-workers/errors`) with `pauseQueueForSeconds`, pausing the whole workstream for the retry-after duration without burning a retry attempt. `maxStartedAttempts`, set on the global `defaultBullMQWorkerOptions`, bounds how many times one job may cycle through that pause; any workstream whose jobs throw the signal wants it.
+- **`workers.md`** — what the two worker options are: `workerCount` is how many BullMQ `Worker` objects the process builds, each opening its own blocking Redis connection and sharing the process's event loop; `concurrency` is how many fetched jobs a single `Worker` runs at once. Their product bounds in-flight jobs in the process, so it is sized against the database pool, and CPU parallelism comes from running more worker processes.
+- **`workers.md`** — in the fan-out pattern, priority orders worker slots and does not throttle a running job's request rate; bounding pressure on an external service means putting those jobs on a named workstream with a `rateLimit`, and the bullet links to that section.
+
+### Changed
+
+- **`workers.md`** — the debounce paragraph is written around what debounce is for: it guarantees the job runs at least once, at or after the moment it was last scheduled, and it collapses repeated expensive work when events fire in quick succession — it does not guarantee the work happens only once. The delay must be at least 10 seconds; a shorter one throws. Re-arming the same `jobId` from inside the job's own running handler is stated as safe on its own, without a justification. For work that must happen only once, the section says to record that it happened — a boolean or a `DateTime` column on the model — and return early when a later run finds it set, which makes a run that fires while a new event re-arms the timer a non-issue; when the timing rather than the collapsing is what matters, the shape is a scheduled job with a datetime check on the model.
+- **`workers.md`** — "Rate Limiting" is what the section is called and what it documents: a named workstream's `rateLimit` bounds how many of its jobs start per time window, with no BullMQ Pro licence involved. The Overview lists queue-based rate limiting alongside retries, priorities, and scheduled jobs without qualification. Passing `QueuePro` and `WorkerPro` as the `Queue` and `Worker` providers is stated where Pro is actually the requirement — beside group priority — and the fan-out bullet's Pro case is now just that Pro honors `group.priority`, so isolation and backpressure both hold.
+- **`workers.md`** — every worker-configuration example sets `workerCount: 1` and `concurrency: 10`, in simple mode, advanced mode, and named workstreams alike.
+- **`serializers.md`** — the `preloadFor` modifiers are written inline in the argument position, where the callback's parameters are contextually typed, instead of as standalone constants annotated with an imported `LoadForModifierFn`. The `dreamClass.typeof(Place)` point is made in prose on the key-points bullet that already states it.
+- **`SKILL.md`** — ecosystem baseline: `@rvoh/psychic-workers` 2.7.x.
+
+### Removed
+
+- **`workers.md`** — every statement that rate-limiting a named workstream requires a BullMQ Pro licence, including the `(BullMQ Pro)` section title and the claim that Pro is the only way to rate-limit individual fan-out jobs against an external dependency.
+- **`workers.md`** — `os.cpus().length` worker counts and `concurrency: 100`, along with the `import os from 'os'` line the simple-mode configuration example carried for them.
+- **`workers.md`** — the instruction to floor a debounce delay at one second, and the claim that a delay of `0` attaches no dedup key while a dedup key's TTL equals the delay. The skill states the 10-second minimum and the throw below it instead, and no longer offers a TTL as the reason re-arming a `jobId` mid-handler is safe.
+
 ## 0.88.0 — 2026-09-11
 
 ### Added
