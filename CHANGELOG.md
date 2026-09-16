@@ -18,6 +18,8 @@
 - **`workers.md`** — every worker-configuration example sets `workerCount: 1` and `concurrency: 10`, in simple mode, advanced mode, and named workstreams alike.
 - **`serializers.md`** — the `preloadFor` modifiers are written inline in the argument position, where the callback's parameters are contextually typed, instead of as standalone constants annotated with an imported `LoadForModifierFn`. The `dreamClass.typeof(Place)` point is made in prose on the key-points bullet that already states it.
 - **`serializers.md`**, **`i18n.md`** — the worked example of locale-specific versus default-locale `LocalizedText` rows is named as `i18n.md`'s "Using in Serializers": the pointer closing "Layering two `delegatedAttribute`s onto the same output key" in `serializers.md` links there, and the comment beside `i18n.md`'s fallback `HasOne` names the same section.
+- **`testing.md`** — the manual-mode worker example awaits `WorkerTestUtils.clean()`, which is async like the rest of the utility's methods.
+- **`SKILL.md`** — Critical Rule 18 exempts REPL / `pnpm console` sessions from the `console.log` ban, spelled as `console.md` spells it: the console is a top-level package script, not a `psy` subcommand.
 - **`SKILL.md`** — ecosystem baseline: `@rvoh/psychic-workers` 2.7.x.
 
 ### Removed
