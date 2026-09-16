@@ -16,6 +16,7 @@
 - **`workers.md`** — "Rate Limiting" is what the section is called and what it documents: a named workstream's `rateLimit` bounds how many of its jobs start per time window, with no BullMQ Pro licence involved. The Overview lists queue-based rate limiting alongside retries, priorities, and scheduled jobs without qualification. Passing `QueuePro` and `WorkerPro` as the `Queue` and `Worker` providers is stated where Pro is actually the requirement — beside group priority — and the fan-out bullet's Pro case is now just that Pro honors `group.priority`, so isolation and backpressure both hold.
 - **`workers.md`** — every worker-configuration example sets `workerCount: 1` and `concurrency: 10`, in simple mode, advanced mode, and named workstreams alike.
 - **`serializers.md`** — the `preloadFor` modifiers are written inline in the argument position, where the callback's parameters are contextually typed, instead of as standalone constants annotated with an imported `LoadForModifierFn`. The `dreamClass.typeof(Place)` point is made in prose on the key-points bullet that already states it.
+- **`serializers.md`**, **`i18n.md`** — the worked example of locale-specific versus default-locale `LocalizedText` rows is named as `i18n.md`'s "Using in Serializers": the pointer closing "Layering two `delegatedAttribute`s onto the same output key" in `serializers.md` links there, and the comment beside `i18n.md`'s fallback `HasOne` names the same section.
 - **`SKILL.md`** — ecosystem baseline: `@rvoh/psychic-workers` 2.7.x.
 
 ### Removed
