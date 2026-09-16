@@ -703,7 +703,7 @@ workersApp.set('testInvocation', 'manual')
 
 await EmailService.background('sendWelcome', user.id)  // Queued
 await WorkerTestUtils.work()                            // Process queue
-WorkerTestUtils.clean()                                 // Clear queues
+await WorkerTestUtils.clean()                           // Clear queues
 ```
 
 ### A job that throws fails the enqueuing request in tests, but not in prod

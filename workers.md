@@ -47,7 +47,7 @@ export default class IntercomSyncService extends ApplicationBackgroundedService 
 await IntercomSyncService.syncUser(user)
 ```
 
-**`backgroundJobConfig` sets the class's defaults; only `priority` can be overridden per call.** `backgroundWith(opts, method, ...args)` takes `{ delay, priority }`, and `opts.priority` replaces the getter's priority for that one job — but that override is subject to the either/or in [Priority Levels](#priority-levels): once a service carries a `workstream` (or `groupId`), the priority — per-call or class-level — is written to `group.priority`, which open-source BullMQ ignores.
+**`backgroundJobConfig` sets the class's defaults; only `priority` can be overridden per call.** `backgroundWith(opts, method, ...args)` takes `{ delay, priority }`, and `opts.priority` replaces the getter's priority for that one job, whether or not the service carries a `workstream` (see [Priority Levels](#priority-levels)).
 
 `opts` carries no routing. To isolate a subset of a service's jobs onto their own workstream, **extract those methods into a separate backgrounded service** with its own `backgroundJobConfig`; splitting the class is the only mechanism.
 
@@ -337,9 +337,7 @@ Key points:
 - **`pluckEach` selects only the `id` column** — no hydration, minimal memory.
 - **Priorities create natural backpressure.** Expanders (`last`) yield to individual jobs (`not_urgent`), so the in-flight count of individual jobs never exceeds roughly `worker_count * concurrency * batch_size`. Priority orders worker slots; it does not throttle a running job's request rate. To bound pressure on an external service, put those jobs on a named workstream with a [`rateLimit`](#rate-limiting).
 - **The expander and individual-worker services must route to the same queue.** Priority is only meaningful within a single BullMQ queue: jobs in different queues have separate worker pools and never compete for the same slots, so putting expanders and individual jobs on different queues silently defeats the backpressure — each queue just drains independently, and you're back to unbounded fan-out.
-- **To isolate this fan-out to its own queue** (keeping it off the default queue entirely, e.g. so it can't crowd out unrelated default-queue work even at `not_urgent`/`last`):
-  - **Open-source BullMQ** — route both services to the same **native-mode** `queue`, not a named **`workstream`**. A `workstream` sets that job's BullMQ `group.id` to the workstream name, which moves `priority` into `group.priority` instead of the top-level field — and open-source BullMQ silently ignores `group.priority` (it's a BullMQ Pro-only feature), so the expander/individual backpressure stops working with no error or warning. A native-mode `queue` (with no `groupId` set) keeps `priority` top-level and the backpressure intact.
-  - **BullMQ Pro** — a named `workstream` works fine instead, *because* Pro honors `group.priority`, so isolation and backpressure both hold.
+- **To isolate this fan-out to its own queue** (keeping it off the default queue entirely, e.g. so it can't crowd out unrelated default-queue work even at `not_urgent`/`last`), route both the expander and the individual-worker service to the same named `workstream`. The mapped priority is written to BullMQ's top-level `priority` on every job, grouped or not, so the expander/individual backpressure survives the isolation on open-source BullMQ and on Pro alike.
 - **If the kickoff is interrupted,** only the expanders already enqueued will run, and if the kickoff job itself is retried it will re-pluck from the beginning — but because each individual job is independent and idempotent (via the `find`/early-return pattern), re-runs are safe.
 - **Individual jobs still follow the standard rule of passing IDs, not model instances.** Hydrate inside `_processOne`.
 
@@ -352,7 +350,7 @@ type BackgroundQueuePriority = 'urgent' | 'default' | 'not_urgent' | 'last'
 // Maps to BullMQ numeric priority: 1 (urgent), 2 (default), 3 (not_urgent), 4 (last)
 ```
 
-**Priority ordering and workstreams are an either/or without a BullMQ Pro license.** When a `backgroundJobConfig` sets a `workstream` (or a `groupId`), the priority number is written to the job's `group.priority` instead of the top-level `priority`, and open-source BullMQ ignores `group.priority` — group priority is a BullMQ Pro surface. So a service gets workstream isolation or priority ordering, not both, unless the app runs the `QueuePro`/`WorkerPro` providers.
+**Priority ordering and workstreams compose.** When a `backgroundJobConfig` sets a `workstream` (or a `groupId`), the priority number is still written to BullMQ's top-level `priority` — the only priority open-source BullMQ reads — so a service gets workstream isolation and priority ordering together.
 
 ```typescript
 export default class FileImportService extends ApplicationBackgroundedService {
@@ -362,7 +360,7 @@ export default class FileImportService extends ApplicationBackgroundedService {
 }
 ```
 
-Running Pro means passing `QueuePro` and `WorkerPro` as the `Queue` and `Worker` providers in the workers initializer (see [Worker Configuration](#worker-configuration)).
+BullMQ Pro adds a `group.priority` alongside that top-level priority, which orders a job's group against the queue's other groups — a different question from which job within a group runs next. Running Pro means passing `QueuePro` and `WorkerPro` as the `Queue` and `Worker` providers in the workers initializer (see [Worker Configuration](#worker-configuration)).
 
 Use `last` for check-in/heartbeat jobs (e.g., Dead Man's Snitch) so they only run after all other work is processed, giving confidence that the queue is healthy. Keep bulk work — like the [fan-out pattern](#fanning-out-background-jobs-for-very-large-record-sets) — off `default`, so a large bulk run doesn't hold up genuinely important application jobs at that tier.
 
@@ -524,7 +522,7 @@ In `NODE_ENV=test` with the default `testInvocation: 'automatic'`, `background(.
 
 A workstream is a BullMQ queue with its own set of workers. Most apps only need the default workstream, but named workstreams are useful for isolating specific work (e.g., external API calls that need rate limiting).
 
-The workstream's `name` also becomes the `group.id` of that workstream's workers, which is why assigning a service to a workstream moves its priority onto `group.priority` (see [Priority Levels](#priority-levels)).
+The workstream's `name` also becomes the `group.id` of that workstream's jobs and workers — a BullMQ Pro surface that open-source BullMQ stores and ignores. The job's priority is unaffected (see [Priority Levels](#priority-levels)).
 
 Configure in `conf/initializers/workers.ts`:
 
@@ -852,7 +850,7 @@ The boilerplate `defaultJobOptions` ships `attempts: 20` with exponential `backo
 
 ## Inspecting Queues Outside a Booted Server
 
-`background.connect()` is wired to the `server:init:after-routes` hook. In a `psy console` session, a one-off script, or any other process that initializes the Psychic app without starting the server, nothing has connected, so `background.queues` is an empty array — no error, no warning, and an inspection or maintenance script reports success having done nothing.
+`background.connect()` is wired to the `server:init:after-routes` hook. In a `pnpm console` session, a one-off script, or any other process that initializes the Psychic app without starting the server, nothing has connected, so `background.queues` is an empty array — no error, no warning, and an inspection or maintenance script reports success having done nothing.
 
 Connect explicitly first. `connect()` defaults to `activateWorkers: false`, so it opens the producer connections and builds the `Queue` objects without making the process a worker:
 
