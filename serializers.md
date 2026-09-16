@@ -169,8 +169,8 @@ a later directive overwrites an earlier one — unless it's skipped:
 - `preloadFor` resolves both `delegatedAttribute` targets automatically, so no
   controller change is needed to load both associations.
 
-See [i18n.md — Falling Back to a Default Locale](i18n.md#falling-back-to-a-default-locale)
-for a worked example using locale-specific vs. default-locale `LocalizedText` rows.
+See [i18n.md — Using in Serializers](i18n.md#using-in-serializers) for a worked
+example using locale-specific vs. default-locale `LocalizedText` rows.
 
 ### .rendersOne(name, options?)
 
