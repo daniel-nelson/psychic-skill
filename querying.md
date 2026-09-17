@@ -6,16 +6,7 @@ Instead, treat the public Dream API itself, the TSDocs shipped with the package,
 
 ## Rule of Thumb
 
-Always prefer Dream's built in public query and association APIs.
-
-Only drop to Kysely when:
-
-- the needed SQL is not covered by Dream's public API
-- or Dream can express most of the query but needs a final low-level Kysely step via `toKysely(...)`
-
-Strongly prefer keeping everything in Dream. Hand-roll raw Kysely (or typed `db()`) only in migrations, or as a true last resort when the requirement genuinely cannot be expressed through Dream's query and association APIs.
-
-Do not jump straight to Kysely for routine filtering, joining, eager loading, aggregation, pagination, or association traversal.
+Prefer Dream's public query and association APIs. Drop to `toKysely(...)`, or to hand-rolled Kysely against the typed `db()`, only for SQL that Dream genuinely cannot express — and in migrations.
 
 ### Eject late, never early: associations carry scopes that `toKysely` does not
 
@@ -716,14 +707,6 @@ Guidelines:
 - If a Dream model is the natural anchor, prefer `Model.query().toKysely(...)`.
 - If the end result should be Dream models, let Dream perform model loading and association hydration when practical.
 - Do not use `db()` for cases already covered cleanly by Dream APIs such as `pluck`, `pluckEach`, `where`, joins, preloading, aggregates, or association queries.
-
-## Mixed SQL and Dream Loading
-
-When custom SQL is needed to rank, score, or filter records but the final result should still be Dream models, use a split approach:
-
-1. Use Kysely to compute IDs and derived values.
-2. Load the models with Dream.
-3. Reapply SQL ordering in memory and attach derived non-column values.
 
 ## Skill Guidance
 

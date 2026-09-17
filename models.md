@@ -29,9 +29,7 @@ Use a `Parent/Child` namespace in two cases:
 - **STI subtypes** — `Room/Bedroom`, `Room/Bathroom`. The namespace expresses "is a kind of." See [sti.md](sti.md).
 - **Subdomain / bounded-context modules** — `Reservations/Booking`, `Billing/Invoice`. The namespace expresses which part of the application's domain the model belongs to.
 
-**Flat when small, grouped by subdomain when large.** A small app is commonly flat — most models sit directly under `src/app/models/`, and that is fine. As the model set grows, group models into subdomain modules rather than leaving dozens of unrelated top-level peers; a sprawling flat directory is a sign the domain hasn't been carved into bounded contexts. Do not pre-create a one-model subdomain on day one either — introduce the module when there are models to put in it. The axis to organize on is the subdomain, never the owning model or the route.
-
-**A model that belongs to multiple parents is its own aggregate root.** When a model `belongsTo` two parents — a `Booking` belongs to both a `Place` and a `Guest` — it is usually its own organizing concept, not a sub-part of either. Namespacing it under one parent (`Place/Booking`) wrongly couples a two-parent model to that parent. Leave it top-level, or place it in its subdomain module (`Reservations/Booking`) — never under one of its parents.
+A model that `belongsTo` two parents — a `Booking` belongs to both a `Place` and a `Guest` — stays top-level or goes in its subdomain module, never under one of them.
 
 Getting the namespace wrong is expensive to undo: the model file path bakes into the class name, the table name, every import, the serializer/controller paths, and the migration. A later rename touches all of those plus generated types, OpenAPI, and front-end clients. Decide the namespace deliberately at generation time.
 
@@ -1258,8 +1256,6 @@ export default class Place extends ApplicationModel { ... }
 Mark a model `@ReplicaSafe()` when the *bulk* of its read traffic can tolerate slightly stale data (replica lag) — don't rule it out just because *some* code path reads it right after a write. The narrower path can force `.connection('primary')` explicitly (see below); the model itself should be marked by its dominant traffic pattern.
 
 **Worked example.** In BearBnB, `Place`, `Room`, and `LocalizedText` are read constantly by the public-facing `V1::Visitor::PlacesController` — that's the bulk of the app's read traffic, and a visitor browsing listings tolerates a few seconds of staleness without issue. That makes all three excellent `@ReplicaSafe()` candidates. But `V1::Hosts::PlacesController` and `V1::Hosts::Places::RoomsController` — where a host creates or edits their own listing and expects to see the change reflected immediately — call `.connection('primary')` on the `show`/`update` actions that read back what the host just wrote, so the host never sees a stale pre-edit version. Mark the model for its dominant (visitor) traffic; handle the narrower (host, read-your-own-write) traffic explicitly at the call site.
-
-**How stale is "stale"?** Aurora PostgreSQL replicas are usually under 100ms behind per AWS's own docs, but longer under heavy write load — and longer still on Aurora Serverless v2 if a reader's minimum capacity is set too low to keep up with the writer. RDS PostgreSQL has no AWS-documented typical figure; watch the `ReplicaLag` CloudWatch metric for your actual workload. Either way, don't assume the replica has caught up by request time — force `.connection('primary')` for any read that must see the write just made.
 
 **Only `select` queries are ever eligible for the replica.** `create`, `update`, and `destroy` always run against the primary, regardless of `@ReplicaSafe()` — there is no such thing as a replica write. Being inside `ApplicationModel.transaction(...)` also forces every query to the primary, `@ReplicaSafe()` or not, since a transaction is inherently a primary-only construct.
 

@@ -260,11 +260,7 @@ The one catch that carries a named, justified reason is a narrow one matching a 
 
 ## Fanning Out Background Jobs for Very Large Record Sets
 
-When you need to background work across a very large number of records (hundreds of thousands to millions), don't enqueue all individual jobs up front. Creating a million jobs at once has several problems:
-
-- **Redis memory pressure** from holding a million job payloads at once
-- **Interruption risk** — the enqueuing loop itself can be killed by a deployment, `SIGTERM`, or a Node process crash, and if it restarts from the beginning it will create duplicate jobs
-- **Queue observability collapses** — dashboards become unusable
+When you need to background work across a very large number of records (hundreds of thousands to millions), don't enqueue all individual jobs up front.
 
 The idiomatic pattern is a **two-level fan-out** using `pluckEach` and priority levels:
 
