@@ -12,6 +12,17 @@ The agent-facing counterpart is Critical Rule #2 in `SKILL.md`, which tells a re
 
 Every example in the skill — models, controllers, serializers, generators, migrations, routing — uses one shared domain: BearBnB, a bear-themed short-term-rental app (Airbnb for bears). The core nouns are `Place`, `Room` (an STI base with children `Bathroom`/`Bedroom`/`Kitchen`/`Den`/`LivingRoom`), `Host`, `Guest`, `Booking`, `City`, and `LocalizedText`. Reusing these nouns keeps examples mutually consistent — an association in one file lines up with the model and serializer shown in another — so when adding or editing any example, draw from this domain rather than introducing a new one, and extend the noun set only when no existing noun fits.
 
+## Skill-authoring craft: read `MAINTAINING.md`
+
+`MAINTAINING.md` at the repo root carries the current skill-authoring standard, this repo's measured state, and the verification commands. Read it before changing `SKILL.md`'s size or structure, or before acting on anything you know about skill authoring from training data. It is a maintainer document — not skill content, and never linked from `SKILL.md`.
+
+Four things bind regardless:
+
+- **`SKILL.md` has a hard 5,000-token ceiling, not a line ceiling.** Claude Code re-injects only the first 5,000 tokens of a skill body after compaction and drops the rest. The file sits at 4,930 tokens with **70 tokens of headroom** — measure any addition with a real tokenizer before writing it, and say where the room comes from.
+- **The standard is `agentskills.io`**, five pages, each served as raw markdown by appending `.md`. `anthropics/skills` redirects there and Claude Code's docs defer to it. It has moved before; re-check before trusting any source list, including that one.
+- **Verify a quotation's page and enclosing section, not merely that the text exists.** Two genuine quotes were cited past their scope in a single maintenance pass.
+- **Three validators fail this repo on purpose.** `MAINTAINING.md` names the expected diagnostics; anything beyond them is a regression. Do not "fix" the expected ones.
+
 ## Release process (required on every PR)
 
 "Publishing" a version means merging into `main`. There is no separate publish step — whatever is on `main` is the released skill, and installs upgrade by pulling `main`.
