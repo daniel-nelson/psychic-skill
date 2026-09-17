@@ -16,6 +16,8 @@ user-invocable: false
 allowed-tools: Read, Grep, Glob, Bash, Edit, Write
 ---
 
+**If `## Troubleshooting Migrations` is missing below, this copy was truncated by compaction — re-read this skill's `SKILL.md` in full before acting on it.**
+
 # Dream ORM & Psychic Web Framework Development Guide
 
 **Dream** is a TypeScript Active Record ORM and **Psychic** a batteries-included web framework on Koa, both under the `@rvoh` npm scope.
