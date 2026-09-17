@@ -164,3 +164,16 @@ select-then-destroy window to close, so there is no instance-level equivalent an
 
 **If you are writing a large set and do not need compare-and-set, do not pass `lock`.** It is slower
 than the plain form by construction.
+
+## A table lock is not the next step up
+
+`lock` on a query is Dream's whole locking surface, and it locks rows. A `LOCK TABLE` statement
+issued through raw `sql` reaches past it to a lock over the entire table, blocking writers to every
+row — including every row the work never touches — for as long as the transaction runs. Application
+code rarely has a reason to go there: a guard on specific records is `{ lock: true }`, an invariant
+the application cannot enforce alone is a database constraint, and a one-shot correction over a known
+set of rows is a `findEach` (see [models.md — Batch Processing](models.md#batch-processing)).
+
+A table lock also brings a problem of its own — the wait to acquire it is unbounded — whose fix is a
+second mechanism (`lock_timeout`) layered on top. Being two mechanisms deep for a guarantee the
+row-level form already gives is the signal to go back to the simple shape, not to keep hardening.
