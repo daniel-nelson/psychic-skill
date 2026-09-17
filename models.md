@@ -1138,19 +1138,13 @@ Without a real unique index on the lookup attribute(s), `createOrFindBy`/`create
 
 ## Transactions
 
-Two ways to start a transaction:
-
-1. **Class-level** — `ApplicationModel.transaction(async (txn) => { ... })`
-2. **Instance-level** — `someModel.transaction(async (txn) => { ... })`
-
-If the callback throws, the entire transaction rolls back.
+Start a transaction with `ApplicationModel.transaction(async (txn) => { ... })`. If the callback throws, the entire transaction rolls back.
 
 **Every model operation inside a transaction must be explicitly bound via `.txn(txn)`.** This includes creates, updates, destroys, queries, association operations — everything. If you forget `.txn(txn)`, the operation runs outside the transaction and won't roll back on failure.
 
 On a `@deco.Sortable` model the omission is worse than a lost rollback. A sortable write computes its position under a lock on its sort scope, so an unbound `room.destroy()` inside a `Place` transaction opens a second transaction on another connection and waits on a lock the enclosing transaction is holding. Only one side is waiting, so Postgres's deadlock detector never sees it: the call hangs until `sortableScopeLockTimeout` expires, then throws `SortableScopeLockWaitTimedOut`. That error advises retrying; a retry cannot help here — add the missing `.txn(txn)`.
 
 ```typescript
-// Class-level transaction
 await ApplicationModel.transaction(async (txn) => {
   const user = await User.txn(txn).create({ email: 'test@test.com' })
   const post = await Post.txn(txn).create({ user, title: 'Test' })
@@ -1158,12 +1152,6 @@ await ApplicationModel.transaction(async (txn) => {
 
   // Queries also need .txn(txn) to see uncommitted data
   const found = await User.txn(txn).findBy({ email: 'test@test.com' })
-})
-
-// Instance-level transaction
-await user.transaction(async (txn) => {
-  await user.txn(txn).update({ status: 'active' })
-  await user.txn(txn).createAssociation('profile', {})
 })
 ```
 
