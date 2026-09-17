@@ -1,7 +1,15 @@
 ---
 name: psychic-update-skill
-description: Update the psychic-skill to the latest version from GitHub
-allowed-tools: Bash, Read, Write
+description: >
+  Upgrades psychic-skill itself to the latest version from GitHub: reconciles every installed copy
+  (global `~/.agents` and `~/.claude`, plus project-local `.agents`/`.claude`), dedupes a dual project
+  install, and summarizes the CHANGELOG entries between the old and new version.
+  Use this skill when the psychic-skill preamble's update check reports `UPGRADE_AVAILABLE`,
+  when `/psychic-update-skill` is invoked, or when someone says the skill is out of date,
+  asks to update or upgrade psychic-skill, asks which version they are on, or asks whether their
+  installed copies are current.
+  It upgrades the skill itself, not a project's `@rvoh/*` packages.
+allowed-tools: Bash, Read, Write, AskUserQuestion
 ---
 
 # /psychic-update-skill
@@ -75,8 +83,7 @@ host may load a different copy than the one that sorts first, so the upgrade mus
 bring **every** copy to the remote version, not just the first one found.
 `bin/psychic-skill-update-apply` does that in one pass — it upgrades git copies
 via fetch + reset and vendored copies via a single re-clone, reconciling both
-global and project-local installs. It replaces the old single-directory detect →
-upgrade → local-copy-sync sequence.
+global and project-local installs.
 
 Find a copy that ships the script (prefer the newest, since a stale copy may
 predate it), then run it:
