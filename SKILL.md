@@ -1,13 +1,17 @@
 ---
 name: psychic-skill
 description: >
-  Comprehensive guide for building, understanding, and debugging applications with Dream ORM and Psychic web framework.
-  TRIGGER when: code imports from '@rvoh/dream', '@rvoh/psychic', '@rvoh/psychic-workers', or '@rvoh/psychic-websockets',
-  or project has Dream models, Psychic controllers, or uses 'psy' commands.
-  Applies whether writing code, reading an unfamiliar Psychic codebase, inspecting or querying data,
-  or working out why a query returns the records it returns.
+  Builds, explains, and debugs applications on Dream ORM and the Psychic web framework.
   Covers models, associations, validations, hooks, scopes, serializers, controllers, routing,
-  migrations, background workers, websockets, OpenAPI, testing, and code generation.
+  migrations, background workers, websockets, OpenAPI, i18n, `psy console`, deploying, testing, and code generation.
+  Use this skill whenever code imports '@rvoh/dream' or a '@rvoh/dream/*' sub-path, '@rvoh/psychic',
+  '@rvoh/psychic-workers', '@rvoh/psychic-websockets' or '@rvoh/psychic-spec-helpers';
+  whenever a project has Dream models, Psychic controllers or 'psy' commands;
+  and whenever the ask arrives in plain words — "add an endpoint", "generate a resource",
+  "why isn't this field in the response", "this migration won't run", "my spec is failing"
+  — even when Dream, Psychic or 'psy' is never named.
+  Applies equally to writing code, reading an unfamiliar Psychic codebase, inspecting or querying data,
+  and working out why a query returns the records it does.
 user-invocable: false
 allowed-tools: Read, Grep, Glob, Bash, Edit, Write
 ---
