@@ -185,6 +185,74 @@ The controller directory structure (`Visitor/V1/`) still enforces the auth inher
 
 Three concerns are independent and should not be collapsed into one tree: the **URL namespace** (an API-contract concern — e.g. version-first `/v1/...`), the **controller file namespace**, and the **auth inheritance chain**. A versioned URL does not require a matching controller ancestry: don't make `Visitor/V1/BaseController` extend `V1/BaseController` merely because the URL starts with `/v1`. Versioning is a contract concern; authentication inheritance is a controller-hierarchy concern. Express auth boundaries through ancestry (a `Visitor/BaseController` extending `MaybeAuthedController` for optionally-authenticated public reads; `Guest/` and `Host/` bases staying authenticated), and let the route file map a versioned URL onto whatever controller has the correct ancestry via an explicit `controller` reference. Because `pnpm psy g:controller` generates the controller and spec but does not add routes, you're free to wire the route however the URL contract requires.
 
+## Declaring Routes
+
+Routes live in `conf/routes.ts` (plus `routes.admin.ts` and `routes.internal.ts`). `r.namespace` groups
+routes and infers controller paths from the nesting, so the route file is where the directory tree above
+becomes URLs.
+
+```typescript
+import { PsychicRouter } from '@rvoh/psychic'
+
+export default function routes(r: PsychicRouter) {
+  // Authed client API — everything under v1/ is authenticated.
+  r.namespace('v1', r => {
+    r.namespace('host', r => {
+      // Full CRUD: index, show, create, update, destroy
+      r.resources('places', r => {
+        r.resources('rooms')  // Nested: /v1/host/places/:placeId/rooms
+      })
+      r.resources('localized-texts', { only: ['update', 'destroy'] })
+    })
+
+    r.namespace('guest', r => {
+      r.resources('places', { only: ['index', 'show'] })
+    })
+  })
+
+  // A surface that LOOSENS auth is its OWN top-level namespace, version nested inside —
+  // never under v1/. The directory tree is the auth architecture (see Controller Hierarchy).
+  r.namespace('webhooks', r => {     // unauthed external callbacks: /webhooks/v1/zoom
+    r.namespace('v1', r => {
+      r.post('zoom', WebhooksV1ZoomController, 'create')
+    })
+  })
+  r.namespace('api', r => {          // server-to-server partner API: /api/v1/reservations
+    r.namespace('v1', r => {
+      r.resources('reservations', { only: ['index', 'show', 'create'] })
+    })
+  })
+  // The maybe-authed Visitor surface lives top-level too (Visitor/V1); it can map to a
+  // clean /v1 URL via an explicit `controller:` reference — see above.
+
+  // Simple routes
+  r.get('ping', PingController, 'ping')
+  r.post('login', AuthController, 'login')
+
+  // Singular resource (no index, no :id in path)
+  r.resource('profile', { only: ['show', 'update'] })
+
+  // Collection routes (no :id)
+  r.resources('items', r => {
+    r.collection(r => {
+      r.post('bulk-create', ItemsController, 'bulkCreate')
+    })
+  })
+
+  // Member route (custom action on a single record). A route declared directly in
+  // the resources callback — outside `collection` — is member-scoped: Psychic
+  // prepends `:id`. There is no `r.member`; use the existing verbs (r.get/r.post/…)
+  // and read the id in the action with `this.castParam('id', 'uuid')` (cast the id to
+  // its primary-key type — `uuid`, `bigint`, or `integer` — never `string`).
+  r.resources('bookings', r => {
+    r.post('cancel', BookingsController, 'cancel')   // member-scoped: POST /bookings/:id/cancel
+  })
+}
+```
+
+Run `pnpm psy routes` to list what the file actually produces, and `pnpm psy sync` after any route
+change so the OpenAPI specs and generated clients update.
+
 ## ApplicationController
 
 ```typescript
@@ -1062,6 +1130,20 @@ await place.save()
 ```
 
 Without the explicit check, an invalid `save()` / `create()` still returns 400, but with no body — the framework logs the errors rather than sending them. Conveying the error shape to the client is therefore an explicit, deliberate act.
+
+### Two rationalizations for a catch-all, and why neither holds
+
+Because Psychic already maps these errors to responses, a `try/catch` around an action almost always
+converts a correct 4xx or a loud 500 into a wrong 200. Two arguments for adding one anyway come up
+repeatedly, and both are rejected:
+
+- **"I'm logging, not silently swallowing."** Logging is for humans reading logs after the fact, not
+  for machines deciding what to do next. A `console.error` line does not influence control flow: in an
+  HTTP handler the user gets a 200 instead of a 500, and in a BullMQ worker the job is marked
+  successful and never retried.
+- **"This is a small per-iteration catch, not a large block."** The size of the wrapped code is not the
+  test; the test is whether the failure needs to propagate. A 3-line per-iteration catch inside a loop
+  hides failures just as effectively as a 300-line function-wide catch.
 
 ### 409 from a database constraint
 

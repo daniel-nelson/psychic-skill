@@ -5,6 +5,13 @@ other write. That on its own is not a reason to lock.
 
 ## Most writes need no lock
 
+Before reaching for anything heavier than a plain `update`, a `findEach`, or a database constraint,
+name the concrete scenario that breaks the simple shape — a specific concurrent writer, a measured row
+count, an invariant the database cannot express. "A race is conceivable" and "this table might get
+large" are not that scenario, and the heavier shape is not free: `{ lock: true }` holds every row in a
+batch locked for the whole batch (see [What a lock costs](#what-a-lock-costs)), and a `LOCK TABLE`
+issued through raw `sql` blocks every writer to the table until the transaction ends.
+
 Two requests updating different attributes of the same record both land. Two requests racing to set
 the *same* attribute resolve to a single winner — and they resolve to a single winner whether or not
 you lock. A plain update is the right tool for both:

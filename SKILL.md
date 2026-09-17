@@ -18,52 +18,44 @@ allowed-tools: Read, Grep, Glob, Bash, Edit, Write
 
 # Dream ORM & Psychic Web Framework Development Guide
 
-You are working with **Dream** (a TypeScript Active Record ORM) and **Psychic** (a batteries-included TypeScript web framework built on Koa). Both are open source packages published under the `@rvoh` npm scope.
+**Dream** is a TypeScript Active Record ORM and **Psychic** a batteries-included web framework on Koa, both under the `@rvoh` npm scope.
 
 **Update check**: !`for d in "${CLAUDE_SKILL_DIR:-}" "$HOME/.agents/skills/psychic-skill" "$HOME/.claude/skills/psychic-skill" ".agents/skills/psychic-skill" ".claude/skills/psychic-skill"; do [ -n "$d" ] && [ -x "$d/bin/psychic-skill-update-check" ] && "$d/bin/psychic-skill-update-check" 2>/dev/null && exit 0; done`
-If the output above says `UPGRADE_AVAILABLE <old> <new>`, follow the inline upgrade flow in `/psychic-update-skill`. The check scans every installed copy and reports the lowest version, so a second indented line may list each copy and mark the stale ones `(behind)`; relay that to the user so they can see which install is out of date.
-If the output says `JUST_UPGRADED <old> <new>`, tell the user: "psychic-skill upgraded from v{old} to v{new}!" and continue.
+On `UPGRADE_AVAILABLE <old> <new>`, follow the inline upgrade flow in `/psychic-update-skill` — a second indented line marks which copies are `(behind)`; relay it. On `JUST_UPGRADED <old> <new>`, tell the user "psychic-skill upgraded from v{old} to v{new}!" and continue.
 
-All CLI commands in this document are run via the local project's package manager (e.g., `pnpm psy sync`, `yarn psy sync`, `npm run psy sync`, `bun run psy sync`). Examples use `pnpm` but substitute the project's actual package manager; the package-manager Critical Rule below explains how to detect which one a project uses (and that `npm` and `bun` need the `run` verb).
+All CLI commands run through the project's package manager. Examples here are written `pnpm psy ...`; substitute the project's own (`yarn psy ...`, `npm run psy ...`, `bun run psy ...`) — Critical Rule 2 says how to detect it.
 
-**Note on examples:** Code examples throughout this skill use BearBnB, a demo app that creates an AirBnB clone for bears (https://github.com/daniel-nelson/bearbnb). In this domain, **Guest** and **Host** are application roles (a Guest books a place to stay, a Host lists a place) — not to be confused with "visitor" (unauthenticated user) or "server" (the machine).
+**Examples** use BearBnB, an AirBnB-for-bears demo app (https://github.com/daniel-nelson/bearbnb), where **Guest** and **Host** are application roles, not "visitor" (unauthenticated) or "server".
 
-**Ecosystem versions & staleness policy.** This skill is written against `@rvoh/dream` 2.30.x, `@rvoh/psychic` 3.13.x, `@rvoh/psychic-workers` 2.7.x, `@rvoh/psychic-websockets` 3.5.x, and `@rvoh/psychic-spec-helpers` 3.4.x. Features and generator behavior described here assume versions at or above these. **Stay current.** If something documented in this skill fails — a generator flag is unrecognized, shorthand produces malformed output (e.g. an `@alias` passing through literally into identifiers), an API is missing — the first corrective action is to update the out-of-date `@rvoh/*` packages, not to work around the skill. Minor and patch bumps within these majors are low-risk and cheap to apply; treat keeping these packages up to date as the default. This skill deliberately does **not** annotate which version each individual feature landed in — assume current, and upgrade if reality disagrees with the skill.
-
-**Always update peer dependencies alongside `@rvoh/*`.** A scoped command like `pnpm up -L "@rvoh/*"` upgrades only the `@rvoh` scope and leaves peer dependencies behind, which can leave a peer pinned at a version the upgraded `@rvoh/*` no longer accepts. After any `@rvoh/*` upgrade, also bump the peers needed to satisfy the new peer ranges — in practice `kysely` and `kysely-codegen` (both `@rvoh/dream` peers) are the ones that bite, but the rule is general: resolve every unmet peer requirement the upgrade introduces, don't stop at the `@rvoh` scope.
+**Ecosystem versions & staleness policy.** Written against `@rvoh/dream` 2.30.x, `@rvoh/psychic` 3.13.x, `@rvoh/psychic-workers` 2.7.x, `@rvoh/psychic-websockets` 3.5.x, `@rvoh/psychic-spec-helpers` 3.4.x. **Stay current:** when something here fails — an unrecognized generator flag, malformed shorthand, a missing API — update the out-of-date `@rvoh/*` packages rather than working around the skill. No feature is annotated with the version it landed in: assume current, upgrade if reality disagrees. A scoped `pnpm up -L "@rvoh/*"` leaves peers behind, so resolve every peer requirement it introduces (`kysely`, `kysely-codegen`).
 
 ## Critical Rules
 
-**If something is failing unexpectedly, re-read this skill before debugging.** Most common errors (type mismatches, missing associations, validation failures, generator syntax issues, migration problems) are already documented here with solutions. Spending 30 seconds searching this skill is cheaper than spending 30 minutes debugging from first principles.
+**If something is failing unexpectedly, re-read this skill before debugging.** Most common errors — type mismatches, missing associations, validation failures, generator syntax, migrations — are already documented here with solutions.
 
-1. **Read the project's `AGENTS.md` or `CLAUDE.md` before doing any work.** They carry project-specific conventions that override the patterns in this skill.
-2. **Detect the project's package manager before running any command; `pnpm` in this skill is a stand-in.** Every command example here is written `pnpm psy ...`, but `pnpm` means *whatever package manager the project uses*. Determine it before running anything and substitute: check `package.json`'s `"packageManager"` field if present (authoritative), otherwise the lockfile — `pnpm-lock.yaml` → `pnpm psy ...`, `yarn.lock` → `yarn psy ...`, `package-lock.json` → `npm run psy ...`, `bun.lock`/`bun.lockb` → `bun run psy ...`. `npm` and `bun` need the `run` verb (`npm run psy`, `bun run psy`); `pnpm` and `yarn` invoke the binary directly. Running `pnpm` literally in a non-pnpm project resolves against the wrong lockfile and tends to fail quietly rather than loudly — verify the package manager first, every time.
-3. **ALWAYS run `pnpm psy <command> --help`** before using any generator - never guess syntax. Argument formats vary between commands and between versions, so remembered syntax is syntax for some other version.
-4. **NEVER use JavaScript `Date`** - always use `DateTime`, `CalendarDate`, `ClockTime`, or `ClockTimeTz` from `@rvoh/dream` (timestamp / date / time-without-tz / time-with-tz respectively). These are what `castParam`/`extractParams` return and what the DB hydrates, so a JS `Date` is never what flows through the system. See [models.md — Date/Time](models.md#datetime).
-5. **NEVER stub or mock Dream internals** in specs - use factories to create real model instances. A stub returns what you wrote it to return, so the spec proves the stub rather than the query.
-6. **NEVER modify an existing migration file that has already been merged into main.** Machines that already recorded it as applied skip it, so the edit reaches only databases built afterwards and schemas silently diverge - express the change as a new migration.
+1. **Read the project's `AGENTS.md` or `CLAUDE.md` before doing any work.** They carry project-specific conventions that override this skill's patterns.
+2. **Detect the project's package manager before running any command; `pnpm` in this skill is a stand-in.** Check `package.json`'s `"packageManager"` field if present (authoritative), otherwise the lockfile — `pnpm-lock.yaml` → `pnpm psy ...`, `yarn.lock` → `yarn psy ...`, `package-lock.json` → `npm run psy ...`, `bun.lock`/`bun.lockb` → `bun run psy ...`. `npm` and `bun` need the `run` verb; `pnpm` and `yarn` invoke the binary directly. Running `pnpm` in a non-pnpm project resolves against the wrong lockfile and fails quietly.
+3. **ALWAYS run `pnpm psy <command> --help`** before using any generator — never guess. Argument formats vary between commands and between versions.
+4. **NEVER use JavaScript `Date`** — always `DateTime`, `CalendarDate`, `ClockTime`, or `ClockTimeTz` from `@rvoh/dream` (timestamp / date / time-without-tz / time-with-tz) — these are what `castParam`/`extractParams` return and what the DB hydrates. See [models.md — Date/Time](models.md#datetime).
+5. **NEVER stub or mock Dream internals** in specs — use factories to create real model instances. A stub returns what you wrote it to return, so the spec proves the stub, not the query.
+6. **NEVER modify a migration file already merged into main.** Machines that recorded it as applied skip it, so schemas silently diverge — express the change as a new migration.
 7. **A generator must always be used** when creating new models, controllers, or migrations.
 8. **Sources of truth** (priority order): TSDocs > `pnpm psy <command> --help` > psychic-skill.
-9. **BDD approach**: Write failing spec first, then implement. Generated code is the only exception (generators create scaffolding for specs and implementation simultaneously).
-10. **Run `pnpm psy sync`** after changing associations, serializers, OpenAPI decorators, or routes, and after adding a decorator that declares a virtual column (`@deco.Virtual()`, `@deco.Encrypted()`) — that sync is separate from the one a migration triggers, since the migration ran before the decorator existed, and without it `create()` / `update()` reject the virtual attribute at build time while every runtime spec passes.
-12. **Use Dream's built-in utilities** (`@rvoh/dream/utils`) instead of lodash or hand-rolled equivalents. See [utils.md](utils.md) for the full list.
-13. **Read application config through `AppEnv` (`api/src/conf/AppEnv.ts`), never `process.env`.** `AppEnv` is typed by a union of the variable names the app declares, so `AppEnv.string('DB_HOST')` compiles only for a declared name; a `process.env` read is a variable the app never declared, which nothing types, lists, or lets a spec set. Variables present in only some environments use the `{ optional: true }` overload, which returns `string | undefined` instead of throwing: `const mapsApiKey = AppEnv.string('BEARBNB_MAPS_API_KEY', { optional: true })`. Never reach for `process.env` to avoid the throw. This governs *application config*; a dev-only launcher whose job is to *compose* the environment handed to spawned children is not that — reading `process.env` to spread it into a `spawn(..., { env })` child is correct there. See [deploying.md — Environment Variables](deploying.md#environment-variables).
-14. **NEVER add try/catch blocks unless handling a specific, expected error.** Dead programs tell no lies — an unhandled exception with a stack trace is far more useful than a program that silently swallows errors and continues with corrupted state. Psychic already converts common errors to appropriate HTTP responses automatically (e.g., `findOrFail` → 404, `castParam` → 400, validation failure → 400). If you must catch, handle only the specific error you expect and re-throw everything else. Never wrap large blocks of code in a catch-all try/catch. **Two rationalizations to reject explicitly:** (a) "I'm logging, not silently swallowing" — logging is for humans reading logs after the fact, not for machines deciding what to do next; if the caller is an HTTP handler, the user gets a 200 instead of a 500; if the caller is a BullMQ worker, the job is marked successful and never retried; a `console.error` line does not influence control flow. (b) "This is a small per-iteration catch, not a large block" — the size of the wrapped code is not the test; the test is whether the failure needs to propagate. A 3-line per-iteration catch inside a loop hides failures just as effectively as a 300-line function-wide catch.
-15. **Branching or mapping on a closed-enum value must stop compiling when a value is added or removed.** Closed enums include database enums regenerated into `@src/types/db.js` (e.g. `PlaceStylesEnum`, `BookingStatusesEnum`), STI type discriminators (`RoomTypesEnum`), and any other union of string literals declared in code. Adding a value to a database enum and re-syncing types widens the union everywhere at once, and the compiler is what finds the sites that now have a hole in them — run `pnpm build:spec` to surface them across `src/` and `spec/`. The trigger is that the value is a closed enum, not your judgment about whether you need every case today. Write enum-dependent code in whichever of the two shapes below gives you that check, never in one that doesn't.
+9. **BDD approach**: write the failing spec first, then implement. Generated code is the only exception (generators scaffold specs and implementation simultaneously).
+10. **Run `pnpm psy sync`** after changing associations, serializers, OpenAPI decorators, or routes, and after adding a decorator declaring a virtual column (`@deco.Virtual()`, `@deco.Encrypted()`) — that sync is separate from the one a migration triggers. Without it, `create()` / `update()` reject the virtual attribute at build time while every runtime spec passes.
+12. **Use Dream's built-in utilities** (`@rvoh/dream/utils`) instead of lodash or hand-rolled equivalents. See [utils.md](utils.md).
+13. **Read application config through `AppEnv` (`api/src/conf/AppEnv.ts`), never `process.env`.** `AppEnv` is typed by a union of the names the app declares, so a `process.env` read is a variable nothing types, lists, or lets a spec set. Variables present in only some environments use the `{ optional: true }` overload, which returns `string | undefined` instead of throwing — never reach for `process.env` to avoid the throw. This governs *application config*: a dev-only launcher whose job is to *compose* the environment handed to spawned children is not that, and reading `process.env` to spread into a `spawn(..., { env })` child is correct there. See [deploying.md](deploying.md#environment-variables).
+14. **NEVER add try/catch blocks unless handling a specific, expected error.** Dead programs tell no lies. Psychic already converts common errors to HTTP responses (`findOrFail` → 404, `castParam` → 400, validation failure → 400). Catch only the error you expect, re-throw everything else, and never wrap a large block in a catch-all. **"I'm logging, not swallowing" and "it's only a small per-iteration catch" are both rejected** — see [controllers.md](controllers.md#automatic-error-handling) and [workers.md](workers.md#never-rescue-exceptions-inside-backgrounded-services).
+15. **Branching or mapping on a closed-enum value must stop compiling when a value is added or removed.** Closed enums are database enums in `@src/types/db.js` (`PlaceStylesEnum`, `BookingStatusesEnum`), STI type discriminators (`RoomTypesEnum`), and any other union of string literals. Adding a value widens the union everywhere at once; the compiler finds the sites with a hole in them, and `pnpm build:spec` surfaces them across `src/` and `spec/`. The trigger is the closed enum, not your judgment about needing every case today. Use one of the two shapes below.
 
-    **Running different code per value — exhaustive `switch` with a `const _never: never` default.**
+    **Different code per value — exhaustive `switch` with a `const _never: never` default.** Every value is named, no-ops included; `_never` proves none is missing.
 
     ```ts
     const status = booking.status
     switch (status) {
-      case 'confirmed':
-        await booking.notifyGuest()
-        return
-      case 'cancelled':
-        await booking.releaseHold()
-        return
-      case 'pending':
-        return  // explicit no-op — case is acknowledged, not forgotten
+      case 'confirmed': await booking.notifyGuest(); return
+      case 'cancelled': await booking.releaseHold(); return
+      case 'pending': return   // explicit no-op — acknowledged, not forgotten
       default: {
         const _never: never = status
         throw new Error(`Unhandled BookingStatusesEnum: ${String(_never)}`)
@@ -71,354 +63,62 @@ All CLI commands in this document are run via the local project's package manage
     }
     ```
 
-    No-op cases get their own `case` arm with a `return`, so every value is named in the code; the `_never` default proves none is missing.
-
-    **Mapping a value per member — `Record<Enum, T>`.**
+    **A value per member — `Record<Enum, T>`**, whenever the answer is data and no branch runs: it requires a key for every member, so a new place style fails to compile at the literal. (Labels are i18n — [i18n.md](i18n.md).)
 
     ```ts
     const NIGHTLY_MINIMUM: Record<PlaceStylesEnum, number> = {
-      cabin: 2,
-      cave: 3,
-      cottage: 2,
-      dump: 1,
-      lean_to: 1,
-      tent: 1,
-      treehouse: 1,
+      cabin: 2, cave: 3, cottage: 2, dump: 1, lean_to: 1, tent: 1, treehouse: 1,
     }
     ```
 
-    `Record` over the union requires a key for every member, so a new place style fails to compile at the literal. This is the shape whenever the answer is data — a duration, a rate, a threshold — and no branch needs to run. (User-facing labels are an i18n concern, not a `Record` — see [i18n.md](i18n.md).)
-
-    **What doesn't give you the check:** an `if/else if` chain. It type-checks fine and **silently no-ops** when a value is added — the addition compiles, the branch is missing, and the bug surfaces at runtime with no stack trace. Reviewers should reject an `if` / `else if` chain that stands in for handling the enum's values — including a two-branch one, where the `else` silently absorbs every value added later — the same way they reject `try/catch` without a specific expected error. A single comparison used as a guard, with no `else` arm taking the remaining values, is not what this rejects.
-
-    **Case labels are the literal string** (`case 'confirmed':`), never a named constant typed as the enum union — `const x: BookingStatusesEnum = 'confirmed'` widens `x` to the whole union, so using it as a case label breaks the `_never` check at the `default`. Don't work around this with a `satisfies`-typed alias per literal either; write the literal directly.
-
-    The STI controller switch-on-`type` pattern is one example of this rule, not the rule itself.
-
-16. **The database is the source of truth for types defined at the database level.** Never hardcode database enum values or other database-defined types in application code. Always import the auto-generated constants and types from `@src/types/db.js` (e.g., `PlaceStylesEnumValues`, `RoomTypesEnum`). These are regenerated by `pnpm psy sync` and propagate automatically to TypeScript types, OpenAPI specs, and generated frontend clients. Outside migrations, enum literals appear only where the type system pins them to one member — a `case` label, a `Record` key, a where/create/association-condition attribute, or an assignment to a union-typed variable. The union type (`RoomTypesEnum`) and the values array (`RoomTypesEnumValues`) serve different jobs: type a variable, property, or parameter holding one known enum value as the union type and assign the literal directly; reach for the values array only where a runtime array is actually needed (`castParam(..., { enum })`, OpenAPI enum schemas, select options, iteration). Don't invent a helper to pluck one member out of the values array — that's what the union type is for.
-17. **Commit all auto-generated files** after `pnpm psy db:migrate` or `pnpm psy sync`. This includes files in `src/types/`, `src/openapi/`, and any configured sync output directories (e.g., `client/api/`, `admin/api/`). Don't cherry-pick which generated files to stage.
-18. **Application code logs through `PsychicApp`, never `console.log`.** Use `PsychicApp.log(message, ...meta)` for general output and `PsychicApp.logWithLevel(level, message, ...meta)` to set a specific level (`'debug' | 'info' | 'warn' | 'error'`). A Psychic app configures one logger (Winston by default) and these are its entry point; a `console.log` line never passes through it, so it sits outside the app's logging entirely. See [controllers.md "Logging"](controllers.md#logging). REPL / `pnpm console` sessions are exempt — interactive output to `stdout` is the point.
-19. **For Psychic surfaces that are thin wrappers over Koa, defer to upstream Koa docs.** When Psychic exposes a Koa-layer knob (e.g., `psy.set('json', { ... })` for `koa-bodyparser`, `psy.use(...)` for Koa middleware), the skill teaches the Psychic-specific shape — where the knob plugs in, what generators emit, what's Psychic-specific — and links to the upstream README for option shapes, defaults, and behavior. Don't restate upstream behavior in the skill; it competes with the authoritative source and goes stale. The same posture applies to thin wrappers over `ioredis`, `BullMQ`, `socket.io`, and `pg`.
-21. **NEVER hand-code OpenAPI schema for a shape Psychic can derive.** Before writing `requestBody.properties`, `responses[status].properties`, or `enum: SomeEnumValues`, stop and choose the derived path:
-    - Model request bodies use `requestBody: { params: [...] }` / `{ including: [...] }`, even when the action must use `castParam` instead of `extractParams` for STI dispatch or custom validation. `params` is the OpenAPI request-body narrowing key. **These must be literal arrays mirroring the action's `extractParams` allowlist — never backfill them from the model's own `paramSafeColumns` or from `Model.columns()`, which dumps the model's entire writable column surface into the spec and re-creates the implicit include-all default. See [controllers.md](controllers.md#requestbody-shorthand--what-each-option-is-for).**
-    - Model responses use `@OpenAPI(Model, { serializerKey })` and serializers.
-    - Computed / view-model responses use an `ObjectSerializer` passed to `@OpenAPI(SerializerFn, { status })`; nested computed objects become nested `ObjectSerializer`s. If the ObjectSerializer does not exist yet, create it.
-    - Hand-written JSON Schema is only for genuinely ad hoc inputs or outputs that cannot sensibly be represented by a Dream model, serializer, or newly-created ObjectSerializer. Do not use "there is no serializer yet" as a reason to hand-write `responses`. Keeping OpenAPI attached to serializers gives TypeScript a single implementation surface for the returned data and documented schema instead of letting a plain object and a duplicated schema drift independently.
-
-22. **The controller directory tree IS the auth architecture; a surface that loosens auth is its own top-level namespace.** Authed client endpoints live under `V1/`; any surface that loosens auth — public/maybe-authed, webhooks, partner API — is its own top-level namespace with the version nested inside (`Visitor/V1/`, `Webhooks/V1/`, `Api/V1/`), never `V1/Visitor/`. `Admin/` and `Internal/` are separate top-level surfaces with their own `AuthedController`. Generate the surface, then reparent its top-level namespace base controller once. Auth is enforced by ancestry, so nesting a looser surface inside an authed one changes auth deep in the tree — the placement *is* the enforcement, there is no other correct way to express it. Full rules: [controllers.md](controllers.md#controller-hierarchy).
-
-23. **Reach for the simplest shape that satisfies the requirement; escalate only on evidence you can point at.** Before choosing something heavier than a plain `update`, a `findEach`, or a database constraint, name the concrete scenario that breaks the simple shape — a specific concurrent writer, a measured row count, an invariant the database cannot express. "A race is conceivable" and "this table might get large" are not that scenario, and the heavier shape is not free: `{ lock: true }` holds every row in a batch locked for the whole batch (see [locking.md — What a lock costs](locking.md#what-a-lock-costs)), and a `LOCK TABLE` issued through raw `sql` blocks every writer to the table until the transaction ends.
-
-    **A one-shot data correction is the case that goes wrong most often.** It is a `findEach` over the affected rows calling `update` on each, or the `Query#update` callback form when a row's new value derives from the row itself. It is not a table lock, not a digest-verified manifest, and not a re-validation of the whole table's population on every run. None of those hold an invariant a correction needs, and each adds a failure mode the plain loop does not have.
-
-    **When a review finding is an artifact of complexity you introduced, remove the complexity instead of hardening it.** The tell is a fix that adds a second mechanism to contain the first — bounding with `lock_timeout` the unbounded acquire wait that taking the table lock created. Two mechanisms deep for a guarantee the simple shape already gave means going back, not forward.
-
-## Creating a New Psychic Application
-
-If you are not already inside a Psychic project, use `create-psychic` to scaffold one:
-
-```bash
-npx @rvoh/create-psychic new <app-name> [options]
-```
-
-Every option left off the command line becomes an interactive prompt. Boolean options can be negated with `--no-` (e.g., `--no-workers`).
-
-| Option | Description |
-|--------|-------------|
-| `--runtime <runtime>` | `node` or `bun` — `bun` is its own package manager |
-| `--package-manager <pm>` | `pnpm`, `yarn`, or `npm`; read only under `--runtime node` |
-| `--primary-key-type <type>` | `uuid7`, `uuid4`, `bigint`, or `integer` |
-| `--workers` / `--no-workers` | Include or exclude background workers (`@rvoh/psychic-workers`) |
-| `--websockets` / `--no-websockets` | Include or exclude websockets (`@rvoh/psychic-websockets`) |
-| `--client <type>` | Client app: `nextjs`, `react`, `vue`, `nuxt`, or `none` |
-| `--admin-client <type>` | Admin client app (same options as `--client`) |
-| `--internal-client <type>` | Internal client app (same options as `--client`) |
-| `--claude-psychic-skill` / `--no-claude-psychic-skill` | Install or exclude psychic-skill for Claude Code |
-| `--agents-psychic-skill` / `--no-agents-psychic-skill` | Install or exclude psychic-skill for Codex / .agents-compatible agents |
-
-Example:
-
-```bash
-npx @rvoh/create-psychic new my-app --runtime node --package-manager pnpm --primary-key-type uuid7 --workers --no-websockets --client react --admin-client none --internal-client none --claude-psychic-skill --no-agents-psychic-skill
-```
-
-One question has no flag: whether to generate a GitHub Actions workflow. `create-psychic` always stops on that select prompt, so `new` cannot run unattended in a non-TTY shell no matter how many options you pass.
-
-## Project Structure
-
-```
-api/
-  src/
-    app/
-      models/           # Dream models (ApplicationModel base)
-      controllers/      # Psychic controllers
-      serializers/      # Response serializers (DreamSerializer / ObjectSerializer)
-      services/         # Business logic, backgrounded services
-    conf/
-      app.ts            # Psychic app config
-      dream.ts          # Dream ORM config
-      routes.ts         # Route definitions
-      AppEnv.ts         # Typed environment variables
-      initializers/     # Boot-time initializers (websockets, workers, etc.)
-    db/
-      migrations/       # Kysely migrations
-    types/
-      db.ts             # Auto-generated Kysely database types
-      dream.ts          # Auto-generated Dream type config
-  spec/
-    unit/               # Unit specs (models, controllers)
-    features/           # E2E specs
-    factories/          # Test data factories
-```
-
-## Key Commands
-
-**CRITICAL: All `pnpm psy` commands default to `NODE_ENV=test`.** To operate on the development database, prefix with `NODE_ENV=development`. See [console.md](console.md) for details.
-
-```bash
-pnpm psy db:migrate              # Run migrations, then auto-syncs when NODE_ENV=test (the default) — no separate `pnpm psy sync` needed
-pnpm psy db:rollback             # Rollback last run migration (use --steps to specify multiple rollback steps)
-pnpm psy db:reset                # Drop + create + migrate, then sync (NODE_ENV=test only), then seed
-pnpm psy sync                    # Sync types, OpenAPI specs, and cli:sync commands (needed standalone when no migration was run; only ever runs under NODE_ENV=test)
-pnpm psy routes                  # Display all routes
-pnpm psy --help                  # List all psy commands
-
-# Console (for interactive exploration and scripts)
-NODE_ENV=development pnpm console   # Launch Dream console against dev DB
-
-# Generators (ALWAYS run --help first)
-pnpm psy g:resource path/to/plural-resources Model/Path field:type   # Preferred for HTTP-accessible models
-pnpm psy g:model ModelName field:type                # When model won't be HTTP-accessible
-pnpm psy g:controller Path/Name action1 action2
-pnpm psy g:migration description                     # For schema changes without a new model
-pnpm psy g:sti-child Model/Child extends Parent field:type
-pnpm psy g:encryption-key [--algorithm aes-256-gcm]   # Generate a key for @Encrypted / cookie encryption
-
-# Testing & Quality
-pnpm uspec                       # Unit specs
-pnpm fspec                       # Feature specs (headless)
-pnpm fspec:visible               # Feature specs (visible browser)
-pnpm build:spec                  # Check for type errors in src and spec directories (uses tsconfig.build-spec.json)
-pnpm build                       # Production build or check for type errors only in src directory (uses tsconfig.build.json)
-# NEVER use `npx tsc --noEmit` — it fails with spurious errors because the base
-# tsconfig references spec types that aren't resolvable from a bare tsc invocation.
-pnpm format                      # Apply standard formatting
-pnpm lint                        # Check linting
-```
-
-## Generators
-
-- **Never hand-roll what a generator can make.** Models, resources, migrations, and STI children are always created with `pnpm psy g:*` and then edited — never written from scratch.
-- **Generator order:** `g:resource` (default for almost any model) → `g:sti-child` (STI children) → `g:model` (only for models never exposed via any API) → `g:migration` (schema change without a new model).
-- **Before you run any generator, read [generators.md](generators.md) and run `pnpm psy <command> --help`.** It carries the argument contract, the mandatory `--owning-model` rule for nested resources, what each generator scaffolds by default, and the post-generate workflow. Reaching for a generator without reading it produces subtly wrong scaffolding that is expensive to unwind.
-
-## Models
-
-A Dream model is the source of truth for one table — its columns, associations, validations, hooks, scopes, and the serializers it renders through. Reach here whenever you define or change a model, query through it, or write inside a transaction.
-
-- **Prefer Dream's public query and association APIs**; drop to Kysely only for SQL they don't cover.
-- **Inside a transaction, bind every operation with `.txn(txn)`** — creates, updates, queries, and association calls alike. Miss it and that operation runs outside the transaction and won't roll back.
-- **Name a model by what it *is*, not by its route or its owner** — a nested route plus `--owning-model` does not imply a `Parent/Child` namespace.
-
-**Before you add an association, write a hook or validation, run a multi-step or preloaded query, open a transaction, or add a variant of an existing concept (a draft, a proposal, a deactivated kind), read [models.md](models.md)** — and [querying.md](querying.md) for queries that reach past Dream's public API. It owns the column and decorator setup, the full association reference (including the required-`BelongsTo` two-way contract that throws `MissingRequiredBelongsToAssociation` at runtime when violated, `selfAnd`/`selfAndNot`, polymorphism, and `through` restrictions), hooks, scopes, find-or-create/upsert, and the transaction rules. Guessing association options or transaction binding from memory produces code that compiles and then fails or corrupts data at runtime.
-
-## Controllers
-
-A Psychic controller authenticates a request, pulls and validates params, does the work through Dream models, and renders a response. Reach here whenever you add or change an endpoint.
-
-- **The controller directory tree *is* the auth architecture, and auth only ever gets stricter downhill** — never introduce a looser authentication pattern deeper in a branch.
-- **Generate controllers; never hand-roll them.** `g:resource` / `g:controller` build the namespace base-controller chain that shared auth lives on. For an intentionally unauthenticated surface, generate normally and then re-parent that namespace's base to `UnauthedController`.
-- **`extractParams` is an explicit, per-action allowlist**, always intersected with the model's param-safe set (its declared `paramSafeColumns`, or the default safe set otherwise). Foreign keys, polymorphic type columns, the STI `type`, the primary key, and timestamps are always stripped — pull those explicitly via `castParam`.
-
-**Before you write an action, an `@OpenAPI` decorator, a `@BeforeAction`, or any param handling, read [controllers.md](controllers.md).** It owns the hierarchy/auth rules, the CRUD patterns, the full `castParam`/`extractParams`/`requestBody` contracts, response methods, cookie/session handling, and logging. Hand-writing a controller skips the namespace base chain where auth is enforced — the most expensive mistake to unwind in this layer.
-
-## Serializers
-
-Serializers turn Dream models (and plain view-model objects) into JSON responses and generate the matching OpenAPI schema in one place. Reach here whenever a response shape changes.
-
-- **Serializers are function-based and use named exports only** — never class-based, never `export default`. Named exports keep runtime global names and OpenAPI component names explicit.
-- **`serializerKey` does not cascade.** A nested `rendersOne`/`rendersMany` defaults to the associated model's `'default'` serializer unless you pass the key explicitly at every level.
-- **Serializers are synchronous and cannot query** — preload for them with `preloadFor`/`loadFor`; a hand-built `preload` chain misses nested and newly-added dependencies and throws `NonLoadedAssociation`.
-
-**Before you write or change a serializer, read [serializers.md](serializers.md)** — and [sti.md](sti.md) for STI base/child serializers. It owns the composition pattern, every method (`attribute`/`customAttribute`/`delegatedAttribute`/`rendersOne`/`rendersMany`), flattening and attribute-shadowing, passthrough context, and `ObjectSerializer` for non-Dream shapes. A hand-written STI serializer that drops the `type`/`StiChildClass` shape silently collapses every child to one schema — correct in a unit spec, broken over HTTP. Run `pnpm psy sync` after changing any serializer so the OpenAPI specs and generated clients update.
-
-## Migrations
-
-Migrations are Kysely-based schema changes — the only way the database shape changes (columns, tables, enums, indexes, foreign keys). Reach here whenever you add, alter, or remove one.
-
-- **Always generate, never hand-write.** Migrations come from `g:resource`, `g:model`, `g:sti-child`, or `g:migration`, then are edited as needed — never created from scratch.
-- **Adding a `NOT NULL` column to a table that already has rows needs a default or a backfill step**, or the migration fails against the existing data.
-
-**Before you write or edit a migration, read [migrations.md](migrations.md).** It owns the column-type DSL, `DreamMigrationHelpers` (prefer these over raw Kysely calls), foreign keys and indexes, the soft-delete column, the new-transaction escape hatch, and enum handling — including the two-migration pattern required to rename an in-use enum value (PostgreSQL can't add and use an enum value in one transaction).
-
-## Routing
-
-```typescript
-import { PsychicRouter } from '@rvoh/psychic'
-
-export default function routes(r: PsychicRouter) {
-  // Namespace groups routes and infers controller paths.
-  // Authed client API — everything under v1/ is authenticated.
-  r.namespace('v1', r => {
-    r.namespace('host', r => {
-      // Full CRUD: index, show, create, update, destroy
-      r.resources('places', r => {
-        r.resources('rooms')  // Nested: /v1/host/places/:placeId/rooms
-      })
-      r.resources('localized-texts', { only: ['update', 'destroy'] })
-    })
-
-    r.namespace('guest', r => {
-      r.resources('places', { only: ['index', 'show'] })
-    })
-  })
-
-  // A surface that LOOSENS auth is its OWN top-level namespace, version nested inside —
-  // never under v1/. The directory tree is the auth architecture (see controllers.md).
-  r.namespace('webhooks', r => {     // unauthed external callbacks: /webhooks/v1/zoom
-    r.namespace('v1', r => {
-      r.post('zoom', WebhooksV1ZoomController, 'create')
-    })
-  })
-  r.namespace('api', r => {          // server-to-server partner API: /api/v1/reservations
-    r.namespace('v1', r => {
-      r.resources('reservations', { only: ['index', 'show', 'create'] })
-    })
-  })
-  // The maybe-authed Visitor surface lives top-level too (Visitor/V1); it can map to a
-  // clean /v1 URL via an explicit `controller:` reference — see controllers.md.
-
-  // Simple routes
-  r.get('ping', PingController, 'ping')
-  r.post('login', AuthController, 'login')
-
-  // Singular resource (no index, no :id in path)
-  r.resource('profile', { only: ['show', 'update'] })
-
-  // Collection routes (no :id)
-  r.resources('items', r => {
-    r.collection(r => {
-      r.post('bulk-create', ItemsController, 'bulkCreate')
-    })
-  })
-
-  // Member route (custom action on a single record). A route declared directly in
-  // the resources callback — outside `collection` — is member-scoped: Psychic
-  // prepends `:id`. There is no `r.member`; use the existing verbs (r.get/r.post/…)
-  // and read the id in the action with `this.castParam('id', 'uuid')` (cast the id to
-  // its primary-key type — `uuid`, `bigint`, or `integer` — never `string`).
-  r.resources('bookings', r => {
-    r.post('cancel', BookingsController, 'cancel')   // member-scoped: POST /bookings/:id/cancel
-  })
-}
-```
-
-## Soft Delete
-
-`@SoftDelete()` makes `destroy()` set `deletedAt` instead of removing the row, and a `dream:SoftDelete` default scope hides those rows from every query. Generators apply it by default. Reach here when a model needs "removed but recoverable / auditable" semantics — and don't hand-roll a `removed` / `deactivatedAt` flag, which fights the lifecycle.
-
-- **Every model in a `dependent: 'destroy'` chain must also have `@SoftDelete()`** — otherwise destroying the parent permanently deletes those children. Dream does not check this for you.
-- **STI children never carry `@SoftDelete()`** — it lives on the STI parent and all children inherit it.
-
-**Before you add soft delete to an existing model, query soft-deleted rows, or build a `dependent: 'destroy'` chain, read [soft-delete.md](soft-delete.md).** It owns the setup, the `restrict`-not-`cascade` FK rule, and `undestroy` / `reallyDestroy`; [models.md — Removing Default Scopes](models.md#removing-default-scopes) owns which scope-removal form to reach for.
-
-**Before you write a claim — an update or destroy whose new value depends on a value you just read — read [locking.md](locking.md).** It owns `{ lock: true }` on `update` and `destroy`, the attributes and callback forms, and what a lock costs. Most writes need none of it; that file says so first.
-
-## Default Scopes
-
-Default scopes are conditions automatically applied to every query on a model. Two are built in — **`dream:SoftDelete`** (added by `@SoftDelete()`, hides `deletedAt` rows) and **`dream:STI`** (added by `@STI()`, restricts a child query to its type); define your own with `@deco.Scope({ default: true })`.
-
-- **Bypass one by name with `removeDefaultScope('name')`**, which lifts that scope and leaves every other one on, including any enforcing access control. `dream:STI` is the exception — it cannot be bypassed; query the STI base model to span its children.
-
-Full reference: [models.md — Default Scopes](models.md#default-scopes).
-
-## Single Table Inheritance (STI)
-
-STI stores several model types in one table, discriminated by a `type` enum column. Reach for it when a `type` column's values carry different behavior, validations, serializers, or child-specific columns.
-
-- **STI `type` values must exactly match the child class names** (`Bedroom`, `LivingRoom`) — the enum and the classes are one namespace.
-- **Generate, never hand-roll:** `g:resource --sti-base-serializer` for the parent, `g:sti-child` per child. They emit the check constraints, per-child serializers, and type-discriminated OpenAPI that are painful to retrofit.
-- **Creating an STI child dispatches on `type` through an exhaustive `switch` with a `_never` default** (Critical Rule 15) — `if/else` chains silently no-op when a type is added.
-
-**Before you generate an STI parent or child, write an STI serializer, or build the create action, read [sti.md](sti.md).** It owns the full generation workflow, the generic base-serializer shape (drop the `StiChildClass` / `type` parts and discrimination breaks silently over HTTP), the migration / check-constraint patterns, and the controller switch. STI children also cannot use `@SoftDelete()`, `@ReplicaSafe()`, `@Sortable()`, or define their own associations — all live on the parent.
-
-## Associations
-
-Associations declare how models relate — `BelongsTo`, `HasMany`, `HasOne`, `through` for many-to-many, and polymorphic variants. Reach here whenever you wire two models together.
-
-- **A `BelongsTo` lives on the model holding the foreign key, and you must declare the FK column too** (`public userId: DreamColumn<...>` beside the `@deco.BelongsTo('User')`).
-- **A non-optional `BelongsTo` is a non-nullable contract on both ends** — it can't be conditionally loaded (compile error) and throws `MissingRequiredBelongsToAssociation` if an internal mechanism nulls it. The fix is a model change (`dependent: 'destroy'` on the inverse, or `optional: true`), not a looser serializer.
-- **`through` associations cannot use** `dependent`, `primaryKeyOverride`, `withoutDefaultScopes`, `on`, or `polymorphic`. Each hop applies its own default scopes, so a soft-deleted intermediate makes the whole chain resolve empty.
-
-**Before you add or change an association, read the full reference in [models.md](models.md)** — every option, the conditions (`and` / `andAny` / `andNot`), `selfAnd` / `selfAndNot`, `DreamConst.passthrough` / `required`, and polymorphism. Run `pnpm psy sync` after any association change.
-
-## Internationalization (i18n)
-
-Psychic supports two complementary translation patterns: **code-driven** (enum values and static labels via `I18nProvider` and locale files in `src/conf/locales/`) and **data-driven** (user-generated content via a polymorphic `LocalizedText` model with `DreamConst.passthrough`). Both read the `Accept-Language` header and flow to serializers via `serializerPassthrough({ locale })`.
-
-**Before you add either pattern, read [i18n.md](i18n.md).**
-
-## Background Workers
-
-Background jobs (BullMQ / Redis) offload slow, costly, or failure-prone work off the request path, with automatic retry. Services are the standard surface; models can background their own methods. Reach here whenever work should not block a response.
-
-- **Never pass model data as job arguments — IDs and non-model scalars only**, then re-look-up inside the implementation. Model payloads bloat Redis, lose type information through JSON, and go stale.
-- **Use `find` (not `findOrFail`) in implementations and return early on null** — the record may have been deleted before the worker runs, and `findOrFail` would retry for ~6 days.
-- **Nothing calls `scheduleAllJobs()` for you** — call it from `db/seed.ts`, which every deploy runs immediately after `db:migrate`. A scheduled service nobody registers silently never runs.
-- **Enqueue only after the transaction commits** — any lifecycle hook that queues background work must use a `Commit` variant (`@deco.AfterCreateCommit`, `@deco.AfterUpdateCommit`, `@deco.AfterSaveCommit`). This applies whether the hook calls a backgrounded service or backgrounds a model method, and whether the worker needs a newly-created row or newly-updated persisted data. Never call `background(...)` from inside an open `txn`, or the worker races the commit and silently strands the record.
-
-**Before you write a backgrounded service, a scheduled job, or a model hook that enqueues work, read [workers.md](workers.md).** It owns the two-method service pattern, priorities / workstreams, the scheduled-vs-backgrounded split, large-set fan-out, and why a `try/catch` inside a job (which fakes success and kills retry) is almost always a bug.
-
-## Websockets
-
-Psychic Websockets gives real-time push over Socket.IO with Redis pub/sub. Typed channels are declared with `Ws`, messages emit to a user id, and connections register a socket to a user. Reach here whenever the app pushes to clients.
-
-- **Every process that calls `Ws.emit()` needs `PsychicAppWebsockets` initialized**, as the scaffold does. A hand-rolled process, a role guard that excludes one, or a deleted initializer loses it, and the symptom is an obscure `cachePsychicAppWebsockets` error that looks like a framework bug.
-- **Set `transports: ['websocket']` on the client** — skipping Socket.IO's polling-first handshake connects faster.
-
-**Before you wire up channels, connection auth, or emit from a worker, read [websockets.md](websockets.md).** It owns the initializer / auth scaffolding, the origin allowlist, and the worker-emit pattern.
-
-## Testing
-
-Specs use Vitest against real database records — never mocks of Dream internals (Critical Rule 5). Unit specs cover models and controllers; feature specs cover end-to-end flows; factories build test data. Reach here whenever you add or change behavior.
-
-- **Write the failing spec first** (Critical Rule 9), then implement. Generated scaffolding is the only exception.
-- **Every bug is a missing spec** — write the regression spec *before* committing the fix, even for a one-line "couldn't regress" change.
-- **Create real records with factories**, not stubs.
-
-**Before you write a factory, a model / controller spec, or a feature spec, read [testing.md](testing.md).** It owns the factory pattern (including STI and side-effect-hook factories), the `session(...)` auth helper, the matchers (`toMatchDreamModels`, action / expectation matchers), spec organization, and worker / feature-spec specifics.
+    **An `if` / `else if` chain does not give you the check.** It type-checks and **silently no-ops** when a value is added, including a two-branch one whose `else` absorbs every later value. A lone comparison used as a guard, with no `else`, is not what this rejects.
+
+    **Case labels are the literal string** (`case 'confirmed':`); a constant typed as the union (`const x: BookingStatusesEnum = 'confirmed'`) widens `x` and breaks the `_never` check, as does a `satisfies` alias.
+
+16. **The database is the source of truth for types defined at the database level.** Never hardcode database enum values — import the generated constants and types from `@src/types/db.js` (`PlaceStylesEnumValues`, `RoomTypesEnum`), which `pnpm psy sync` regenerates and propagates to types, OpenAPI specs, and clients. Outside migrations, enum literals appear only where the type system pins them to one member — a `case` label, a `Record` key, a where/create/association-condition attribute, or an assignment to a union-typed variable. Type anything holding one known value as the union type and assign the literal directly; reach for the values array only where a runtime array is needed (`castParam(..., { enum })`, OpenAPI enum schemas, select options, iteration), never to pluck out a single member.
+17. **Commit all auto-generated files** after `pnpm psy db:migrate` or `pnpm psy sync` — `src/types/`, `src/openapi/`, and any configured sync output directories. Don't cherry-pick.
+18. **Application code logs through `PsychicApp`, never `console.log`.** `PsychicApp.log(message, ...meta)` for general output, `PsychicApp.logWithLevel(level, message, ...meta)` to set a level (`'debug' | 'info' | 'warn' | 'error'`). A Psychic app configures one logger (Winston by default) and these are its entry point; a `console.log` line never passes through it. See [controllers.md](controllers.md#logging). REPL / `psy console` sessions are exempt — interactive `stdout` is the point.
+19. **For Psychic surfaces that are thin wrappers over Koa, defer to upstream docs.** Where Psychic exposes a Koa-layer knob (`psy.set('json', { ... })`, `psy.use(...)`), the skill teaches the Psychic-specific shape and links upstream for options and defaults. Same posture for `ioredis`, `BullMQ`, `socket.io`, and `pg` wrappers.
+21. **NEVER hand-code OpenAPI schema for a shape Psychic can derive.** Before writing `requestBody.properties`, `responses[status].properties`, or `enum: SomeEnumValues`, choose the derived path:
+    - Model request bodies use `requestBody: { params: [...] }` / `{ including: [...] }`, even when the action must use `castParam` instead of `extractParams` for STI dispatch or custom validation. `params` is the OpenAPI request-body narrowing key. **These must be literal arrays mirroring the action's `extractParams` allowlist — never backfill them from the model's own `paramSafeColumns` or from `Model.columns()`. See [controllers.md](controllers.md#requestbody-shorthand--what-each-option-is-for).**
+    - Model responses use `@OpenAPI(Model, { serializerKey })` and serializers. Computed / view-model responses use an `ObjectSerializer` passed to `@OpenAPI(SerializerFn, { status })`, nested objects nesting further `ObjectSerializer`s; create one if it does not exist yet.
+    - Hand-written JSON Schema is only for ad hoc shapes no model, serializer, or new `ObjectSerializer` can represent; "there is no serializer yet" is not a reason. See [openapi.md](openapi.md#how-psychic-builds-the-spec).
+
+22. **The controller directory tree IS the auth architecture; a surface that loosens auth is its own top-level namespace.** Authed client endpoints live under `V1/`; any surface that loosens auth — public/maybe-authed, webhooks, partner API — is its own top-level namespace with the version nested inside (`Visitor/V1/`, `Webhooks/V1/`, `Api/V1/`), never `V1/Visitor/`. `Admin/` and `Internal/` are separate top-level surfaces with their own `AuthedController`. Generate the surface, then reparent its top-level namespace base controller once. Auth is enforced by ancestry: the placement *is* the enforcement. Full rules: [controllers.md](controllers.md#controller-hierarchy).
+23. **Reach for the simplest shape that satisfies the requirement; escalate only on evidence you can point at.** Before choosing anything heavier than a plain `update`, a `findEach`, or a database constraint, name the concrete scenario that breaks the simple shape — a specific concurrent writer, a measured row count, an invariant the database cannot express. "A race is conceivable" and "this table might get large" are not that. A one-shot data correction goes wrong most often: it is a `findEach` calling `update` per row, or the `Query#update` callback form when the new value derives from the row. When a review finding is an artifact of complexity you introduced, remove the complexity instead of hardening it. See [locking.md](locking.md#most-writes-need-no-lock).
+
+## Reference Map
+
+Each line below says when to load a reference file; read the whole file.
+
+- **[generators.md](generators.md)** — before any generator. Owns the decision tree, `g:resource`'s argument contract, `--owning-model`, the post-generate workflow.
+- **[models.md](models.md)** — before an association, hook, validation, transaction, or a new variant of an existing concept. Owns columns, decorators, associations, hooks, validations, scopes, batching, upserts, date/time, `.txn(txn)`.
+- **[querying.md](querying.md)** — when a query reaches past Dream's public API or returns unexpected rows. Owns the query inventory, predicates, ordering, association chaining, preloading, `toKysely`.
+- **[controllers.md](controllers.md)** — before an action, `@OpenAPI` decorator, `@BeforeAction`, or param handling. Owns hierarchy/auth, routes, CRUD, params, responses, error handling, cookies, logging.
+- **[serializers.md](serializers.md)** — before writing or changing a serializer. Owns the named-export function pattern, every method, flattening, `serializerKey`, passthrough, `preloadFor`, STI and `ObjectSerializer`.
+- **[migrations.md](migrations.md)** — before writing or editing a migration. Owns the column-type DSL, `DreamMigrationHelpers`, keys, indexes, polymorphic/STI/soft-delete columns, enums.
+- **[sti.md](sti.md)** — before generating an STI parent or child, writing an STI serializer, or building the create action. Owns the generation workflow, the base-serializer shape, check constraints, the controller `switch`.
+- **[soft-delete.md](soft-delete.md)** — before adding `@SoftDelete()`, querying soft-deleted rows, or a `dependent: 'destroy'` chain. Owns setup, the `restrict`-not-`cascade` FK rule, `undestroy`/`reallyDestroy`.
+- **[locking.md](locking.md)** — before a claim: a write whose new value depends on a value just read. Owns `{ lock: true }` and its forms, what a lock costs, why a table lock is not the next step up.
+- **[workers.md](workers.md)** — before a backgrounded service, a scheduled job, or a hook that enqueues work. Owns the service pattern, the `AfterCommit` requirement, ID-only arguments, priorities, workstreams, fan-out, retry.
+- **[websockets.md](websockets.md)** — before channels, connection auth, or emitting from a worker. Owns the `PsychicAppWebsockets` initializer, typed `Ws` channels, auth, the origin allowlist, worker emits.
+- **[openapi.md](openapi.md)** — documenting an endpoint or customizing the spec. Owns spec derivation, `psy.set('openapi', ...)`, typed clients, custom error responses.
+- **[testing.md](testing.md)** — before a factory, a model or controller spec, or a feature spec. Owns the factory pattern, `session(...)`, the matchers, spec organization, worker and feature specifics.
+- **[i18n.md](i18n.md)** — before translating anything. Owns code-driven labels via `I18nProvider` and `src/conf/locales/`, data-driven content via the polymorphic `LocalizedText` model, locale passthrough.
+- **[console.md](console.md)** — before inspecting data by hand or running a one-off script. Owns the `NODE_ENV` defaults every `psy` command inherits, the Dream console and its auto-imports, dev-database scripts.
+- **[deploying.md](deploying.md)** — deploying, configuring an environment, or debugging a container. Owns the runtime model, health checks, the `AppEnv` contract, TLS, read replicas, production migrations.
+- **[utils.md](utils.md)** — before reaching for lodash or hand-rolling a helper. Owns the `@rvoh/dream/utils` inventory: case conversion, array and object helpers, `range`, `isEmpty`, `cloneDeepSafe`, `sanitizeString`, `Encrypt`.
+
+## Project Structure and Commands
+
+`api/src/app/` holds `models/`, `controllers/` (with `Admin/`, `Internal/`, `helpers/`), `serializers/`, `services/`; `api/src/conf/` holds `app.ts`, `dream.ts`, `AppEnv.ts`, `routes.ts`, `locales/`, `initializers/`; migrations, generated types and specs are under `api/src/db/migrations/`, `api/src/types/`, `api/spec/`.
+
+**Every `pnpm psy` command defaults to `NODE_ENV=test`** — prefix `NODE_ENV=development` to reach the development database; type generation only runs against test ([console.md](console.md)). **NEVER use `npx tsc --noEmit`**: it fails with spurious errors on spec types a bare `tsc` cannot resolve — use `pnpm build:spec` or `pnpm build`. Scaffold a new app with `npx @rvoh/create-psychic new <app-name>`; every option left off becomes a prompt, and **the GitHub Actions question has no flag**, so `new` can never run unattended.
 
 ## Naming Conventions
 
-| Context | Convention | Example |
-|---------|-----------|---------|
-| Database columns | snake_case | `created_at`, `user_id` |
-| Model properties | camelCase | `createdAt`, `userId` |
-| Model classes | PascalCase | `HostPlace`, `LocalizedText` |
-| Controller files | PascalCase | `PlacesController.ts` |
-| Serializer files | PascalCase | `PlaceSerializer.ts` |
-| Migration files | timestamp-kebab | `1773151915966-create-place.ts` |
-| Route paths | kebab-case | `localized-texts`, `admin-users` |
-| Generator columns | snake_case | `name:string`, `User:belongs_to` |
-| Enum types (DB) | snake_case + `_enum` | `place_styles_enum` |
-| Enum values | snake_case | `lean_to`, `bath_and_shower` |
-| STI type values | PascalCase (MUST match STI child class names) | `Bedroom`, `LivingRoom` |
-| `date` columns | suffix `On` | `occurred_on`, `started_on`, `born_on` |
-| `datetime` columns | suffix `At` | `occurred_at`, `started_at`, `deleted_at` |
-
-## OpenAPI Integration
-
-Psychic derives the OpenAPI spec from database column types, serializers, and routes; you declare only the remainder. Reach here whenever you document an endpoint or customize the spec.
-
-- **Never hand-write a schema Psychic can derive** (Critical Rule 21).
-- **Automatic error handling** maps `castParam` / validation failures → 400 and `findOrFail` misses → 404; don't document or throw these by hand.
-
-**Start with [openapi.md](openapi.md)** for the derivation model ([How Psychic builds the spec](openapi.md#how-psychic-builds-the-spec)) and the spec-wide `psy.set('openapi', ...)` configuration in `conf/app.ts` ([Conf-level configuration](openapi.md#conf-level-configuration) — namespaces, default headers/responses, security schemes, validation, type sync). The per-action `@OpenAPI` decorator and `requestBody` shorthand live in [controllers.md](controllers.md); response schema comes from serializers, see [serializers.md](serializers.md). Run `pnpm psy sync` after any change so the specs and generated clients update.
-
-## Deploying
-
-For deployment guidance (runtime model, build output, health checks, required environment variables, TLS, and debugging), see [deploying.md](deploying.md).
+Database columns, enum types (suffixed `_enum`), enum values and generator column arguments (`name:string`, `User:belongs_to`) are snake_case; model properties camelCase; model, controller and serializer classes and files PascalCase; route paths kebab-case. STI `type` values are PascalCase and **MUST match the STI child class names** (`Bedroom`). `date` columns end in `On` and `datetime` columns in `At`.
 
 ## Troubleshooting Migrations
 
-**"Corrupted migrations" error**: When switching between branches with different migrations, `pnpm psy db:migrate` fails with "corrupted migrations" errors. The fix is `pnpm psy db:reset`.
+**"Corrupted migrations"**: switching branches between different migration sets makes `pnpm psy db:migrate` fail this way; the fix is `pnpm psy db:reset`. Everything else migration-related is in [migrations.md](migrations.md).
