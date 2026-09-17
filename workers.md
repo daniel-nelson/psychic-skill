@@ -2,7 +2,7 @@
 
 ## Overview
 
-Psychic Workers is built on **BullMQ** (Redis-based job queue). It provides type-safe backgrounding of service and model methods, with automatic retry, priority levels, scheduled/cron jobs, multiple named queues, and (with BullMQ pro) queue based rate limiting.
+Psychic Workers is built on **BullMQ** (Redis-based job queue). It provides type-safe backgrounding of service and model methods, with automatic retry, priority levels, scheduled/cron jobs, multiple named queues, and queue-based rate limiting.
 
 Background work should be used to offload costly, process-intensive, or failure-prone operations from the web server, keeping API responses fast and resilient (e.g. an external service may be temporarily down, which would result in an API error, but a background job will simply retry).
 
@@ -47,7 +47,7 @@ export default class IntercomSyncService extends ApplicationBackgroundedService 
 await IntercomSyncService.syncUser(user)
 ```
 
-**`backgroundJobConfig` sets the class's defaults; only `priority` can be overridden per call.** `backgroundWith(opts, method, ...args)` takes `{ delay, priority }`, and `opts.priority` replaces the getter's priority for that one job — but that override is subject to the either/or in [Priority Levels](#priority-levels): once a service carries a `workstream` (or `groupId`), the priority — per-call or class-level — is written to `group.priority`, which open-source BullMQ ignores.
+**`backgroundJobConfig` sets the class's defaults; only `priority` can be overridden per call.** `backgroundWith(opts, method, ...args)` takes `{ delay, priority }`, and `opts.priority` replaces the getter's priority for that one job, whether or not the service carries a `workstream` (see [Priority Levels](#priority-levels)).
 
 `opts` carries no routing. To isolate a subset of a service's jobs onto their own workstream, **extract those methods into a separate backgrounded service** with its own `backgroundJobConfig`; splitting the class is the only mechanism.
 
@@ -115,7 +115,11 @@ Use a `delay` when:
 
 `delay` carries an optional `jobId`, which gives debounce behavior. If a job with the same `jobId` is already queued with a delay, re-backgrounding with that `jobId` overwrites the previous job but resets the delay timer from the current time. This reduces duplicate work when events fire in quick succession.
 
-The dedup key's TTL equals the delay, so it has expired by the time the delayed job fires — re-arming the same `jobId` from inside the job's own running handler is safe. A delay of `0` seconds attaches no dedup key at all, so if debouncing matters, floor the delay at 1 second or higher.
+Debounce guarantees the job runs at least once, at or after the moment it was last scheduled. It is for collapsing repeated expensive work when events fire in quick succession, not for guaranteeing the work happens only once. Re-arming the same `jobId` from inside the job's own running handler is safe.
+
+The debounce delay must be at least three seconds; a shorter one throws.
+
+When the work must happen only once, record that it happened — a boolean or a `DateTime` column on the model — and return early when a later run finds it set. A job that fires while a new event re-arms the timer is not a problem under that pattern: the second run reads the flag and does nothing. If the timing itself is what matters rather than the collapsing, reach for a scheduled job with a datetime check on the model instead.
 
 ```typescript
 export default class IntercomSyncService extends ApplicationBackgroundedService {
@@ -256,11 +260,7 @@ The one catch that carries a named, justified reason is a narrow one matching a 
 
 ## Fanning Out Background Jobs for Very Large Record Sets
 
-When you need to background work across a very large number of records (hundreds of thousands to millions), don't enqueue all individual jobs up front. Creating a million jobs at once has several problems:
-
-- **Redis memory pressure** from holding a million job payloads at once
-- **Interruption risk** — the enqueuing loop itself can be killed by a deployment, `SIGTERM`, or a Node process crash, and if it restarts from the beginning it will create duplicate jobs
-- **Queue observability collapses** — dashboards become unusable
+When you need to background work across a very large number of records (hundreds of thousands to millions), don't enqueue all individual jobs up front.
 
 The idiomatic pattern is a **two-level fan-out** using `pluckEach` and priority levels:
 
@@ -331,11 +331,9 @@ export default class PhotoProcessingService extends ApplicationBackgroundedServi
 Key points:
 
 - **`pluckEach` selects only the `id` column** — no hydration, minimal memory.
-- **Priorities create natural backpressure.** Expanders (`last`) yield to individual jobs (`not_urgent`), so the in-flight count of individual jobs never exceeds roughly `worker_count * concurrency * batch_size`.
+- **Priorities create natural backpressure.** Expanders (`last`) yield to individual jobs (`not_urgent`), so the in-flight count of individual jobs never exceeds roughly `worker_count * concurrency * batch_size`. Priority orders worker slots; it does not throttle a running job's request rate. To bound pressure on an external service, put those jobs on a named workstream with a [`rateLimit`](#rate-limiting).
 - **The expander and individual-worker services must route to the same queue.** Priority is only meaningful within a single BullMQ queue: jobs in different queues have separate worker pools and never compete for the same slots, so putting expanders and individual jobs on different queues silently defeats the backpressure — each queue just drains independently, and you're back to unbounded fan-out.
-- **To isolate this fan-out to its own queue** (keeping it off the default queue entirely, e.g. so it can't crowd out unrelated default-queue work even at `not_urgent`/`last`):
-  - **Open-source BullMQ** — route both services to the same **native-mode** `queue`, not a named **`workstream`**. A `workstream` sets that job's BullMQ `group.id` to the workstream name, which moves `priority` into `group.priority` instead of the top-level field — and open-source BullMQ silently ignores `group.priority` (it's a BullMQ Pro-only feature), so the expander/individual backpressure stops working with no error or warning. A native-mode `queue` (with no `groupId` set) keeps `priority` top-level and the backpressure intact.
-  - **BullMQ Pro** — a named `workstream` works fine instead, *because* Pro honors `group.priority`, so isolation and backpressure both hold. Pro is also the only way to rate-limit the individual jobs against an external dependency (see [Rate Limiting (BullMQ Pro)](#rate-limiting-bullmq-pro)) — worth adopting for a bulk job that calls a rate-limited API or otherwise needs to throttle pressure on a shared resource (the database included), since `not_urgent`/`last` priority only affects worker-slot ordering, not the rate of requests once a job is running.
+- **To isolate this fan-out to its own queue** (keeping it off the default queue entirely, e.g. so it can't crowd out unrelated default-queue work even at `not_urgent`/`last`), route both the expander and the individual-worker service to the same named `workstream`. The mapped priority is written to BullMQ's top-level `priority` on every job, grouped or not, so the expander/individual backpressure survives the isolation on open-source BullMQ and on Pro alike.
 - **If the kickoff is interrupted,** only the expanders already enqueued will run, and if the kickoff job itself is retried it will re-pluck from the beginning — but because each individual job is independent and idempotent (via the `find`/early-return pattern), re-runs are safe.
 - **Individual jobs still follow the standard rule of passing IDs, not model instances.** Hydrate inside `_processOne`.
 
@@ -348,7 +346,7 @@ type BackgroundQueuePriority = 'urgent' | 'default' | 'not_urgent' | 'last'
 // Maps to BullMQ numeric priority: 1 (urgent), 2 (default), 3 (not_urgent), 4 (last)
 ```
 
-**Priority ordering and workstreams are an either/or without a BullMQ Pro license.** When a `backgroundJobConfig` sets a `workstream` (or a `groupId`), the priority number is written to the job's `group.priority` instead of the top-level `priority`, and open-source BullMQ ignores `group.priority` — group priority is a BullMQ Pro surface. So a service gets workstream isolation or priority ordering, not both, unless the app runs the `QueuePro`/`WorkerPro` providers.
+**Priority ordering and workstreams compose.** When a `backgroundJobConfig` sets a `workstream` (or a `groupId`), the priority number is still written to BullMQ's top-level `priority` — the only priority open-source BullMQ reads — so a service gets workstream isolation and priority ordering together.
 
 ```typescript
 export default class FileImportService extends ApplicationBackgroundedService {
@@ -357,6 +355,8 @@ export default class FileImportService extends ApplicationBackgroundedService {
   }
 }
 ```
+
+BullMQ Pro adds a `group.priority` alongside that top-level priority, which orders a job's group against the queue's other groups — a different question from which job within a group runs next. Running Pro means passing `QueuePro` and `WorkerPro` as the `Queue` and `Worker` providers in the workers initializer (see [Worker Configuration](#worker-configuration)).
 
 Use `last` for check-in/heartbeat jobs (e.g., Dead Man's Snitch) so they only run after all other work is processed, giving confidence that the queue is healthy. Keep bulk work — like the [fan-out pattern](#fanning-out-background-jobs-for-very-large-record-sets) — off `default`, so a large bulk run doesn't hold up genuinely important application jobs at that tier.
 
@@ -518,15 +518,15 @@ In `NODE_ENV=test` with the default `testInvocation: 'automatic'`, `background(.
 
 A workstream is a BullMQ queue with its own set of workers. Most apps only need the default workstream, but named workstreams are useful for isolating specific work (e.g., external API calls that need rate limiting).
 
-The workstream's `name` also becomes the `group.id` of that workstream's workers, which is why assigning a service to a workstream moves its priority onto `group.priority` (see [Priority Levels](#priority-levels)).
+The workstream's `name` also becomes the `group.id` of that workstream's jobs and workers — a BullMQ Pro surface that open-source BullMQ stores and ignores. The job's priority is unaffected (see [Priority Levels](#priority-levels)).
 
 Configure in `conf/initializers/workers.ts`:
 
 ```typescript
 workersApp.set('background', {
   defaultWorkstream: {
-    workerCount: os.cpus().length,
-    concurrency: 100,
+    workerCount: 1,
+    concurrency: 10,
   },
 
   namedWorkstreams: [
@@ -551,29 +551,36 @@ export default class IntercomSyncService extends ApplicationBackgroundedService 
 }
 ```
 
-### Rate Limiting (BullMQ Pro)
+### Rate Limiting
 
-Named workstreams can be rate limited when using a BullMQ Pro license. Requires `QueuePro` and `WorkerPro` providers:
+A named workstream's `rateLimit` bounds how many of its jobs start per time window:
 
 ```typescript
-import { QueuePro, WorkerPro } from '@taskforcesh/bullmq-pro'
-
 workersApp.set('background', {
-  providers: {
-    Queue: QueuePro,
-    Worker: WorkerPro,
-  },
-
   namedWorkstreams: [
     {
       name: 'Twilio',
       workerCount: 1,
       concurrency: 10,
-      rateLimit: { max: 20, duration: 1000 },  // 20 requests/sec
+      rateLimit: { max: 20, duration: 1000 },  // 20 jobs/sec
     },
   ],
 })
 ```
+
+A job the external service tells to slow down — an HTTP 429 carrying a retry-after — throws `RateLimitedPsychicJob` to pause the whole workstream for that duration without burning a retry attempt:
+
+```typescript
+import { RateLimitedPsychicJob } from '@rvoh/psychic-workers/errors'
+
+if (response.status === 429) {
+  throw new RateLimitedPsychicJob({
+    pauseQueueForSeconds: Number(response.headers.get('retry-after') ?? 1),
+  })
+}
+```
+
+`maxStartedAttempts` bounds how many times one job may cycle through that pause. Set it on the global `defaultBullMQWorkerOptions`; any workstream whose jobs throw the signal wants it.
 
 ### Transitional Workstreams
 
@@ -618,8 +625,8 @@ workersApp.set('background', {
     defaultQueueOptions: {
       defaultJobOptions: { attempts: 20, backoff: { type: 'exponential', delay: 1000 } },
     },
-    defaultWorkerCount: os.cpus().length,
-    defaultWorkerOptions: { concurrency: 100 },
+    defaultWorkerCount: 1,
+    defaultWorkerOptions: { concurrency: 10 },
 
     namedQueueOptions: {
       BookingNotifications: {
@@ -744,7 +751,6 @@ Job logs are accessible through BullMQ dashboards and can be retrieved programma
 Worker configuration lives in `conf/initializers/workers.ts`. This is the simple-mode shape a typical app runs:
 
 ```typescript
-import os from 'os'
 import { PsychicApp } from '@rvoh/psychic'
 import { PsychicAppWorkers } from '@rvoh/psychic-workers'
 import { Queue, Worker } from 'bullmq'
@@ -771,8 +777,8 @@ function initializeWorkers(workersApp: PsychicAppWorkers) {
     },
 
     defaultWorkstream: {
-      workerCount: os.cpus().length,
-      concurrency: 100,
+      workerCount: 1,
+      concurrency: 10,
     },
 
     namedWorkstreams: [
@@ -803,6 +809,13 @@ function initializeWorkers(workersApp: PsychicAppWorkers) {
 
 `defaultBullMQWorkerOptions` — the worker-side counterpart to `defaultBullMQQueueOptions` — also belongs in this block, but in simple mode a `concurrency` or `connection` placed inside it is always overwritten by the workstream's own value.
 
+The two worker options:
+
+- **`workerCount`** is how many BullMQ `Worker` objects this process builds. Each one opens its own blocking Redis connection, and all of them share the process's event loop.
+- **`concurrency`** is how many fetched jobs a single `Worker` runs at once.
+
+Their product bounds how many jobs are in flight in the process, so size it against the database pool. CPU parallelism comes from running more worker processes.
+
 ### Redis TLS
 
 Pass `tls: {}` (or a full `tls.ConnectionOptions` object) to the `ioredis` constructor in both `defaultQueueConnection` and `defaultWorkerConnection` to opt into TLS:
@@ -830,6 +843,26 @@ The boilerplate `defaultJobOptions` ships `attempts: 20` with exponential `backo
 - **A job whose class no longer resolves by global name fails loud** with a typed `NoClassForSpecifiedGlobalName` (exported from the package's errors module), landing in BullMQ's `failed` set — the designed signal to clean up a stale repeating scheduler after renaming or removing a backgroundable class. (A model-instance job whose record was legitimately deleted still completes quietly.)
 
 **Redis is a trust boundary equal to the app process.** Dispatch reads `{ globalName, method, args }` off the job payload and invokes the resolved class method with no allow-list — anyone who can write to the jobs Redis can run any registered method with full app privileges. Never route request input into a `globalName`/`method` position, and lock down Redis access accordingly.
+
+## Inspecting Queues Outside a Booted Server
+
+`background.connect()` is wired to the `server:init:after-routes` hook. In a `pnpm console` session, a one-off script, or any other process that initializes the Psychic app without starting the server, nothing has connected, so `background.queues` is an empty array — no error, no warning, and an inspection or maintenance script reports success having done nothing.
+
+Connect explicitly first. `connect()` defaults to `activateWorkers: false`, so it opens the producer connections and builds the `Queue` objects without making the process a worker:
+
+```typescript
+import { background } from '@rvoh/psychic-workers'
+
+background.connect()
+
+for (const queue of background.queues) {
+  console.log(queue.name, await queue.getJobCounts())
+}
+```
+
+This is about reading `background.queues`; enqueueing and scheduling connect on their own.
+
+Read the queue name off the `Queue` object, as above, rather than hardcoding it or deriving it from `Background.defaultQueueName`.
 
 ## Testing Workers
 

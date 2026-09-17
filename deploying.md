@@ -13,14 +13,6 @@ A Psychic application runs multiple process roles from a single built image. Eac
 
 **Do not rely on `pnpm` (or any package manager runner) in production containers.** Use direct `node ./dist/...` commands in your deployment configuration (task definitions, Procfiles, Docker CMD, etc.).
 
-## Build Output
-
-- If the project uses TypeScript path aliases (e.g., `@app/*`), the production build **must** run `tsc-alias` after `tsc`. Without this step, compiled JS will contain unresolved path alias imports and fail at runtime.
-- When building in Docker, explicitly creating the `node_modules` directory before `pnpm install` (or equivalent) can avoid intermittent install failures:
-  ```dockerfile
-  RUN mkdir -p /app/node_modules && pnpm install --frozen-lockfile
-  ```
-
 ## Health Checks
 
 The API server needs an explicit health check route registered in `api/src/conf/routes.ts`:
@@ -149,14 +141,3 @@ If migrate fails, seed never runs and the task exits non-zero. If migrate succee
 ### Dropping a column takes two deploys
 
 A rolling deploy runs the migration while containers built from the previous image are still serving. Dropping a column is therefore a two-deploy process gated on the model's `ignoredColumns` getter — see [migrations.md — Dropping a column](migrations.md#dropping-a-column-declare-it-ignored-one-deploy-ahead).
-
-## Debugging a Deployed Psychic Service
-
-When a deployed Psychic service is not responding correctly:
-
-1. **Check the public endpoint** — is it returning the expected status code?
-2. **Check health check status** — is the target healthy from the load balancer/ingress perspective?
-3. **Check orchestrator events** — container restarts, OOM kills, failed deployments
-4. **Check the running configuration** — correct image, correct command, correct environment variables, correct log destination
-5. **Check application logs** — look for startup errors, missing env vars, failed migrations
-6. **Verify HTTP method** — if health checks pass but manual verification fails, confirm you're using `GET` (not `HEAD`) for websocket endpoints

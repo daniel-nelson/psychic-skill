@@ -100,7 +100,7 @@ Everything lives inside your assistant's skills directory. Nothing touches your 
 
 The `psychic-skill` skill has `user-invocable: false` and auto-load triggers. Claude Code and Codex should automatically load it when they detect Dream/Psychic work (imports from `@rvoh/dream`, `@rvoh/psychic`, `pnpm psy` commands, etc.). You don't need to invoke it manually.
 
-Skill metadata note: keep `SKILL.md` front matter in the same minimal format used by the working installed skills. Do not add one-off fields such as `argument-hint`, and do not switch `allowed-tools` to a multiline YAML list unless the loader is known to accept it. The safer pattern here is simple scalar fields only.
+Skill metadata note: `user-invocable: false` is accepted by Claude Code but rejected by claude.ai skill uploads and the Skills API, which take only the six fields in the open spec. This skill ships by git clone into a skills directory, which is the path that accepts it. Read [MAINTAINING.md](MAINTAINING.md) before changing any front-matter field.
 
 The skill enforces critical conventions:
 - Always run `pnpm psy <command> --help` before using generators
@@ -160,7 +160,7 @@ rm -rf .agents/skills/psychic-skill
 | `SKILL.md` | Main skill — always-on critical rules, project structure, key commands, and a decision map pointing to the topic files below for each task |
 | `models.md` | Dream models, organization/namespacing, associations, hooks, validations, scopes, operators, decorators |
 | `generators.md` | Scaffolding generators (`g:resource`/`g:model`/`g:sti-child`/`g:migration`) — decision tree, arguments, post-gen workflow, adding properties |
-| `controllers.md` | Psychic controllers, auth, CRUD, OpenAPI, parameters |
+| `controllers.md` | Psychic controllers, auth, CRUD, routing (`conf/routes.ts`), OpenAPI, parameters |
 | `querying.md` | Dream query patterns, `toKysely(...)`, and typed project `db()` usage |
 | `serializers.md` | DreamSerializer / ObjectSerializer, composition, STI serializers, passthrough |
 | `openapi.md` | OpenAPI derivation model and spec-wide `psy.set('openapi', ...)` config in `conf/app.ts` — namespaces, defaults, security schemes, validation, type sync |
@@ -173,8 +173,10 @@ rm -rf .agents/skills/psychic-skill
 | `locking.md` | Guarded (compare-and-set) writes — `update` / `destroy` with `{ lock: true }`, the attributes vs callback forms, and the costs |
 | `i18n.md` | Code-driven translations (`I18nProvider`, locale files) and data-driven `LocalizedText` with passthrough |
 | `console.md` | `pnpm console` / REPL usage and the `NODE_ENV` rules for `pnpm psy` commands |
-| `deploying.md` | Runtime model, build output, health checks, environment variables via `AppEnv`, TLS |
+| `deploying.md` | Runtime model, health checks, environment variables via `AppEnv`, TLS |
 | `utils.md` | Dream's built-in utilities (`@rvoh/dream/utils`) |
+
+`MAINTAINING.md` sits beside them but is **not** a skill file — it is for people changing this repo, it is never linked from `SKILL.md`, and agents reading the skill never load it. It carries the skill-authoring standard this repo is written to, the size budget `SKILL.md` has to stay inside, and the verification commands.
 
 ## License
 

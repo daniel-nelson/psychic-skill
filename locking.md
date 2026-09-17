@@ -5,6 +5,11 @@ other write. That on its own is not a reason to lock.
 
 ## Most writes need no lock
 
+Before reaching for a lock, name the concrete scenario that breaks the simple shape: a specific
+concurrent writer, a measured row count, an invariant the database cannot express. "A race is
+conceivable" is not that scenario, and a lock is not free — see
+[What a lock costs](#what-a-lock-costs).
+
 Two requests updating different attributes of the same record both land. Two requests racing to set
 the *same* attribute resolve to a single winner — and they resolve to a single winner whether or not
 you lock. A plain update is the right tool for both:
@@ -164,3 +169,16 @@ select-then-destroy window to close, so there is no instance-level equivalent an
 
 **If you are writing a large set and do not need compare-and-set, do not pass `lock`.** It is slower
 than the plain form by construction.
+
+## A table lock is not the next step up
+
+`lock` on a query is Dream's whole locking surface, and it locks rows. A `LOCK TABLE` statement
+issued through raw `sql` reaches past it to a lock over the entire table, blocking writers to every
+row — including every row the work never touches — for as long as the transaction runs. Application
+code rarely has a reason to go there: a guard on specific records is `{ lock: true }`, an invariant
+the application cannot enforce alone is a database constraint, and a one-shot correction over a known
+set of rows is a `findEach` (see [models.md — Batch Processing](models.md#batch-processing)).
+
+A table lock also brings a problem of its own — the wait to acquire it is unbounded — whose fix is a
+second mechanism (`lock_timeout`) layered on top. Being two mechanisms deep for a guarantee the
+row-level form already gives is the signal to go back to the simple shape, not to keep hardening.

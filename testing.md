@@ -2,11 +2,11 @@
 
 ## Overview
 
-Tests use **Vitest** with real database records (not mocks). We practice **BDD, not TDD** - focus expectations on outcomes, not implementation. For code added independently of a generator, always write a failing spec first, then implement. Generated code is the only exception (generators create scaffolding for specs and implementation simultaneously).
+Specs use **Vitest** with real database records (not mocks). We practice **BDD, not TDD** - focus expectations on outcomes, not implementation. For code added independently of a generator, always write a failing spec first, then implement. Generated code is the only exception (generators create scaffolding for specs and implementation simultaneously).
 
 ### Every bug is a missing spec
 
-This is the operational corollary to [SKILL.md Rule #9](SKILL.md) (BDD approach) for bugs discovered after the fact. When you discover a bug — in QA, in production logs, during an audit, by hand-testing a flow — the bug itself is evidence that an automated test was missing. **Write the regression spec before committing the fix.**
+The prevalent practice is to ship the fix and add a test afterwards, if at all. Psychic rejects it: the bug is itself evidence that an automated spec was missing, and the harness — a `cleanTestDb` `beforeEach`, per-worker test databases, a generated factory for every model — exists precisely so that writing the missing spec first costs almost nothing. This is the operational corollary to [SKILL.md Rule #9](SKILL.md) (BDD approach) for bugs discovered after the fact. When you discover a bug — in QA, in production logs, during an audit, by hand-testing a flow — **write the regression spec before committing the fix.**
 
 This applies even when:
 
@@ -27,7 +27,7 @@ The discipline is: spec **before** committing the fix, not "later." Once the fix
 ## Test Types
 
 - **Unit specs**: Model logic, controller responses (`spec/unit/`)
-- **Feature specs**: End-to-end browser tests (`spec/features/`)
+- **Feature specs**: End-to-end browser specs (`spec/features/`)
 - **Factories**: Test data creation (`spec/factories/`)
 
 ## Running Tests
@@ -161,7 +161,7 @@ When a model's AfterCreate hook creates side-effect records that aren't a single
 
 ```typescript
 // PlaceFactory — bypasses the AfterCreate hook that auto-seeds rooms.
-// Tests that want to verify the auto-seed flow should call Place.create() directly.
+// Specs that want to verify the auto-seed flow should call Place.create() directly.
 export default async function createPlace(attrs: UpdateableProperties<Place> = {}) {
   return await Place.create(
     {
@@ -174,9 +174,9 @@ export default async function createPlace(attrs: UpdateableProperties<Place> = {
 }
 ```
 
-**Why:** if the factory fires the hook, every spec that creates a Place gets the auto-seeded rooms. Index queries, count assertions, and isolation tests break in confusing ways. The factory's job is to provide a minimal valid record; tests that need the full hook flow can call `Model.create()` directly without `skipHooks`.
+**Why:** if the factory fires the hook, every spec that creates a Place gets the auto-seeded rooms. Index queries, count assertions, and isolation specs break in confusing ways. The factory's job is to provide a minimal valid record; specs that need the full hook flow can call `Model.create()` directly without `skipHooks`.
 
-**Test the hook itself in the model spec.** Have explicit tests for both paths:
+**Test the hook itself in the model spec.** Have explicit specs for both paths:
 
 ```typescript
 it('auto-seeds default rooms', async () => {
@@ -515,7 +515,7 @@ Feature specs use assertion-style matchers from `@rvoh/psychic-spec-helpers` on 
 
 ### Action Matchers
 
-These attempt an action and fail the test if the target element isn't found:
+These attempt an action and fail the spec if the target element isn't found:
 
 ```typescript
 await expect(page).toClick('Submit')              // Click element with text
@@ -609,6 +609,8 @@ describe('Cities create', () => {
 
 ## Spec Organization
 
+`context` is **not** a Vitest global — Vitest ships `describe` and `it` only. Dream's spec helpers manufacture it (`global.context = describe`) so that Psychic specs read RSpec-style, and the `.staticMethod` / `#instanceMethod` describe names below come from the same lineage. Use `context` freely; nothing needs importing.
+
 ### When spec'ing a function
 Use `describe` for the outermost block and `context` blocks for different state:
 ```typescript
@@ -658,14 +660,10 @@ OpenAPI request validation may reject invalid model params before model validati
 ## Testing Principles
 
 1. **Use real models** - Create records via factories, not mocks
-2. **Don't stub Dream internals** - Never mock `.find()`, `.create()`, `.loaded()`, etc.
-3. **Test behavior, not implementation** - Assert on outcomes, not internal calls
-4. **Don't spec behavior of another class that is already spec'd** - Use vitest spies to return different values instead
-5. **In controller specs, use factories to create real models** - Let controllers leverage real Dream queries (never mocked). If a spec'd service/view-model fetches or transforms the data, you may mock it, but ensure its own spec covers the full variety of cases
-6. **Test authorization** - Verify users can only access their own resources
-7. **Test soft deletes by testing behavior** - Verify record is hidden (normal query) AND still present when scopes are removed
-8. **Use Polly** (`setupPolly`) for recording and replaying external API calls rather than stubbing
-9. **Stub the environment through `AppEnv`, not `vi.stubEnv`** - app config is read through `AppEnv` ([Critical Rule 13](SKILL.md#critical-rules)), whose setters are name-typed to the app's union and restored explicitly, where `vi.stubEnv` is untyped and, in the generated app's default configuration, never restored — see [Stubbing environment values in specs](#stubbing-environment-values-in-specs)
+2. **Don't stub Dream internals** - Never mock `.find()`, `.create()`, `.loaded()`, etc. ([Critical Rule 5](SKILL.md#critical-rules) carries why)
+3. **In controller specs, use factories to create real models** - Let controllers leverage real Dream queries (never mocked). If a spec'd service/view-model fetches or transforms the data, you may mock it, but ensure its own spec covers the full variety of cases
+4. **Test soft deletes by testing behavior** - Verify record is hidden (normal query) AND still present when scopes are removed
+5. **Stub the environment through `AppEnv`, not `vi.stubEnv`** - app config is read through `AppEnv` ([Critical Rule 13](SKILL.md#critical-rules)), whose setters are name-typed to the app's union and restored explicitly, where `vi.stubEnv` is untyped and, in the generated app's default configuration, never restored — see [Stubbing environment values in specs](#stubbing-environment-values-in-specs)
 
 ### Stubbing environment values in specs
 
@@ -691,7 +689,7 @@ The derived getters (`AppEnv.isTest`, `.nodeEnv`, `.serviceRole`) have no setter
 ## Background Worker Testing
 
 ```typescript
-// Default: Jobs execute immediately in tests (testInvocation = 'automatic')
+// Default: Jobs execute immediately in specs (testInvocation = 'automatic')
 await EmailService.background('sendWelcome', user.id)
 // Method runs synchronously
 
@@ -703,14 +701,14 @@ workersApp.set('testInvocation', 'manual')
 
 await EmailService.background('sendWelcome', user.id)  // Queued
 await WorkerTestUtils.work()                            // Process queue
-WorkerTestUtils.clean()                                 // Clear queues
+await WorkerTestUtils.clean()                           // Clear queues
 ```
 
-### A job that throws fails the enqueuing request in tests, but not in prod
+### A job that throws fails the enqueuing request in specs, but not in prod
 
-Under the default `automatic` invocation, a backgrounded method runs inline and **awaited** inside the call that enqueued it — the framework short-circuits the queue and calls the method directly, with no surrounding try/catch. So if the job throws, the error propagates back through `.background(...)` to the caller. A controller action that backgrounds a job and awaits it therefore returns **500 in tests** when the job throws.
+Under the default `automatic` invocation, a backgrounded method runs inline and **awaited** inside the call that enqueued it — the framework short-circuits the queue and calls the method directly, with no surrounding try/catch. So if the job throws, the error propagates back through `.background(...)` to the caller. A controller action that backgrounds a job and awaits it therefore returns **500 in specs** when the job throws.
 
-In production the same job runs on a separate BullMQ worker. A throw there is retried per the queue's `defaultJobOptions` (set in `conf/initializers/workers.ts`) and lands in `failed` only once attempts are exhausted — none of it touching the HTTP response that was already returned. The "fire-and-forget" mental model — `await this.background(...)` returns once queued, the job's success or failure is independent of the request — holds in prod but **not** in tests.
+In production the same job runs on a separate BullMQ worker. A throw there is retried per the queue's `defaultJobOptions` (set in `conf/initializers/workers.ts`) and lands in `failed` only once attempts are exhausted — none of it touching the HTTP response that was already returned. The "fire-and-forget" mental model — `await this.background(...)` returns once queued, the job's success or failure is independent of the request — holds in prod but **not** in specs.
 
 Two practical consequences:
 
@@ -748,7 +746,7 @@ describe('Host creates a Place', () => {
 
 ### The API server runs in-process — stub the backend boundary directly
 
-Feature specs start the `PsychicServer` inside the same Vitest worker as the test (the generated `spec/features/setup/hooks.ts` calls `server.start(...)` in `beforeAll`, then launches the browser). The browser talks to that server over `localhost:<port>`, but the server runs the *same module instances* the spec can see. So `vi.spyOn(SomeService, 'method')` on backend modules intercepts server-side code that runs while the browser drives the front end — exactly as in a unit or controller spec. There's no separate process and no IPC barrier. `vi.mock` is the exception: the setup file's static import of the app config pulls in `conf/routes.ts` and every controller a route file names as an argument (`r.get('/places', PlacesController, 'show')`), loading them before a spec's mock registry exists — so the mock is silently ignored and you spy on the runtime object instead. A controller only the boot-time loader reaches loads later and does get mocked, which is why the same `vi.mock` can be live on one route namespace and inert on another.
+Feature specs start the `PsychicServer` inside the same Vitest worker as the spec (the generated `spec/features/setup/hooks.ts` calls `server.start(...)` in `beforeAll`, then launches the browser). The browser talks to that server over `localhost:<port>`, but the server runs the *same module instances* the spec can see. So `vi.spyOn(SomeService, 'method')` on backend modules intercepts server-side code that runs while the browser drives the front end — exactly as in a unit or controller spec. There's no separate process and no IPC barrier. `vi.mock` is the exception: the setup file's static import of the app config pulls in `conf/routes.ts` and every controller a route file names as an argument (`r.get('/places', PlacesController, 'show')`), loading them before a spec's mock registry exists — so the mock is silently ignored and you spy on the runtime object instead. A controller only the boot-time loader reaches loads later and does get mocked, which is why the same `vi.mock` can be live on one route namespace and inert on another.
 
 This matters because a common (wrong) assumption is "a feature spec runs a real server I can't reach into, so I must use a live API key or record HTTP." Not so. To make a feature spec deterministic and offline, stub the backend boundary — an external API gateway, the clock, a third-party client — with `vi.spyOn` in the feature spec, the same way you would anywhere else. Reserve HTTP recording (Polly) for cases where you genuinely want to exercise the real client code path.
 
@@ -805,42 +803,9 @@ spec/features/
 Avoid flat naming like `guest-browses-places.spec.ts` — the directory structure carries the actor context. Avoid bare CRUD names like `create.spec.ts` or `index.spec.ts` — those are resource-oriented, not behavior-oriented.
 
 
-### Debugging Feature Specs Visually
-
-When a feature spec fails, see what the browser is actually rendering — it's much faster than guessing from assertion failure messages.
-
-1. **Human:** Run `pnpm fspec:visible` and watch the browser.
-2. **AI agent:** Add `await page.screenshot({ path: '/tmp/debug.png' })` before the failing assertion, run the spec, then read the screenshot file. The agent can see validation errors, missing elements, or unexpected page state.
-
-### Native Date Inputs
-
-Native `<input type="date">` inputs don't accept programmatic value setting via `toFill`, `$eval` setter tricks, or React state manipulation. The browser renders separate mm/dd/yyyy segments that must be typed through individually.
-
-Use `page.keyboard.type('MMDDYYYY')` after clicking the input:
-
-```typescript
-const dateInput = await page.$('input[name="arriveOn"]')
-await dateInput!.click()
-await page.keyboard.type('06012026')  // types 06/01/2026 through segments
-```
-
 ### Waiting for the Browser
 
-The test process and the browser run concurrently. Before asserting on the database or interacting with the page, you must wait for the browser to be ready. Use `page.waitForNetworkIdle({ idleTime: 500 })` as the general-purpose wait — it covers hydration, API calls, and navigation:
-
-```typescript
-// After sign-in or navigation — wait for React hydration before interacting
-await hostSignIn(page, user)
-await page.waitForNetworkIdle({ idleTime: 500 })
-
-// After a browser action that triggers an API call — wait before asserting on the database
-await clickButton(page, 'Add Comment')
-await page.waitForNetworkIdle({ idleTime: 500 })
-const comment = await post.associationQuery('comments').firstOrFail()
-expect(comment.body).toEqual('Great post!')
-```
-
-When the UI visibly changes after the API call (e.g., navigation to a new path), waiting on that UI change is a cleaner signal:
+The test process and the browser run concurrently, so `page.waitForNetworkIdle({ idleTime: 500 })` is the general-purpose wait before interacting with the page or asserting on the database. When the UI visibly changes after the API call (e.g., navigation to a new path), waiting on that UI change is a cleaner signal:
 
 ```typescript
 await clickButton(page, 'Create Place')

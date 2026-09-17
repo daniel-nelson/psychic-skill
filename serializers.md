@@ -169,8 +169,8 @@ a later directive overwrites an earlier one — unless it's skipped:
 - `preloadFor` resolves both `delegatedAttribute` targets automatically, so no
   controller change is needed to load both associations.
 
-See [i18n.md — Falling Back to a Default Locale](i18n.md#falling-back-to-a-default-locale)
-for a worked example using locale-specific vs. default-locale `LocalizedText` rows.
+See [i18n.md — Using in Serializers](i18n.md#using-in-serializers) for a worked
+example using locale-specific vs. default-locale `LocalizedText` rows.
 
 ### .rendersOne(name, options?)
 
@@ -560,15 +560,12 @@ this.created(place)
 Use `'omit'` when the default preload would issue repeated queries that could be collapsed into one — commonly for polymorphic associations like `currentLocalizedText` where the lookup depends on request-scoped context (e.g., locale):
 
 ```typescript
-import { LoadForModifierFn } from '@rvoh/dream/types'
-
 // 1. preloadFor, but skip currentLocalizedText so we can batch-load it across
 //    multiple polymorphic types (Place + Room) in a single query
-const skipCurrentLocalizedText: LoadForModifierFn = (associationName) =>
-  associationName === 'currentLocalizedText' ? 'omit' : undefined
-
 const places = await Place.query()
-  .preloadFor('forGuests', skipCurrentLocalizedText)
+  .preloadFor('forGuests', associationName =>
+    associationName === 'currentLocalizedText' ? 'omit' : undefined
+  )
   .all()
 
 // 2. Batch-load in ONE query across all places AND their rooms
@@ -605,11 +602,7 @@ The purpose of this pattern is to collapse queries across **multiple polymorphic
 
 Key points:
 - Assign `null` (not `undefined`) for missing associations — `undefined` causes `NonLoadedAssociation` errors.
-- The modifier callback receives `(associationName, dreamClass)`. Use `dreamClass.typeof(Place)` to scope the omit when needed. `typeof` is Dream's class-level equivalent of `instanceof` — use it when comparing a **class** against another class (since `instanceof` only works on instances):
-  ```typescript
-  const skip: LoadForModifierFn = (assoc, dreamClass) =>
-    dreamClass.typeof(Place) && assoc === 'currentLocalizedText' ? 'omit' : undefined
-  ```
+- The modifier callback receives `(associationName, dreamClass)`. Use `dreamClass.typeof(Place)` to scope the omit when needed. `typeof` is Dream's class-level equivalent of `instanceof` — use it when comparing a **class** against another class (since `instanceof` only works on instances).
 - If the omitted association itself has nested associations via `rendersOne`/`rendersMany` in its serializer, those are also pruned — load them in your batch helper too.
 
 ## File Organization

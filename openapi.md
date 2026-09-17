@@ -8,7 +8,7 @@ Psychic derives the OpenAPI spec automatically. Database column types, serialize
 - **Response schema** comes from serializer attributes. A `DreamSerializer` infers types from the model's columns; an `ObjectSerializer` carries explicit `openapi` types. See [serializers.md](serializers.md#overview).
 - **Spec-wide concerns** — output paths, namespaces, default headers and responses, security schemes, validation — go in the `psy.set('openapi', ...)` block in `conf/app.ts`, covered below.
 
-Because the spec is customizable centrally, don't hack around it in client code. If every request needs a bearer header, declare a security scheme once (below) rather than attaching the header by hand in the generated client. If an endpoint's response shape is wrong, fix the serializer rather than hand-writing a `responses` block. Run `pnpm psy sync` after any change so the spec files and generated clients update.
+Because the spec is customizable centrally, don't hack around it in client code. If every request needs a bearer header, declare a security scheme once (below) rather than attaching the header by hand in the generated client. If an endpoint's response shape is wrong, fix the serializer rather than hand-writing a `responses` block: keeping OpenAPI attached to serializers gives TypeScript a single implementation surface for both the returned data and the documented schema, instead of letting a plain object and a duplicated schema drift independently. Run `pnpm psy sync` after any change so the spec files and generated clients update.
 
 ## Conf-level configuration
 
@@ -97,7 +97,7 @@ psy.set('openapi', {
 
 ### validate
 
-`validate` sets the validation rules applied to every action tied to this spec, unless an `@OpenAPI` decorator overrides them. Accepts `requestBody`, `responseBody`, `headers`, and `query` booleans, or the `all: true` shorthand.
+`validate` sets the validation rules applied to every action tied to this spec, unless an `@OpenAPI` decorator overrides them. Accepts `requestBody`, `responseBody`, `headers`, and `query` booleans, plus `all`, which overrides each of them in whichever direction it is set.
 
 ```typescript
 psy.set('openapi', {
