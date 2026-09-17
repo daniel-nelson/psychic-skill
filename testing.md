@@ -658,7 +658,7 @@ OpenAPI request validation may reject invalid model params before model validati
 ## Testing Principles
 
 1. **Use real models** - Create records via factories, not mocks
-2. **Don't stub Dream internals** - Never mock `.find()`, `.create()`, `.loaded()`, etc.
+2. **Don't stub Dream internals** - Never mock `.find()`, `.create()`, `.loaded()`, etc. ([Critical Rule 5](SKILL.md#critical-rules) carries why)
 3. **Test behavior, not implementation** - Assert on outcomes, not internal calls
 4. **Don't spec behavior of another class that is already spec'd** - Use vitest spies to return different values instead
 5. **In controller specs, use factories to create real models** - Let controllers leverage real Dream queries (never mocked). If a spec'd service/view-model fetches or transforms the data, you may mock it, but ensure its own spec covers the full variety of cases

@@ -6,7 +6,7 @@ How to drive Dream/Psychic's code generators (`g:resource`, `g:model`, `g:sti-ch
 
 ## Always run `--help` first
 
-**CRITICAL: Run `pnpm psy <command> --help` and read its output BEFORE running any generator or CLI command.** Do not infer syntax from examples in this skill or from prior experience — argument formats vary between commands and between Dream/Psychic versions. This is a hard prerequisite, not a suggestion.
+**CRITICAL: Run `pnpm psy <command> --help` and read its output BEFORE running any generator or CLI command.** Do not infer syntax from examples in this skill or from prior experience. This is a hard prerequisite, not a suggestion.
 
 ## Generator decision tree
 
