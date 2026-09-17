@@ -223,7 +223,6 @@ A Dream model is the source of truth for one table — its columns, associations
 A Psychic controller authenticates a request, pulls and validates params, does the work through Dream models, and renders a response. Reach here whenever you add or change an endpoint.
 
 - **The controller directory tree *is* the auth architecture, and auth only ever gets stricter downhill** — never introduce a looser authentication pattern deeper in a branch.
-- **A surface that loosens auth is its own top-level namespace, version nested inside** (`Visitor/V1/`, `Webhooks/V1/`, `Api/V1/`) — never `V1/Visitor/`. `V1/` is the authed client surface; `Admin/` and `Internal/` are separate top-level surfaces each with their own `AuthedController`.
 - **Generate controllers; never hand-roll them.** `g:resource` / `g:controller` build the namespace base-controller chain that shared auth lives on. For an intentionally unauthenticated surface, generate normally and then re-parent that namespace's base to `UnauthedController`.
 - **`extractParams` is an explicit, per-action allowlist**, always intersected with the model's param-safe set (its declared `paramSafeColumns`, or the default safe set otherwise). Foreign keys, polymorphic type columns, the STI `type`, the primary key, and timestamps are always stripped — pull those explicitly via `castParam`.
 
@@ -235,7 +234,7 @@ Serializers turn Dream models (and plain view-model objects) into JSON responses
 
 - **Serializers are function-based and use named exports only** — never class-based, never `export default`. Named exports keep runtime global names and OpenAPI component names explicit.
 - **`serializerKey` does not cascade.** A nested `rendersOne`/`rendersMany` defaults to the associated model's `'default'` serializer unless you pass the key explicitly at every level.
-- **Serializers are synchronous and cannot query** — preload everything first with `preloadFor`/`loadFor`, not a hand-built `preload` chain that drifts and throws `NonLoadedAssociation`.
+- **Serializers are synchronous and cannot query** — preload for them with `preloadFor`/`loadFor`; a hand-built `preload` chain misses nested and newly-added dependencies and throws `NonLoadedAssociation`.
 
 **Before you write or change a serializer, read [serializers.md](serializers.md)** — and [sti.md](sti.md) for STI base/child serializers. It owns the composition pattern, every method (`attribute`/`customAttribute`/`delegatedAttribute`/`rendersOne`/`rendersMany`), flattening and attribute-shadowing, passthrough context, and `ObjectSerializer` for non-Dream shapes. A hand-written STI serializer that drops the `type`/`StiChildClass` shape silently collapses every child to one schema — correct in a unit spec, broken over HTTP. Run `pnpm psy sync` after changing any serializer so the OpenAPI specs and generated clients update.
 
@@ -359,7 +358,7 @@ Psychic supports two complementary translation patterns: **code-driven** (enum v
 
 Background jobs (BullMQ / Redis) offload slow, costly, or failure-prone work off the request path, with automatic retry. Services are the standard surface; models can background their own methods. Reach here whenever work should not block a response.
 
-- **Never pass model data as job arguments — pass IDs only** and re-look-up inside the implementation. Model payloads bloat Redis, lose type information through JSON, and go stale.
+- **Never pass model data as job arguments — IDs and non-model scalars only**, then re-look-up inside the implementation. Model payloads bloat Redis, lose type information through JSON, and go stale.
 - **Use `find` (not `findOrFail`) in implementations and return early on null** — the record may have been deleted before the worker runs, and `findOrFail` would retry for ~6 days.
 - **Nothing calls `scheduleAllJobs()` for you** — call it from `db/seed.ts`, which every deploy runs immediately after `db:migrate`. A scheduled service nobody registers silently never runs.
 - **Enqueue only after the transaction commits** — any lifecycle hook that queues background work must use a `Commit` variant (`@deco.AfterCreateCommit`, `@deco.AfterUpdateCommit`, `@deco.AfterSaveCommit`). This applies whether the hook calls a backgrounded service or backgrounds a model method, and whether the worker needs a newly-created row or newly-updated persisted data. Never call `background(...)` from inside an open `txn`, or the worker races the commit and silently strands the record.
@@ -370,8 +369,8 @@ Background jobs (BullMQ / Redis) offload slow, costly, or failure-prone work off
 
 Psychic Websockets gives real-time push over Socket.IO with Redis pub/sub. Typed channels are declared with `Ws`, messages emit to a user id, and connections register a socket to a user. Reach here whenever the app pushes to clients.
 
-- **`PsychicAppWebsockets` must initialize in every process that calls `Ws.emit()`** — web, worker, and ws server alike. Skipping it in any of them throws an obscure `cachePsychicAppWebsockets` error that looks like a framework bug.
-- **Set `transports: ['websocket']` on the client** — Socket.IO's long-polling default causes subtle stale-data failures.
+- **Every process that calls `Ws.emit()` needs `PsychicAppWebsockets` initialized**, as the scaffold does. A hand-rolled process, a role guard that excludes one, or a deleted initializer loses it, and the symptom is an obscure `cachePsychicAppWebsockets` error that looks like a framework bug.
+- **Set `transports: ['websocket']` on the client** — skipping Socket.IO's polling-first handshake connects faster.
 
 **Before you wire up channels, connection auth, or emit from a worker, read [websockets.md](websockets.md).** It owns the initializer / auth scaffolding, the origin allowlist, and the worker-emit pattern.
 
@@ -407,7 +406,7 @@ Specs use Vitest against real database records — never mocks of Dream internal
 
 Psychic derives the OpenAPI spec from database column types, serializers, and routes; you declare only the remainder. Reach here whenever you document an endpoint or customize the spec.
 
-- **Never hand-write a schema Psychic can derive** (Critical Rule 21) — model request bodies use `requestBody: { params }` / `{ including }`, model responses use `@OpenAPI(Model, { serializerKey })`, computed responses use an `ObjectSerializer`. Hand-written JSON Schema is only for genuinely ad hoc shapes.
+- **Never hand-write a schema Psychic can derive** (Critical Rule 21).
 - **Automatic error handling** maps `castParam` / validation failures → 400 and `findOrFail` misses → 404; don't document or throw these by hand.
 
 **Start with [openapi.md](openapi.md)** for the derivation model ([How Psychic builds the spec](openapi.md#how-psychic-builds-the-spec)) and the spec-wide `psy.set('openapi', ...)` configuration in `conf/app.ts` ([Conf-level configuration](openapi.md#conf-level-configuration) — namespaces, default headers/responses, security schemes, validation, type sync). The per-action `@OpenAPI` decorator and `requestBody` shorthand live in [controllers.md](controllers.md); response schema comes from serializers, see [serializers.md](serializers.md). Run `pnpm psy sync` after any change so the specs and generated clients update.

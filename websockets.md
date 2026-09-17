@@ -258,7 +258,7 @@ public async notifyBooking(this: Booking) {
 
 ## Client Transport
 
-Set `transports: ['websocket']` on the Socket.IO client. Socket.IO defaults to trying long-polling first for historical reasons (WebSocket support was patchy in 2012); that fallback is unnecessary today — WebSocket is universally supported by modern browsers and mobile apps. Skipping the polling phase means faster connection establishment. This is a connection-latency recommendation: the websocket server serves polling and WebSocket clients correctly either way, so it is not required for correctness — it just avoids the slower initial handshake.
+Set `transports: ['websocket']` on the Socket.IO client. Socket.IO tries long-polling first and upgrades in the background; WebSocket is universally supported by modern browsers and mobile apps, so skipping the polling phase just means faster connection establishment. The websocket server serves polling and WebSocket clients correctly either way, so this is a connection-latency recommendation rather than a correctness requirement — with one exception at scale: a polling client's later requests have to reach the same node, because engine.io's heartbeat timers are per-connection, so a multi-node fleet serving polling clients needs sticky sessions. Websocket-only transport sidesteps that.
 
 ```typescript
 import { io } from 'socket.io-client'
