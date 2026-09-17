@@ -6,7 +6,7 @@ Instead, treat the public Dream API itself, the TSDocs shipped with the package,
 
 ## Rule of Thumb
 
-Prefer Dream's public query and association APIs. Drop to `toKysely(...)`, or to hand-rolled Kysely against the typed `db()`, only for SQL that Dream genuinely cannot express — and in migrations.
+Prefer Dream's public query and association APIs. Drop to `toKysely(...)`, or to hand-rolled Kysely against the typed `db()`, only for SQL that Dream genuinely cannot express. (Migrations are Kysely unconditionally — see [migrations.md](migrations.md).)
 
 ### Eject late, never early: associations carry scopes that `toKysely` does not
 

@@ -4,7 +4,7 @@ This repo IS the `psychic-skill` itself. Never invoke `psychic-skill` against th
 
 ## CLI command style: write `pnpm psy`, not bare `psy`
 
-Runnable command examples in the skill always use the `pnpm psy ...` form (e.g. `pnpm psy sync`, `pnpm psy g:resource`, `pnpm psy g:encryption-key`). `SKILL.md` carries the single disclaimer (around line 21) that examples use `pnpm` but a reader should substitute their project's actual package manager (`yarn psy ...`, `npm run psy ...`) — that note is what makes the `pnpm` prefix stand for "your package manager," so individual examples do **not** drop the prefix. Bare `psy ...` is acceptable **only** in inline prose that refers to a command by name (e.g. "`psy console` sessions are exempt"), never in a runnable code block or a step a reader is meant to copy. When adding or editing any command example, write `pnpm psy`.
+Runnable command examples in the skill always use the `pnpm psy ...` form (e.g. `pnpm psy sync`, `pnpm psy g:resource`, `pnpm psy g:encryption-key`). `SKILL.md` carries the single disclaimer (around line 21) that examples use `pnpm` but a reader should substitute their project's actual package manager (`yarn psy ...`, `npm run psy ...`) — that note is what makes the `pnpm` prefix stand for "your package manager," so individual examples do **not** drop the prefix. Bare `psy ...` is acceptable **only** in inline prose that refers to a command by name (e.g. "`psy g:resource` and related generators"), never in a runnable code block or a step a reader is meant to copy. When adding or editing any command example, write `pnpm psy`.
 
 The agent-facing counterpart is Critical Rule #2 in `SKILL.md`, which tells a reader to detect the project's real package manager (from `package.json`'s `"packageManager"` field or the lockfile) and substitute — so writing `pnpm` here doesn't mislead a yarn/npm/bun project. Keep that rule and this note consistent; if either changes, update the other.
 
@@ -18,7 +18,7 @@ Every example in the skill — models, controllers, serializers, generators, mig
 
 Four things bind regardless:
 
-- **`SKILL.md` has a hard 5,000-token ceiling, not a line ceiling.** Claude Code re-injects only the first 5,000 tokens of a skill body after compaction and drops the rest. The file sits at 4,930 tokens with **70 tokens of headroom** — measure any addition with a real tokenizer before writing it, and say where the room comes from.
+- **`SKILL.md` has a hard 5,000-token ceiling, not a line ceiling.** Claude Code re-injects only the first 5,000 tokens of a skill body after compaction and drops the rest. The file sits at 4,931 tokens with **69 tokens of headroom** — measure any addition with a real tokenizer before writing it, and say where the room comes from.
 - **The standard is `agentskills.io`**, five pages, each served as raw markdown by appending `.md`. `anthropics/skills` redirects there and Claude Code's docs defer to it. It has moved before; re-check before trusting any source list, including that one.
 - **Verify a quotation's page and enclosing section, not merely that the text exists.** Two genuine quotes were cited past their scope in a single maintenance pass.
 - **Three validators fail this repo on purpose.** `MAINTAINING.md` names the expected diagnostics; anything beyond them is a regression. Do not "fix" the expected ones.

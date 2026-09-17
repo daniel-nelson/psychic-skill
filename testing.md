@@ -6,7 +6,7 @@ Specs use **Vitest** with real database records (not mocks). We practice **BDD, 
 
 ### Every bug is a missing spec
 
-The prevalent practice is to ship the fix and add a spec afterwards, if at all. Psychic rejects it: the bug is itself evidence that an automated spec was missing, and the harness — a `cleanTestDb` `beforeEach`, per-worker test databases, a generated factory for every model — exists precisely so that writing the missing spec first costs almost nothing. This is the operational corollary to [SKILL.md Rule #9](SKILL.md) (BDD approach) for bugs discovered after the fact. When you discover a bug — in QA, in production logs, during an audit, by hand-testing a flow — **write the regression spec before committing the fix.**
+The prevalent practice is to ship the fix and add a test afterwards, if at all. Psychic rejects it: the bug is itself evidence that an automated spec was missing, and the harness — a `cleanTestDb` `beforeEach`, per-worker test databases, a generated factory for every model — exists precisely so that writing the missing spec first costs almost nothing. This is the operational corollary to [SKILL.md Rule #9](SKILL.md) (BDD approach) for bugs discovered after the fact. When you discover a bug — in QA, in production logs, during an audit, by hand-testing a flow — **write the regression spec before committing the fix.**
 
 This applies even when:
 
@@ -704,7 +704,7 @@ await WorkerTestUtils.work()                            // Process queue
 await WorkerTestUtils.clean()                           // Clear queues
 ```
 
-### A job that throws fails the enqueuing request in tests, but not in prod
+### A job that throws fails the enqueuing request in specs, but not in prod
 
 Under the default `automatic` invocation, a backgrounded method runs inline and **awaited** inside the call that enqueued it — the framework short-circuits the queue and calls the method directly, with no surrounding try/catch. So if the job throws, the error propagates back through `.background(...)` to the caller. A controller action that backgrounds a job and awaits it therefore returns **500 in specs** when the job throws.
 

@@ -226,16 +226,16 @@ export default function routes(r: PsychicRouter) {
   // clean /v1 URL via an explicit `controller:` reference — see above.
 
   // Simple routes
-  r.get('ping', PingController, 'ping')
+  r.get('status', StatusController, 'show')
   r.post('login', AuthController, 'login')
 
   // Singular resource (no index, no :id in path)
   r.resource('profile', { only: ['show', 'update'] })
 
   // Collection routes (no :id)
-  r.resources('items', r => {
+  r.resources('rooms', r => {
     r.collection(r => {
-      r.post('bulk-create', ItemsController, 'bulkCreate')
+      r.post('bulk-create', RoomsController, 'bulkCreate')
     })
   })
 
@@ -1430,7 +1430,7 @@ Key points:
 
 ### Proxy Configuration for Secure Cookies
 
-Behind a reverse proxy that terminates TLS, Koa receives plain HTTP and rejects `secure: true` cookies with "Cannot send secure cookie over unencrypted connection". Prefer configuring TLS on the application (see [deploying.md](deploying.md#tls-behind-a-reverse-proxy)) over enabling `app.proxy`, which trusts `X-Forwarded-Proto` from *any* upstream. Where `app.proxy` is genuinely the answer — a dev tunnel such as ngrok — a Psychic app sets it from `conf/app.ts`:
+Behind a reverse proxy that terminates TLS, Koa receives plain HTTP and rejects `secure: true` cookies with "Cannot send secure cookie over unencrypted connection". Prefer re-encrypting proxy→app traffic and configuring TLS on the application (see [deploying.md](deploying.md#tls-behind-a-reverse-proxy)) over enabling `app.proxy`, which trusts `X-Forwarded-Proto` from *any* upstream. Where `app.proxy` is genuinely the answer — a dev tunnel such as ngrok — a Psychic app sets it from `conf/app.ts`:
 
 ```typescript
 psy.on('server:init:after-middleware', psychicServer => {

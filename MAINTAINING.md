@@ -107,7 +107,7 @@ lines forces a token boundary at every newline and overstates the total.
 a legacy vocabulary; `tiktoken`'s `o200k_base` and `cl100k_base` cross-check 5-6% lower. Treat the
 number as accurate to a few percent, not exact, and keep real headroom rather than shaving the cap.
 
-**Current state: `SKILL.md` is 4,930 tokens over 126 lines, with 70 tokens of headroom.** That
+**Current state: `SKILL.md` is 4,931 tokens over 126 lines, with 69 tokens of headroom.** That
 slack is tens of tokens, not hundreds. Any addition is measured with a real tokenizer *before* it
 is written, and anything added has to say where the room comes from.
 
@@ -291,11 +291,13 @@ There is no test suite, no lint config and no CI here. These are the checks, eac
 result, because a check with an undefined expected result is not verification.
 
 - **`wc -l SKILL.md`** — under 500. Currently 126.
-- **Token count of `SKILL.md`** — under 5,000, measured with the recipe above. Currently 4,930.
+- **Token count of `SKILL.md`** — under 5,000, measured with the recipe above. Currently 4,931.
 - **Every reference file still linked from `SKILL.md`**, all 17:
   `grep -o '](\([a-z0-9-]*\.md\)' SKILL.md | sed 's/](//' | sort -u`. The character class must
   include digits or `i18n.md` is missed.
-- **Anchors: 125 links, 0 broken.** No off-the-shelf command does this correctly. A hand-rolled
+- **Anchors: 0 broken.** Scope any count you record: `SKILL.md` plus the 17 reference files
+  carry 119 anchored links, and `CHANGELOG.md` adds 4 more that are never maintained. Zero
+  broken is the claim that must hold. No off-the-shelf command does this correctly. A hand-rolled
   slugifier must (a) strip fenced code before collecting headings, (b) **preserve `_`** — it is a
   `\w` character and GitHub keeps it, so stripping it as emphasis falsely breaks
   `migrations.md#aliased-belongsto-shorthand-modelaliasbelongs_to` and `console.md#node_env-defaults` —
@@ -355,10 +357,10 @@ answered: an eval suite is affordable and would be this repo's first objective c
 a to-do (`psychic-skill-eval-suite`) rather than built, because it is a new durable surface with its
 own maintenance story.
 
-Caveat, from this run's `evidence/mechanical-checks.md`: the bare-directory resolution is
-undocumented. The published reference says a skills-directory *plugin* needs
-`.claude-plugin/plugin.json`; the CLI resolves a plain skill directory anyway. Measured behavior is
-the stronger evidence, but it could change — re-check before relying on it.
+Caveat: the bare-directory resolution is undocumented. The published reference says a
+skills-directory *plugin* needs `.claude-plugin/plugin.json`; the CLI resolves a plain skill
+directory anyway. Measured behavior is the stronger evidence, but re-run the one-case suite before
+relying on it rather than trusting this paragraph.
 
 The eval docs also give the sharpest operational form of the cut test: "Remove or replace assertions
 that always pass in both configurations… They inflate the with-skill pass rate without reflecting
@@ -381,7 +383,8 @@ re-deriving the whole document. To move the stamp, run all of it:
    it.
 4. **Re-run the validators** and confirm the accepted failures are still exactly the accepted
    failures, with no additional diagnostic.
-5. **Re-measure `SKILL.md`** — tokens, lines, headroom — and re-run the anchor check.
+5. **Re-measure `SKILL.md`** — tokens, lines, headroom — re-run the anchor check, and update
+   the figure in `CLAUDE.md`'s skill-authoring section to match.
 6. **Re-verify the `@rvoh/*` baseline** in `SKILL.md` against `~/work/dream_and_psychic`, which
    `CLAUDE.md` requires before finalizing any skill change regardless.
 
