@@ -29,9 +29,7 @@ Use a `Parent/Child` namespace in two cases:
 - **STI subtypes** — `Room/Bedroom`, `Room/Bathroom`. The namespace expresses "is a kind of." See [sti.md](sti.md).
 - **Subdomain / bounded-context modules** — `Reservations/Booking`, `Billing/Invoice`. The namespace expresses which part of the application's domain the model belongs to.
 
-**Flat when small, grouped by subdomain when large.** A small app is commonly flat — most models sit directly under `src/app/models/`, and that is fine. As the model set grows, group models into subdomain modules rather than leaving dozens of unrelated top-level peers; a sprawling flat directory is a sign the domain hasn't been carved into bounded contexts. Do not pre-create a one-model subdomain on day one either — introduce the module when there are models to put in it. The axis to organize on is the subdomain, never the owning model or the route.
-
-**A model that belongs to multiple parents is its own aggregate root.** When a model `belongsTo` two parents — a `Booking` belongs to both a `Place` and a `Guest` — it is usually its own organizing concept, not a sub-part of either. Namespacing it under one parent (`Place/Booking`) wrongly couples a two-parent model to that parent. Leave it top-level, or place it in its subdomain module (`Reservations/Booking`) — never under one of its parents.
+A model that `belongsTo` two parents — a `Booking` belongs to both a `Place` and a `Guest` — stays top-level or goes in its subdomain module, never under one of them.
 
 Getting the namespace wrong is expensive to undo: the model file path bakes into the class name, the table name, every import, the serializer/controller paths, and the migration. A later rename touches all of those plus generated types, OpenAPI, and front-end clients. Decide the namespace deliberately at generation time.
 
@@ -601,7 +599,7 @@ public invalidateCache(this: Place) { ... }
 public removeFromSearchIndex(this: Place) { ... }
 ```
 
-**Gating on an encrypted field.** When the gated field is an `@deco.Encrypted` field, list the persisted column name `encrypted<Name>` in `ifChanged` (e.g. `ifChanged: ['encryptedPhone']`), not the plaintext virtual (`phone`). `ifChanged` is typed over the real persisted columns (`DreamColumnNames`); setting the virtual marks the underlying `encrypted<Name>` column dirty, which is what change detection sees.
+**Gating on an encrypted property.** When the gated property is `@deco.Encrypted`, list the persisted column name `encrypted<Name>` in `ifChanged` (e.g. `ifChanged: ['encryptedPhone']`), not the plaintext virtual (`phone`). `ifChanged` is typed over the real persisted columns (`DreamColumnNames`); setting the virtual marks the underlying `encrypted<Name>` column dirty, which is what change detection sees.
 
 ### Hook order around a `dependent: 'destroy'` cascade
 
@@ -1017,7 +1015,7 @@ user.hasChanges('email')          // false
 
 A persisted instance with nothing dirty issues no `UPDATE` on `save()` or `update()` and leaves `updatedAt` unstamped — `update({})`, or an `update()` assigning values equal to the current ones, is a no-op rather than a touch. Re-assigning the same plaintext to an `@deco.Encrypted()` property is always a real write: each assignment re-encrypts to fresh ciphertext. Before-save hooks and validations still run first, so a hook that dirties the record turns it back into a real write. The comparison is against the instance's own snapshot from its last load or save, not against the row currently in the database.
 
-For an `@deco.Encrypted()` field, `changedAttributes()` reports the persisted `encrypted<Name>` key, not the plaintext virtual property. `getAttribute('<plaintext>')` returns `undefined` — it isn't the decrypting accessor; `getAttribute('encrypted<Name>')` returns ciphertext. Read the decrypted value via the instance property (`instance.<plaintext>`) — see [Encrypted](#special-decorators) above.
+For an `@deco.Encrypted()` property, `changedAttributes()` reports the persisted `encrypted<Name>` key, not the plaintext virtual property. `getAttribute('<plaintext>')` returns `undefined` — it isn't the decrypting accessor; `getAttribute('encrypted<Name>')` returns ciphertext. Read the decrypted value via the instance property (`instance.<plaintext>`) — see [Encrypted](#special-decorators) above.
 
 ## Batch Processing
 
@@ -1140,19 +1138,13 @@ Without a real unique index on the lookup attribute(s), `createOrFindBy`/`create
 
 ## Transactions
 
-Two ways to start a transaction:
-
-1. **Class-level** — `ApplicationModel.transaction(async (txn) => { ... })`
-2. **Instance-level** — `someModel.transaction(async (txn) => { ... })`
-
-If the callback throws, the entire transaction rolls back.
+Start a transaction with `ApplicationModel.transaction(async (txn) => { ... })`. If the callback throws, the entire transaction rolls back.
 
 **Every model operation inside a transaction must be explicitly bound via `.txn(txn)`.** This includes creates, updates, destroys, queries, association operations — everything. If you forget `.txn(txn)`, the operation runs outside the transaction and won't roll back on failure.
 
-On a `@deco.Sortable` model the omission is worse than a lost rollback. A sortable write computes its position under a lock on its sort scope, so an unbound `room.destroy()` inside a `Place` transaction opens a second transaction on another connection and waits on a lock the enclosing transaction is holding. Only one side is waiting, so Postgres's deadlock detector never sees it: the call hangs until `sortableScopeLockTimeout` expires, then throws `SortableScopeLockWaitTimedOut`. That error advises retrying; a retry cannot help here — add the missing `.txn(txn)`.
+On a `@deco.Sortable` model the omission is worse than a lost rollback. A sortable write computes its position under a lock on its sort scope, so an unbound `room.destroy()` inside a transaction that is writing its `Place` opens a second transaction on another connection and waits on a lock the enclosing transaction is holding. Only one side is waiting, so Postgres's deadlock detector never sees it: the call hangs until `sortableScopeLockTimeout` expires, then throws `SortableScopeLockWaitTimedOut`. That error advises retrying; a retry cannot help here — add the missing `.txn(txn)`.
 
 ```typescript
-// Class-level transaction
 await ApplicationModel.transaction(async (txn) => {
   const user = await User.txn(txn).create({ email: 'test@test.com' })
   const post = await Post.txn(txn).create({ user, title: 'Test' })
@@ -1160,12 +1152,6 @@ await ApplicationModel.transaction(async (txn) => {
 
   // Queries also need .txn(txn) to see uncommitted data
   const found = await User.txn(txn).findBy({ email: 'test@test.com' })
-})
-
-// Instance-level transaction
-await user.transaction(async (txn) => {
-  await user.txn(txn).update({ status: 'active' })
-  await user.txn(txn).createAssociation('profile', {})
 })
 ```
 
@@ -1191,7 +1177,7 @@ await ApplicationModel.transaction(async txn => {
 await doWork(user)
 ```
 
-Both `Model.txn(null)` (class-level) and `instance.txn(null)` (instance-level) work the same way.
+`Model.txn(null)` works the same way.
 
 **Restrictions inside transactions:** Methods that rely on unique-constraint violations to function (`createOrFindBy`, `createOrUpdateBy`) cannot be used inside a transaction. Use their transaction-safe counterparts (`findOrCreateBy`, `updateOrCreateBy`) instead. See the [find-or-create methods](#find-or-create-and-upsert-methods) table for details.
 
@@ -1258,8 +1244,6 @@ export default class Place extends ApplicationModel { ... }
 Mark a model `@ReplicaSafe()` when the *bulk* of its read traffic can tolerate slightly stale data (replica lag) — don't rule it out just because *some* code path reads it right after a write. The narrower path can force `.connection('primary')` explicitly (see below); the model itself should be marked by its dominant traffic pattern.
 
 **Worked example.** In BearBnB, `Place`, `Room`, and `LocalizedText` are read constantly by the public-facing `V1::Visitor::PlacesController` — that's the bulk of the app's read traffic, and a visitor browsing listings tolerates a few seconds of staleness without issue. That makes all three excellent `@ReplicaSafe()` candidates. But `V1::Hosts::PlacesController` and `V1::Hosts::Places::RoomsController` — where a host creates or edits their own listing and expects to see the change reflected immediately — call `.connection('primary')` on the `show`/`update` actions that read back what the host just wrote, so the host never sees a stale pre-edit version. Mark the model for its dominant (visitor) traffic; handle the narrower (host, read-your-own-write) traffic explicitly at the call site.
-
-**How stale is "stale"?** Aurora PostgreSQL replicas are usually under 100ms behind per AWS's own docs, but longer under heavy write load — and longer still on Aurora Serverless v2 if a reader's minimum capacity is set too low to keep up with the writer. RDS PostgreSQL has no AWS-documented typical figure; watch the `ReplicaLag` CloudWatch metric for your actual workload. Either way, don't assume the replica has caught up by request time — force `.connection('primary')` for any read that must see the write just made.
 
 **Only `select` queries are ever eligible for the replica.** `create`, `update`, and `destroy` always run against the primary, regardless of `@ReplicaSafe()` — there is no such thing as a replica write. Being inside `ApplicationModel.transaction(...)` also forces every query to the primary, `@ReplicaSafe()` or not, since a transaction is inherently a primary-only construct.
 

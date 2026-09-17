@@ -6,7 +6,7 @@ How to drive Dream/Psychic's code generators (`g:resource`, `g:model`, `g:sti-ch
 
 ## Always run `--help` first
 
-**CRITICAL: Run `pnpm psy <command> --help` and read its output BEFORE running any generator or CLI command.** Do not infer syntax from examples in this skill or from prior experience — argument formats vary between commands and between Dream/Psychic versions. This is a hard prerequisite, not a suggestion.
+**CRITICAL: Run `pnpm psy <command> --help` and read its output BEFORE running any generator or CLI command.** Do not infer syntax from examples in this skill or from prior experience. This is a hard prerequisite, not a suggestion.
 
 ## Generator decision tree
 
@@ -88,6 +88,6 @@ If controller specs have type errors about what an endpoint accepts or returns, 
   - Multiple columns: `pnpm psy g:migration add-fields-to-bars name:string size:integer`
   - Foreign key (notNull): `pnpm psy g:migration add-zip-code-id-to-candidates ZipCode:belongs_to`
   - Foreign key (nullable): `pnpm psy g:migration add-zip-code-id-to-candidates ZipCode:belongs_to:optional`
-  - Aliased FK (`@alias`): `pnpm psy g:migration add-canceled-by-to-message-requests InternalUser@canceled_by:belongs_to:optional` produces `canceled_by_id` column, `canceledById` property, and `canceledBy` association from one token. Canonical for `_by` columns (`created_by`, `approved_by`) and multiple FKs to the same model (`Message@last_inbound`, `Message@last_outbound`). See [migrations.md — Aliased BelongsTo shorthand](migrations.md#aliased-belongsto-shorthand-modelaliasbelongs_to) for the full reference.
+  - Aliased FK (`@alias`): `pnpm psy g:migration add-canceled-by-to-message-requests InternalUser@canceled_by:belongs_to:optional` produces the `canceled_by_id` column and its index from one token; a standalone `g:migration` adds no association, so the `canceledById` property and the `canceledBy` declaration are hand-added per the next bullet. Canonical for `_by` columns (`created_by`, `approved_by`) and multiple FKs to the same model (`Message@last_inbound`, `Message@last_outbound`). See [migrations.md — Aliased BelongsTo shorthand](migrations.md#aliased-belongsto-shorthand-modelaliasbelongs_to) for the full reference.
 - After running the migration (`pnpm psy db:migrate`), add the matching `public ...: DreamColumn<Model, 'columnName'>` declaration to the model file. For a BelongsTo, also add the `@deco.BelongsTo(...)` declaration. Commit the auto-generated `src/types/db.ts` / `src/types/dream.ts` changes alongside.
 - The generator scaffolding can be modified for changes that aren't expressible as column shorthand (check constraints, enum alterations, custom backfill) — use DreamMigrationHelpers methods over compound Kysely calls when available. See [migrations.md](migrations.md) for migration anatomy and helpers.

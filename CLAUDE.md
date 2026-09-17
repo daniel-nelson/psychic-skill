@@ -4,13 +4,24 @@ This repo IS the `psychic-skill` itself. Never invoke `psychic-skill` against th
 
 ## CLI command style: write `pnpm psy`, not bare `psy`
 
-Runnable command examples in the skill always use the `pnpm psy ...` form (e.g. `pnpm psy sync`, `pnpm psy g:resource`, `pnpm psy g:encryption-key`). `SKILL.md` carries the single disclaimer (around line 21) that examples use `pnpm` but a reader should substitute their project's actual package manager (`yarn psy ...`, `npm run psy ...`) — that note is what makes the `pnpm` prefix stand for "your package manager," so individual examples do **not** drop the prefix. Bare `psy ...` is acceptable **only** in inline prose that refers to a command by name (e.g. "`psy console` sessions are exempt"), never in a runnable code block or a step a reader is meant to copy. When adding or editing any command example, write `pnpm psy`.
+Runnable command examples in the skill always use the `pnpm psy ...` form (e.g. `pnpm psy sync`, `pnpm psy g:resource`, `pnpm psy g:encryption-key`). `SKILL.md` carries the single disclaimer (around line 21) that examples use `pnpm` but a reader should substitute their project's actual package manager (`yarn psy ...`, `npm run psy ...`) — that note is what makes the `pnpm` prefix stand for "your package manager," so individual examples do **not** drop the prefix. Bare `psy ...` is acceptable **only** in inline prose that refers to a command by name (e.g. "`psy g:resource` and related generators"), never in a runnable code block or a step a reader is meant to copy. When adding or editing any command example, write `pnpm psy`.
 
 The agent-facing counterpart is Critical Rule #2 in `SKILL.md`, which tells a reader to detect the project's real package manager (from `package.json`'s `"packageManager"` field or the lockfile) and substitute — so writing `pnpm` here doesn't mislead a yarn/npm/bun project. Keep that rule and this note consistent; if either changes, update the other.
 
 ## Example domain: BearBnB
 
 Every example in the skill — models, controllers, serializers, generators, migrations, routing — uses one shared domain: BearBnB, a bear-themed short-term-rental app (Airbnb for bears). The core nouns are `Place`, `Room` (an STI base with children `Bathroom`/`Bedroom`/`Kitchen`/`Den`/`LivingRoom`), `Host`, `Guest`, `Booking`, `City`, and `LocalizedText`. Reusing these nouns keeps examples mutually consistent — an association in one file lines up with the model and serializer shown in another — so when adding or editing any example, draw from this domain rather than introducing a new one, and extend the noun set only when no existing noun fits.
+
+## Skill-authoring craft: read `MAINTAINING.md`
+
+`MAINTAINING.md` at the repo root carries the current skill-authoring standard, this repo's measured state, and the verification commands. Read it before your first edit in a session to `SKILL.md`, any reference `.md` at the repo root, or anything under `psychic-update-skill/`. It is a maintainer document — not skill content, and never linked from `SKILL.md`.
+
+Four things bind regardless:
+
+- **`SKILL.md` has a hard 5,000-token ceiling, not a line ceiling.** Claude Code re-injects only the first 5,000 tokens of a skill body after compaction and drops the rest. The file sits at 4,931 tokens with **69 tokens of headroom** — measure any addition with a real tokenizer before writing it, and say where the room comes from.
+- **The standard is `agentskills.io`**, five pages, each served as raw markdown by appending `.md`. `anthropics/skills` redirects there and Claude Code's docs defer to it. It has moved before; re-check before trusting any source list, including that one.
+- **Verify a quotation's page and enclosing section, not merely that the text exists.** Three genuine quotes were used past their scope in one maintenance pass.
+- **Three validators fail this repo on purpose.** `MAINTAINING.md` names the expected diagnostics; anything beyond them is a regression. Do not "fix" the expected ones.
 
 ## Release process (required on every PR)
 

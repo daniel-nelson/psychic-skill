@@ -5,6 +5,11 @@ other write. That on its own is not a reason to lock.
 
 ## Most writes need no lock
 
+Before reaching for a lock, name the concrete scenario that breaks the simple shape: a specific
+concurrent writer, a measured row count, an invariant the database cannot express. "A race is
+conceivable" is not that scenario, and a lock is not free — see
+[What a lock costs](#what-a-lock-costs).
+
 Two requests updating different attributes of the same record both land. Two requests racing to set
 the *same* attribute resolve to a single winner — and they resolve to a single winner whether or not
 you lock. A plain update is the right tool for both:
