@@ -117,7 +117,7 @@ Use a `delay` when:
 
 Debounce guarantees the job runs at least once, at or after the moment it was last scheduled. It is for collapsing repeated expensive work when events fire in quick succession, not for guaranteeing the work happens only once. Re-arming the same `jobId` from inside the job's own running handler is safe.
 
-The debounce delay must be at least 10 seconds; a shorter one throws.
+The debounce delay must be at least three seconds; a shorter one throws.
 
 When the work must happen only once, record that it happened — a boolean or a `DateTime` column on the model — and return early when a later run finds it set. A job that fires while a new event re-arms the timer is not a problem under that pattern: the second run reads the flag and does nothing. If the timing itself is what matters rather than the collapsing, reach for a scheduled job with a datetime check on the model instead.
 
