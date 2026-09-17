@@ -9,6 +9,28 @@ It is a maintainer document, not skill content. It is deliberately **not** linke
 no agent using the skill ever loads it, and it is exempt from the token budget below — but not
 from `CLAUDE.md`'s "Does this earn its place?" rubric.
 
+**This file is a digest, and reading it is not reading the standard.** Every quotation below was
+scoped correctly when written — which is the trap: an accurate summary is indistinguishable from
+the thing it summarises, with nothing inside it saying so. Saying so is what this label buys. It
+does not make anyone read the sources; it removes the condition that produced the failure, so an
+agent answering out of the digest can no longer believe it is answering out of the standard. Being
+binary, the label is also the one part of this pair a check could assert. **The rule beside it: any
+claim you are about to rely on gets checked in its own page and its own section first**, not merely
+confirmed to exist somewhere. Every source below is named, and the published ones serve raw markdown.
+
+**That rule does not enforce itself; do not mistake it for a check.** It asks you to judge whether
+you checked well enough, and in all three instances this repo recorded, the actor believed they had.
+Each was caught by a *second reader of the primary source* instead — a peer session with the page
+already open, this repo's own review pass, and a peer catching the coordinator mid-sentence while
+this rule was being drafted; the sibling repo that reported the failure mode falsified four of its
+own assertions the same way. Judgment stays judgment, and a second reader on the primary source is
+the cheap thing that has worked whenever a claim is about to change what ships. The residual hole,
+stated rather than papered over: `CLAUDE.md`'s trigger fires on the first *edit* to a skill file, so
+nothing makes an agent read these sources on a turn where no edit begins — the exact shape of the
+failure this paragraph exists for. "…and before answering a question about skill authoring" would be
+intent-classification, the shape that already failed, so the hole stays open rather than closed with
+a rule that would not hold.
+
 > **Last verified: 2026-09-17.** Checked against: the five `agentskills.io` pages, fetched as raw
 > markdown; `code.claude.com/docs/en/context-window.md` and `code.claude.com/docs/en/skills.md`;
 > the `@rvoh/*` `package.json` versions in `~/work/dream_and_psychic`; six of Anthropic's
@@ -17,13 +39,11 @@ from `CLAUDE.md`'s "Does this earn its place?" rubric.
 > anchor measurement of this repo.
 
 **The stamp is not stale-guidance narration, and must not be deleted as such.** `CLAUDE.md`'s
-"Delete stale guidance cleanly" forbids narrating what the framework or the skill *used to do*. A
-freshness marker on the maintainer's own knowledge is a different object: it records when these
-claims were last checked against their sources, not what anything used to be. Keep **one stamp for
-the whole file and never per-claim dates** — the same design as the skill's own ecosystem baseline,
-where `CLAUDE.md` is explicit that a single baseline plus a stay-current rule is the entire
-mechanism by design. A file whose every paragraph carries a date rots into bookkeeping nobody
-updates.
+"Delete stale guidance cleanly" forbids narrating what the framework or the skill *used to do*; a
+freshness marker records when these claims were last checked, not what anything used to be. Keep
+**one stamp for the whole file and never per-claim dates**, the same design as the skill's own
+ecosystem baseline — a file whose every paragraph carries a date rots into bookkeeping nobody
+updates. What moves the date is governed at the end of this file, under "Refreshing this file".
 
 ---
 
@@ -44,18 +64,16 @@ pages matter for authoring:
 `content-type: text/markdown`. Read them that way. A rendering fetch summarizes, and the
 qualifiers these pages hang their meaning on are exactly what a summary drops.
 
-`anthropics/skills` redirects there — its `spec/agent-skills-spec.md` is now a heading and one
-sentence, "The spec is now located at <https://agentskills.io/specification>" — and Claude Code's
-own docs defer to it:
-"Claude Code skills follow the [Agent Skills](https://agentskills.io) open standard, which works
-across multiple AI tools." `platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices`
-is the shorter cross-product summary; where it and `agentskills.io` differ, the `agentskills.io`
-page is longer and more specific.
+`anthropics/skills` redirects there — its `spec/agent-skills-spec.md` is now one sentence, "The spec
+is now located at <https://agentskills.io/specification>" — and Claude Code's docs defer to it:
+"Claude Code skills follow the [Agent Skills](https://agentskills.io) open standard."
+`platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices` is the shorter
+cross-product summary; where the two differ, the `agentskills.io` page is longer and more specific.
 
-**This location has moved once and will move again.** A stale source list is the failure that cost
-this skill's last maintenance pass most of its budget — not a wrong fact, a right fact from a page
-that was no longer the standard. Before trusting any source list, this one included, re-check that
-the pages still resolve and still say what is quoted here.
+**This location has moved once and will move again.** A stale source list cost this skill's last
+maintenance pass most of its budget — not a wrong fact, a right fact from a page that was no longer
+the standard. Before trusting any source list, this one included, re-check that the pages still
+resolve and still say what is quoted here.
 
 ## The two size limits, and why the token one binds
 
@@ -77,11 +95,10 @@ compaction":
 > **Truncation keeps the start of the file**, so put the most important instructions near the top
 > of `SKILL.md`.
 
-For a prose-dense file the token ceiling binds long before the line ceiling. Before this skill was
-restructured, `SKILL.md` cleared 500 lines comfortably at 443 while measuring **11,259 tokens** —
-2.25× the cap — so everything from line 134 down was dropped silently on re-injection: every
-pointer to every reference file, every naming convention, the whole routing map. The rules survived
-and the map did not.
+For a prose-dense file the token ceiling binds long before the line ceiling. This one cleared 500
+lines comfortably at 443 while measuring **11,259 tokens** — 2.25× the cap — so everything from
+line 134 down was dropped silently on re-injection: every pointer to every reference file, the
+whole routing map. The rules survived and the map did not.
 
 **Measure; do not estimate.** A chars/4 estimate happens to land close here, but it is not what the
 runtime counts, and at tens of tokens of headroom the difference decides the answer. Self-contained
@@ -103,9 +120,9 @@ console.log("tokens", countTokens(raw), "lines", raw.split("\n").length - 1, "50
 Binary-search the *growing prefix* of the real file, as above. Summing independently-tokenized
 lines forces a token boundary at every newline and overstates the total.
 
-`@anthropic-ai/tokenizer` is Anthropic's own published package but self-describes as beta and ships
-a legacy vocabulary; `tiktoken`'s `o200k_base` and `cl100k_base` cross-check 5-6% lower. Treat the
-number as accurate to a few percent, not exact, and keep real headroom rather than shaving the cap.
+`@anthropic-ai/tokenizer` is Anthropic's own package but self-describes as beta and ships a legacy
+vocabulary; `tiktoken` cross-checks 5-6% lower. Treat the number as accurate to a few percent, and
+keep real headroom rather than shaving the cap.
 
 **Current state: `SKILL.md` is 4,931 tokens over 126 lines, with 69 tokens of headroom.** That
 slack is tens of tokens, not hundreds. Any addition is measured with a real tokenizer *before* it
@@ -118,12 +135,21 @@ a substring match passes against a heading that merely *starts* with the sentine
 `## Troubleshooting Migrations` to `## Troubleshooting Migrations and Seeds` satisfies `-qF` and
 correctly fails `-qxF`).
 
+**Recovery is the agent's own `Read`, which is why the sentinel is worded as an instruction to
+re-read the path.** "Claude Code does not re-read the skill file on later turns" (`skills.md:512`):
+nothing in the harness will re-open `SKILL.md` for you, and re-injection hands back a truncated
+body rather than the file. **Nor is recovery sticky.** Every compaction re-truncates, and the
+harness's automatic re-read of recently-modified files does not restore an oversized one, so the
+sentinel has to fire *again* each time — which is why its position is asserted inside the first
+4,000 bytes rather than merely "near the top". A sentinel below the cut cannot report the cut.
+
 **Reference files are not subject to the per-skill cap**, because they are read on demand rather
 than re-injected as skill body. Eight of the seventeen here exceed 5,000 tokens on their own and
 that is fine. One related fact is worth knowing, from the same docs page: after compaction Claude
 Code re-reads at most five previously-read files, and "a file over 5,000 tokens comes back as a
 path reference without its content." A large reference file survives as a path the agent can
-re-open, not as content.
+re-open, not as content. That sentence sits under the "Files Claude read or edited" row and governs
+the automatic re-read only; nothing caps an explicit `Read` call at 5,000 tokens.
 
 ## The cut test
 
@@ -139,8 +165,7 @@ thorough:
 
 > Overly comprehensive skills can hurt more than they help — the agent struggles to extract what's
 > relevant and may pursue unproductive paths triggered by instructions that don't apply to the
-> current task. Concise, stepwise guidance with a working example tends to outperform exhaustive
-> documentation.
+> current task.
 
 `CLAUDE.md`'s "Does this earn its place?" rubric is the same test with more steps, and it is the
 binding one here: its point 1 (failure mode) and point 2 (discoverability elsewhere) are the two
@@ -160,8 +185,7 @@ The highest-value content, per the same page, is the opposite of general advice:
 >
 > **Give the agent freedom** when multiple approaches are valid and the task tolerates variation.
 > For flexible instructions, explaining *why* can be more effective than rigid directives — an
-> agent that understands the purpose behind an instruction makes better context-dependent
-> decisions.
+> agent that understands the purpose makes better context-dependent decisions.
 >
 > **Be prescriptive** when operations are fragile, consistency matters, or a specific sequence must
 > be followed.
@@ -212,9 +236,21 @@ does…"); focus on user intent, not implementation; err on the side of being pu
 including ones where the user doesn't name the domain; keep it concise. The 1024-character limit is
 a hard one, enforced by the spec and by the frontmatter validators.
 
-The description is the one place where spending tokens is unambiguously worth it: it sits inside
-the window that survives compaction, and a description that fails to trigger makes the rest of the
-file unreachable.
+**Two caps, and they measure different things.** The spec caps `description` itself at 1,024
+characters. Claude Code separately truncates the *skill listing* at 1,536 characters, and that
+budget covers two fields: `when_to_use` is a real frontmatter field, "Appended to `description` in
+the skill listing and counts toward the 1,536-character cap" (`skills.md:333`). Anyone budgeting a
+description is budgeting both. This skill uses `description` alone, so the whole 1,536 is its own.
+
+**The `name` field is validated and its rules are narrow** (`specification.md`, "The required `name`
+field"): 1-64 characters; lowercase alphanumerics (`a-z`, `0-9`) and hyphens only; no leading,
+trailing or consecutive hyphens; and **it must match the parent directory name** — so renaming the
+skill is a directory rename too. `compatibility`, the spec field this repo does not use, "accepts a
+string of up to 500 characters. Claude Code accepts the field but doesn't act on it"
+(`skills.md:350`).
+
+The description is the one place where spending tokens is unambiguously worth it: it sits inside the
+window that survives compaction, and one that fails to trigger makes the rest of the file unreachable.
 
 **The "third person" / "imperative" contradiction is resolvable, not a real conflict.**
 `platform.claude.com`'s "Always write in third person" targets first- and second-person
@@ -230,11 +266,8 @@ Measured on disk, 2026-09-17, across six first-party skills:
 | Skill | `SKILL.md` lines | Reference `.md` | Table of contents |
 |---|---:|---|---|
 | `pdf` | 314 | `REFERENCE.md` 611, `FORMS.md` 294 | none |
-| `pptx` | 241 | none | — |
-| `docx` | 91 | none | — |
-| `xlsx` | 99 | none | — |
 | `skill-creator` | 485 | `references/schemas.md` 430 | none |
-| `frontend-design` | 71 | none | — |
+| `pptx` / `docx` / `xlsx` / `frontend-design` | 241 / 91 / 99 / 71 | none | — |
 
 - **No table of contents anywhere**, including a 611-line reference file — while `skill-creator`'s
   own `SKILL.md` prescribes one: "For large reference files (>300 lines), include a table of
@@ -270,13 +303,7 @@ concision: cut where a capable model left alone would do the same thing anyway; 
 prevalent industry default differs from Psychic's opinion. Trimming the generic exposition *around*
 an opinionated rule is still in bounds.
 
-## Two ways this work goes wrong
-
-**Verify a quotation's page and its enclosing section, not merely that the text exists.** Every
-load-bearing quote in the last maintenance pass was re-opened against its source, and two genuine
-quotes turned out not to reach the claims they were supporting — one about directive form (above),
-one about capitalization. A search that finds the string proves the string exists; it proves nothing
-about what the surrounding section is talking about.
+## How this work goes wrong
 
 **A decision repaired by review can be silently undone by the next prose that paraphrases it.**
 Restatements — a dispatch brief, a summary, a commit message, a handoff — are drafted under time
@@ -324,32 +351,26 @@ any good.
 
 - `claude plugin validate` wants a plugin manifest. This repo is a *plain skill*, not a plugin —
   `<skills-dir>/foo/SKILL.md` with no manifest is "a plain skill named `foo`" by the published
-  disambiguation table. The validator only enters component mode when pointed at a directory
-  containing `skills/`, `agents/` or `commands/`, so there is nothing here for it to inspect. Its
-  failure is a layout mismatch, not a defect.
+  disambiguation table — and the validator only enters component mode when pointed at a directory
+  containing `skills/`, `agents/` or `commands/`. A layout mismatch, not a defect.
 - `user-invocable: false` is deliberate, and the disagreement is documented rather than mysterious.
   `code.claude.com/docs/en/skills.md`: Claude Code accepts every field in its frontmatter table,
   while "claude.ai skill uploads, the Skills API, and packaging with `package_skill.py`" accept only
   the spec's six — `name`, `description`, `license`, `compatibility`, `metadata`, `allowed-tools` —
   and reject anything else with a hard error of exactly the form both validators emit. This skill
-  ships by git clone into a Claude Code skills directory, which is the path that accepts the field.
-  It would have to be dropped only if the skill were ever uploaded to claude.ai or the Skills API.
+  ships by git clone into a Claude Code skills directory, the path that accepts the field; it would
+  have to be dropped only if the skill were uploaded to claude.ai or the Skills API.
 - The second `SKILL.md` is `psychic-update-skill/`, an intentional sub-skill. Only the newer of the
   two `quick_validate.py` copies enforces one-`SKILL.md`-per-directory; the two copies differ, and
-  neither is canonical. `quick_validate.py` also needs an interpreter with PyYAML, which this
-  machine's `python3` lacks — prefer `skills-ref`, which enforces the same six keys, over running
-  it blind.
+  neither is canonical. Prefer `skills-ref`, which enforces the same six keys.
 
 ## The skill is evaluable as it stands
 
 `claude plugin eval` resolves a bare directory containing `SKILL.md` as a plugin (plugin name =
 directory basename), loads the skill into a "with" arm and runs an automatic no-plugin baseline
-arm. The only structure missing from this repo is an `evals/` directory. Minimum viable case:
-
-```
-evals/<case-name>/prompt.md
-evals/<case-name>/graders/<grader-name>.md    # type: regex|tool_order|tool_used|file_exists|llm|baseline
-```
+arm. The only structure missing from this repo is an `evals/` directory; a minimum viable case is
+`evals/<case>/prompt.md` plus `evals/<case>/graders/<name>.md`, and `claude plugin eval --help`
+lists the grader types.
 
 A measured one-case run against a scratch copy of this repo scored **with-skill 1.00, without-skill
 0.00, Δ +1.00, for $0.22** (`--runs 1`, two arms, 30s). That is the whole feasibility question
@@ -388,5 +409,14 @@ re-deriving the whole document. To move the stamp, run all of it:
 6. **Re-verify the `@rvoh/*` baseline** in `SKILL.md` against `~/work/dream_and_psychic`, which
    `CLAUDE.md` requires before finalizing any skill change regardless.
 
-Then update the stamp's date and its "checked against" list, in place. Do not add a second stamp,
-do not date individual sections, and do not record what this file said before.
+**Then move the stamp, but only as far as the work actually went.** The date moves only if every
+source in its "checked against" list was re-read in the same session that moves it. If you refreshed
+part of the list, **narrow the list to what you re-read** and move the date with the narrowed list;
+never carry the full list over a partial pass. A date attesting to work nobody did is worse than no
+stamp at all, because it reads as evidence.
+
+A date is the weakest form of this in any case: nobody downstream can check it. The stronger form is
+a recorded content hash per source, with a test that fetches each source and compares — mechanical,
+falsifiable, and no self-report anywhere in it. This repo has no test runner to hang that on, so it
+is filed rather than built. Do not add a second stamp, do not date individual sections, and do not
+record what this file said before.
