@@ -607,9 +607,9 @@ Some columns are always stripped, regardless of `paramSafeColumns` or the positi
 
 - The primary key (defaults to `id`)
 - `createdAt` / `updatedAt` / `deletedAt`
-- The `type` field of STI models
+- The `type` column of STI models
 - Foreign keys of BelongsTo associations
-- The polymorphic type field of polymorphic BelongsTo associations
+- The polymorphic type column of polymorphic BelongsTo associations
 
 These same columns are excluded from a model-derived OpenAPI request body — listing one in `params` won't surface it. The exclusions exist to prevent mass-assignment on FK references and STI/polymorphic type discriminators. To re-add an excluded column to the spec, use `requestBody.including` ([`requestBody` shorthand](#requestbody-shorthand--what-each-option-is-for)) and pull its value with `castParam` inside the action.
 
@@ -1023,7 +1023,7 @@ When an endpoint returns an unexpected 400 (or a spec fails with a 500 thrown by
 
 The `validate` option accepts `requestBody`, `responseBody`, `headers`, `query`, and `all` booleans. Setting `all: false` disables every validation segment, which is useful because:
 - For **400s on requests**, it reveals whether the failure was in OpenAPI request validation (problem stops) or in controller logic (problem persists).
-- For **500s in specs caused by response validation**, it lets the full response body reach the test so you can inspect what actually came back — much more useful than the opaque validation error message.
+- For **500s in specs caused by response validation**, it lets the full response body reach the spec so you can inspect what actually came back — much more useful than the opaque validation error message.
 
 ### Workflow
 
@@ -1245,7 +1245,7 @@ pnpm psy g:encryption-key --algorithm aes-128-gcm
 ```
 
 ```typescript
-// Programmatic equivalent — useful in tests, fixtures, or one-off scripts.
+// Programmatic equivalent — useful in specs, fixtures, or one-off scripts.
 import { Encrypt } from '@rvoh/dream'
 
 const key = Encrypt.generateKey('aes-256-gcm')

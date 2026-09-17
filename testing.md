@@ -2,11 +2,11 @@
 
 ## Overview
 
-Tests use **Vitest** with real database records (not mocks). We practice **BDD, not TDD** - focus expectations on outcomes, not implementation. For code added independently of a generator, always write a failing spec first, then implement. Generated code is the only exception (generators create scaffolding for specs and implementation simultaneously).
+Specs use **Vitest** with real database records (not mocks). We practice **BDD, not TDD** - focus expectations on outcomes, not implementation. For code added independently of a generator, always write a failing spec first, then implement. Generated code is the only exception (generators create scaffolding for specs and implementation simultaneously).
 
 ### Every bug is a missing spec
 
-The prevalent practice is to ship the fix and add a test afterwards, if at all. Psychic rejects it: the bug is itself evidence that an automated test was missing, and the harness — a `cleanTestDb` `beforeEach`, per-worker test databases, a generated factory for every model — exists precisely so that writing the missing spec first costs almost nothing. This is the operational corollary to [SKILL.md Rule #9](SKILL.md) (BDD approach) for bugs discovered after the fact. When you discover a bug — in QA, in production logs, during an audit, by hand-testing a flow — **write the regression spec before committing the fix.**
+The prevalent practice is to ship the fix and add a spec afterwards, if at all. Psychic rejects it: the bug is itself evidence that an automated spec was missing, and the harness — a `cleanTestDb` `beforeEach`, per-worker test databases, a generated factory for every model — exists precisely so that writing the missing spec first costs almost nothing. This is the operational corollary to [SKILL.md Rule #9](SKILL.md) (BDD approach) for bugs discovered after the fact. When you discover a bug — in QA, in production logs, during an audit, by hand-testing a flow — **write the regression spec before committing the fix.**
 
 This applies even when:
 
@@ -27,7 +27,7 @@ The discipline is: spec **before** committing the fix, not "later." Once the fix
 ## Test Types
 
 - **Unit specs**: Model logic, controller responses (`spec/unit/`)
-- **Feature specs**: End-to-end browser tests (`spec/features/`)
+- **Feature specs**: End-to-end browser specs (`spec/features/`)
 - **Factories**: Test data creation (`spec/factories/`)
 
 ## Running Tests
@@ -161,7 +161,7 @@ When a model's AfterCreate hook creates side-effect records that aren't a single
 
 ```typescript
 // PlaceFactory — bypasses the AfterCreate hook that auto-seeds rooms.
-// Tests that want to verify the auto-seed flow should call Place.create() directly.
+// Specs that want to verify the auto-seed flow should call Place.create() directly.
 export default async function createPlace(attrs: UpdateableProperties<Place> = {}) {
   return await Place.create(
     {
@@ -174,9 +174,9 @@ export default async function createPlace(attrs: UpdateableProperties<Place> = {
 }
 ```
 
-**Why:** if the factory fires the hook, every spec that creates a Place gets the auto-seeded rooms. Index queries, count assertions, and isolation tests break in confusing ways. The factory's job is to provide a minimal valid record; tests that need the full hook flow can call `Model.create()` directly without `skipHooks`.
+**Why:** if the factory fires the hook, every spec that creates a Place gets the auto-seeded rooms. Index queries, count assertions, and isolation specs break in confusing ways. The factory's job is to provide a minimal valid record; specs that need the full hook flow can call `Model.create()` directly without `skipHooks`.
 
-**Test the hook itself in the model spec.** Have explicit tests for both paths:
+**Test the hook itself in the model spec.** Have explicit specs for both paths:
 
 ```typescript
 it('auto-seeds default rooms', async () => {
@@ -515,7 +515,7 @@ Feature specs use assertion-style matchers from `@rvoh/psychic-spec-helpers` on 
 
 ### Action Matchers
 
-These attempt an action and fail the test if the target element isn't found:
+These attempt an action and fail the spec if the target element isn't found:
 
 ```typescript
 await expect(page).toClick('Submit')              // Click element with text
@@ -689,7 +689,7 @@ The derived getters (`AppEnv.isTest`, `.nodeEnv`, `.serviceRole`) have no setter
 ## Background Worker Testing
 
 ```typescript
-// Default: Jobs execute immediately in tests (testInvocation = 'automatic')
+// Default: Jobs execute immediately in specs (testInvocation = 'automatic')
 await EmailService.background('sendWelcome', user.id)
 // Method runs synchronously
 
@@ -706,9 +706,9 @@ await WorkerTestUtils.clean()                           // Clear queues
 
 ### A job that throws fails the enqueuing request in tests, but not in prod
 
-Under the default `automatic` invocation, a backgrounded method runs inline and **awaited** inside the call that enqueued it — the framework short-circuits the queue and calls the method directly, with no surrounding try/catch. So if the job throws, the error propagates back through `.background(...)` to the caller. A controller action that backgrounds a job and awaits it therefore returns **500 in tests** when the job throws.
+Under the default `automatic` invocation, a backgrounded method runs inline and **awaited** inside the call that enqueued it — the framework short-circuits the queue and calls the method directly, with no surrounding try/catch. So if the job throws, the error propagates back through `.background(...)` to the caller. A controller action that backgrounds a job and awaits it therefore returns **500 in specs** when the job throws.
 
-In production the same job runs on a separate BullMQ worker. A throw there is retried per the queue's `defaultJobOptions` (set in `conf/initializers/workers.ts`) and lands in `failed` only once attempts are exhausted — none of it touching the HTTP response that was already returned. The "fire-and-forget" mental model — `await this.background(...)` returns once queued, the job's success or failure is independent of the request — holds in prod but **not** in tests.
+In production the same job runs on a separate BullMQ worker. A throw there is retried per the queue's `defaultJobOptions` (set in `conf/initializers/workers.ts`) and lands in `failed` only once attempts are exhausted — none of it touching the HTTP response that was already returned. The "fire-and-forget" mental model — `await this.background(...)` returns once queued, the job's success or failure is independent of the request — holds in prod but **not** in specs.
 
 Two practical consequences:
 
@@ -746,7 +746,7 @@ describe('Host creates a Place', () => {
 
 ### The API server runs in-process — stub the backend boundary directly
 
-Feature specs start the `PsychicServer` inside the same Vitest worker as the test (the generated `spec/features/setup/hooks.ts` calls `server.start(...)` in `beforeAll`, then launches the browser). The browser talks to that server over `localhost:<port>`, but the server runs the *same module instances* the spec can see. So `vi.spyOn(SomeService, 'method')` on backend modules intercepts server-side code that runs while the browser drives the front end — exactly as in a unit or controller spec. There's no separate process and no IPC barrier. `vi.mock` is the exception: the setup file's static import of the app config pulls in `conf/routes.ts` and every controller a route file names as an argument (`r.get('/places', PlacesController, 'show')`), loading them before a spec's mock registry exists — so the mock is silently ignored and you spy on the runtime object instead. A controller only the boot-time loader reaches loads later and does get mocked, which is why the same `vi.mock` can be live on one route namespace and inert on another.
+Feature specs start the `PsychicServer` inside the same Vitest worker as the spec (the generated `spec/features/setup/hooks.ts` calls `server.start(...)` in `beforeAll`, then launches the browser). The browser talks to that server over `localhost:<port>`, but the server runs the *same module instances* the spec can see. So `vi.spyOn(SomeService, 'method')` on backend modules intercepts server-side code that runs while the browser drives the front end — exactly as in a unit or controller spec. There's no separate process and no IPC barrier. `vi.mock` is the exception: the setup file's static import of the app config pulls in `conf/routes.ts` and every controller a route file names as an argument (`r.get('/places', PlacesController, 'show')`), loading them before a spec's mock registry exists — so the mock is silently ignored and you spy on the runtime object instead. A controller only the boot-time loader reaches loads later and does get mocked, which is why the same `vi.mock` can be live on one route namespace and inert on another.
 
 This matters because a common (wrong) assumption is "a feature spec runs a real server I can't reach into, so I must use a live API key or record HTTP." Not so. To make a feature spec deterministic and offline, stub the backend boundary — an external API gateway, the clock, a third-party client — with `vi.spyOn` in the feature spec, the same way you would anywhere else. Reserve HTTP recording (Polly) for cases where you genuinely want to exercise the real client code path.
 

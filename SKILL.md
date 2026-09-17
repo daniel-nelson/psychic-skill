@@ -36,7 +36,7 @@ All CLI commands in this document are run via the local project's package manage
 2. **Detect the project's package manager before running any command; `pnpm` in this skill is a stand-in.** Every command example here is written `pnpm psy ...`, but `pnpm` means *whatever package manager the project uses*. Determine it before running anything and substitute: check `package.json`'s `"packageManager"` field if present (authoritative), otherwise the lockfile — `pnpm-lock.yaml` → `pnpm psy ...`, `yarn.lock` → `yarn psy ...`, `package-lock.json` → `npm run psy ...`, `bun.lock`/`bun.lockb` → `bun run psy ...`. `npm` and `bun` need the `run` verb (`npm run psy`, `bun run psy`); `pnpm` and `yarn` invoke the binary directly. Running `pnpm` literally in a non-pnpm project resolves against the wrong lockfile and tends to fail quietly rather than loudly — verify the package manager first, every time.
 3. **ALWAYS run `pnpm psy <command> --help`** before using any generator - never guess syntax. Argument formats vary between commands and between versions, so remembered syntax is syntax for some other version.
 4. **NEVER use JavaScript `Date`** - always use `DateTime`, `CalendarDate`, `ClockTime`, or `ClockTimeTz` from `@rvoh/dream` (timestamp / date / time-without-tz / time-with-tz respectively). These are what `castParam`/`extractParams` return and what the DB hydrates, so a JS `Date` is never what flows through the system. See [models.md — Date/Time](models.md#datetime).
-5. **NEVER stub or mock Dream internals** in tests - use factories to create real model instances. A stub returns what you wrote it to return, so the spec proves the stub rather than the query.
+5. **NEVER stub or mock Dream internals** in specs - use factories to create real model instances. A stub returns what you wrote it to return, so the spec proves the stub rather than the query.
 6. **NEVER modify an existing migration file that has already been merged into main.** Machines that already recorded it as applied skip it, so the edit reaches only databases built afterwards and schemas silently diverge - express the change as a new migration.
 7. **A generator must always be used** when creating new models, controllers, or migrations.
 8. **Sources of truth** (priority order): TSDocs > `pnpm psy <command> --help` > psychic-skill.
@@ -184,8 +184,8 @@ api/
       db.ts             # Auto-generated Kysely database types
       dream.ts          # Auto-generated Dream type config
   spec/
-    unit/               # Unit tests (models, controllers)
-    features/           # E2E tests
+    unit/               # Unit specs (models, controllers)
+    features/           # E2E specs
     factories/          # Test data factories
 ```
 
@@ -399,7 +399,7 @@ Psychic Websockets gives real-time push over Socket.IO with Redis pub/sub. Typed
 
 ## Testing
 
-Tests use Vitest against real database records — never mocks of Dream internals (Critical Rule 5). Unit specs cover models and controllers; feature specs cover end-to-end flows; factories build test data. Reach here whenever you add or change behavior.
+Specs use Vitest against real database records — never mocks of Dream internals (Critical Rule 5). Unit specs cover models and controllers; feature specs cover end-to-end flows; factories build test data. Reach here whenever you add or change behavior.
 
 - **Write the failing spec first** (Critical Rule 9), then implement. Generated scaffolding is the only exception.
 - **Every bug is a missing spec** — write the regression spec *before* committing the fix, even for a one-line "couldn't regress" change.
