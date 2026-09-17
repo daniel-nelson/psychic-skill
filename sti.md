@@ -42,6 +42,8 @@ pnpm psy db:migrate
 
 ### Step 2: Generate STI Children with `g:sti-child`
 
+Step 1 must happen before every invocation of step 2: `g:sti-child` writes a timestamp-named migration that `ALTER`s the parent's table, so generation order is migration order, and a child generated ahead of its parent sorts ahead of the `CREATE TABLE` it depends on.
+
 ```bash
 pnpm psy g:sti-child [options] <ChildPath> extends <ParentModel> [columns...]
 ```

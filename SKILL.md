@@ -42,7 +42,6 @@ All CLI commands in this document are run via the local project's package manage
 8. **Sources of truth** (priority order): TSDocs > `pnpm psy <command> --help` > psychic-skill.
 9. **BDD approach**: Write failing spec first, then implement. Generated code is the only exception (generators create scaffolding for specs and implementation simultaneously).
 10. **Run `pnpm psy sync`** after changing associations, serializers, OpenAPI decorators, or routes, and after adding a decorator that declares a virtual column (`@deco.Virtual()`, `@deco.Encrypted()`) — that sync is separate from the one a migration triggers, since the migration ran before the decorator existed, and without it `create()` / `update()` reject the virtual attribute at build time while every runtime spec passes.
-11. **Only use comments to explain "why", not "what"** - prefer expressive code over comments. TSDoc comments explaining "how" or "when" to use a function/method/class are welcome.
 12. **Use Dream's built-in utilities** (`@rvoh/dream/utils`) instead of lodash or hand-rolled equivalents. See [utils.md](utils.md) for the full list.
 13. **Read application config through `AppEnv` (`api/src/conf/AppEnv.ts`), never `process.env`.** `AppEnv` is typed by a union of the variable names the app declares, so `AppEnv.string('DB_HOST')` compiles only for a declared name; a `process.env` read is a variable the app never declared, which nothing types, lists, or lets a spec set. Variables present in only some environments use the `{ optional: true }` overload, which returns `string | undefined` instead of throwing: `const mapsApiKey = AppEnv.string('BEARBNB_MAPS_API_KEY', { optional: true })`. Never reach for `process.env` to avoid the throw. This governs *application config*; a dev-only launcher whose job is to *compose* the environment handed to spawned children is not that — reading `process.env` to spread it into a `spawn(..., { env })` child is correct there. See [deploying.md — Environment Variables](deploying.md#environment-variables).
 14. **NEVER add try/catch blocks unless handling a specific, expected error.** Dead programs tell no lies — an unhandled exception with a stack trace is far more useful than a program that silently swallows errors and continues with corrupted state. Psychic already converts common errors to appropriate HTTP responses automatically (e.g., `findOrFail` → 404, `castParam` → 400, validation failure → 400). If you must catch, handle only the specific error you expect and re-throw everything else. Never wrap large blocks of code in a catch-all try/catch. **Two rationalizations to reject explicitly:** (a) "I'm logging, not silently swallowing" — logging is for humans reading logs after the fact, not for machines deciding what to do next; if the caller is an HTTP handler, the user gets a 200 instead of a 500; if the caller is a BullMQ worker, the job is marked successful and never retried; a `console.error` line does not influence control flow. (b) "This is a small per-iteration catch, not a large block" — the size of the wrapped code is not the test; the test is whether the failure needs to propagate. A 3-line per-iteration catch inside a loop hides failures just as effectively as a 300-line function-wide catch.
@@ -96,29 +95,6 @@ All CLI commands in this document are run via the local project's package manage
 17. **Commit all auto-generated files** after `pnpm psy db:migrate` or `pnpm psy sync`. This includes files in `src/types/`, `src/openapi/`, and any configured sync output directories (e.g., `client/api/`, `admin/api/`). Don't cherry-pick which generated files to stage.
 18. **Application code logs through `PsychicApp`, never `console.log`.** Use `PsychicApp.log(message, ...meta)` for general output and `PsychicApp.logWithLevel(level, message, ...meta)` to set a specific level (`'debug' | 'info' | 'warn' | 'error'`). A Psychic app configures one logger (Winston by default) and these are its entry point; a `console.log` line never passes through it, so it sits outside the app's logging entirely. See [controllers.md "Logging"](controllers.md#logging). REPL / `pnpm console` sessions are exempt — interactive output to `stdout` is the point.
 19. **For Psychic surfaces that are thin wrappers over Koa, defer to upstream Koa docs.** When Psychic exposes a Koa-layer knob (e.g., `psy.set('json', { ... })` for `koa-bodyparser`, `psy.use(...)` for Koa middleware), the skill teaches the Psychic-specific shape — where the knob plugs in, what generators emit, what's Psychic-specific — and links to the upstream README for option shapes, defaults, and behavior. Don't restate upstream behavior in the skill; it competes with the authoritative source and goes stale. The same posture applies to thin wrappers over `ioredis`, `BullMQ`, `socket.io`, and `pg`.
-20. **Default optional parameters in the signature, not in the body.** Destructure an options bag with defaults right in the parameter list, so the defaults are visible at the call boundary and each option is declared exactly once. Don't accept a whole `options` object and then re-derive each value with `??` inside the body — that splits one parameter into two declarations, hides the defaults below the signature, and drifts out of sync as options are added.
-
-    ```typescript
-    // CORRECT — defaults live in the signature, applied once
-    export function quoteStayCents(
-      place: Place,
-      { nights = 1, includeCleaningFee = true }: { nights?: number; includeCleaningFee?: boolean } = {},
-    ) {
-      const base = place.nightlyRateCents * nights
-      return includeCleaningFee ? base + place.cleaningFeeCents : base
-    }
-
-    // WRONG — option bag passed through, then defaulted after the fact
-    export function quoteStayCents(
-      place: Place,
-      options: { nights?: number; includeCleaningFee?: boolean } = {},
-    ) {
-      const nights = options.nights ?? 1
-      const includeCleaningFee = options.includeCleaningFee ?? true
-      // ...
-    }
-    ```
-
 21. **NEVER hand-code OpenAPI schema for a shape Psychic can derive.** Before writing `requestBody.properties`, `responses[status].properties`, or `enum: SomeEnumValues`, stop and choose the derived path:
     - Model request bodies use `requestBody: { params: [...] }` / `{ including: [...] }`, even when the action must use `castParam` instead of `extractParams` for STI dispatch or custom validation. `params` is the OpenAPI request-body narrowing key. **These must be literal arrays mirroring the action's `extractParams` allowlist — never backfill them from the model's own `paramSafeColumns` or from `Model.columns()`, which dumps the model's entire writable column surface into the spec and re-creates the implicit include-all default. See [controllers.md](controllers.md#requestbody-shorthand--what-each-option-is-for).**
     - Model responses use `@OpenAPI(Model, { serializerKey })` and serializers.
@@ -141,11 +117,12 @@ If you are not already inside a Psychic project, use `create-psychic` to scaffol
 npx @rvoh/create-psychic new <app-name> [options]
 ```
 
-**Every option must be provided**, or `create-psychic` will enter interactive mode to prompt for unanswered questions. Boolean options can be negated with `--no-` (e.g., `--no-workers`).
+Every option left off the command line becomes an interactive prompt. Boolean options can be negated with `--no-` (e.g., `--no-workers`).
 
 | Option | Description |
 |--------|-------------|
-| `--package-manager <pm>` | `pnpm`, `yarn`, or `npm` |
+| `--runtime <runtime>` | `node` or `bun` — `bun` is its own package manager |
+| `--package-manager <pm>` | `pnpm`, `yarn`, or `npm`; read only under `--runtime node` |
 | `--primary-key-type <type>` | `uuid7`, `uuid4`, `bigint`, or `integer` |
 | `--workers` / `--no-workers` | Include or exclude background workers (`@rvoh/psychic-workers`) |
 | `--websockets` / `--no-websockets` | Include or exclude websockets (`@rvoh/psychic-websockets`) |
@@ -158,8 +135,10 @@ npx @rvoh/create-psychic new <app-name> [options]
 Example:
 
 ```bash
-npx @rvoh/create-psychic new my-app --package-manager pnpm --primary-key-type uuid7 --workers --no-websockets --client react --admin-client none --internal-client none --claude-psychic-skill --no-agents-psychic-skill
+npx @rvoh/create-psychic new my-app --runtime node --package-manager pnpm --primary-key-type uuid7 --workers --no-websockets --client react --admin-client none --internal-client none --claude-psychic-skill --no-agents-psychic-skill
 ```
+
+One question has no flag: whether to generate a GitHub Actions workflow. `create-psychic` always stops on that select prompt, so `new` cannot run unattended in a non-TTY shell no matter how many options you pass.
 
 ## Project Structure
 
@@ -171,7 +150,6 @@ api/
       controllers/      # Psychic controllers
       serializers/      # Response serializers (DreamSerializer / ObjectSerializer)
       services/         # Business logic, backgrounded services
-      view-models/      # Complex data transformation models
     conf/
       app.ts            # Psychic app config
       dream.ts          # Dream ORM config
@@ -247,7 +225,7 @@ A Psychic controller authenticates a request, pulls and validates params, does t
 - **The controller directory tree *is* the auth architecture, and auth only ever gets stricter downhill** — never introduce a looser authentication pattern deeper in a branch.
 - **A surface that loosens auth is its own top-level namespace, version nested inside** (`Visitor/V1/`, `Webhooks/V1/`, `Api/V1/`) — never `V1/Visitor/`. `V1/` is the authed client surface; `Admin/` and `Internal/` are separate top-level surfaces each with their own `AuthedController`.
 - **Generate controllers; never hand-roll them.** `g:resource` / `g:controller` build the namespace base-controller chain that shared auth lives on. For an intentionally unauthenticated surface, generate normally and then re-parent that namespace's base to `UnauthedController`.
-- **`extractParams` is an explicit, per-action allowlist**, always intersected with the model's param-safe set (its declared `paramSafeColumns`, or the default safe set otherwise). Foreign keys, polymorphic type fields, the STI `type`, the primary key, and timestamps are always stripped — pull those explicitly via `castParam`.
+- **`extractParams` is an explicit, per-action allowlist**, always intersected with the model's param-safe set (its declared `paramSafeColumns`, or the default safe set otherwise). Foreign keys, polymorphic type columns, the STI `type`, the primary key, and timestamps are always stripped — pull those explicitly via `castParam`.
 
 **Before you write an action, an `@OpenAPI` decorator, a `@BeforeAction`, or any param handling, read [controllers.md](controllers.md).** It owns the hierarchy/auth rules, the CRUD patterns, the full `castParam`/`extractParams`/`requestBody` contracts, response methods, cookie/session handling, and logging. Hand-writing a controller skips the namespace base chain where auth is enforced — the most expensive mistake to unwind in this layer.
 
