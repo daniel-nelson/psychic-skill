@@ -9,6 +9,7 @@
 ### Changed
 
 - **`SKILL.md`** — ecosystem baseline: `@rvoh/dream` 2.31.x, `@rvoh/psychic` 3.14.x.
+- **`workers.md`** — the debounce floor reads "at least 3 seconds" rather than spelling the numeral out.
 
 ## 0.90.0 — 2026-09-17
 
