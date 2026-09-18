@@ -217,7 +217,7 @@ await PhotoProcessingService.processOne(photoId)
 
 ## Never Rescue Exceptions Inside Backgrounded Services
 
-Inside any class extending `ApplicationBackgroundedService` or `ApplicationBackgroundedModel`, the bar for adding a `try/catch` is much higher than [Critical Rule 14](SKILL.md#critical-rules). The default is **no catch, ever**, and you need a named, justified reason to deviate.
+Inside any class extending `ApplicationBackgroundedService` or `ApplicationBackgroundedModel`, the bar for adding a `try/catch` is much higher than [Critical Rule 13](SKILL.md#critical-rules). The default is **no catch, ever**, and you need a named, justified reason to deviate.
 
 BullMQ relies on thrown exceptions to detect failure. A caught-and-not-rethrown error inside a backgrounded method causes the job to be marked successful, which means:
 

@@ -663,7 +663,7 @@ OpenAPI request validation may reject invalid model params before model validati
 2. **Don't stub Dream internals** - Never mock `.find()`, `.create()`, `.loaded()`, etc. ([Critical Rule 5](SKILL.md#critical-rules) carries why)
 3. **In controller specs, use factories to create real models** - Let controllers leverage real Dream queries (never mocked). If a spec'd service/view-model fetches or transforms the data, you may mock it, but ensure its own spec covers the full variety of cases
 4. **Test soft deletes by testing behavior** - Verify record is hidden (normal query) AND still present when scopes are removed
-5. **Stub the environment through `AppEnv`, not `vi.stubEnv`** - app config is read through `AppEnv` ([Critical Rule 13](SKILL.md#critical-rules)), whose setters are name-typed to the app's union and restored explicitly, where `vi.stubEnv` is untyped and, in the generated app's default configuration, never restored — see [Stubbing environment values in specs](#stubbing-environment-values-in-specs)
+5. **Stub the environment through `AppEnv`, not `vi.stubEnv`** - app config is read through `AppEnv` ([Critical Rule 12](SKILL.md#critical-rules)), whose setters are name-typed to the app's union and restored explicitly, where `vi.stubEnv` is untyped and, in the generated app's default configuration, never restored — see [Stubbing environment values in specs](#stubbing-environment-values-in-specs)
 
 ### Stubbing environment values in specs
 
