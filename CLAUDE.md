@@ -73,7 +73,7 @@ Run this before adding anything — a processed learning, a new section, an expa
    - An immediate TypeScript error at the call site — very low, and lower still because `pnpm build:spec` typechecks `spec/` too.
    - A lint error whose rule name states the problem — also very low, for the same reason. Example: a generated migration from `pnpm psy g:migration` can fail `no-unused-vars` on a stray `sql` import; the rule name names the defect and the fix is a one-line delete, so it doesn't need a skill entry any more than a TypeScript error at the call site would.
 2. **Discoverability elsewhere.** Would the agent hit this first in the TSDoc on the method or decorator they are already calling, in the error text, or in `pnpm psy <cmd> --help`? Go read those and quote what you find. A `@returns` line on the exact method being documented means the skill does not need to restate it. Overlap with the guides at `~/work/psychic-guides` is not part of this test: the guides are developer documentation a human browses, not something an agent reads mid-task, so overlap with them is no evidence an agent would discover the thing on its own.
-3. **Duplication.** Grep every `*.md` in this repo. Guidance stated twice competes with itself, and the second statement is usually the one that drifts.
+3. **Duplication.** Grep every `*.md` in this repo. Guidance stated twice competes with itself, and the second statement is usually the one that drifts. Prefer routing to the file that already owns a concept over restating it there.
 4. **Frequency.** Does a typical Psychic app hit this, or does it need an uncommon column type, a rare refactor, or a horizontally-scaled fleet?
 5. **Word cost.** Count the words. Would the same value survive at a third of the length? Usually yes.
 
@@ -84,7 +84,7 @@ A candidate that clears (1) and (2) earns its place. One that fails (2) does not
 Spawn one adversarial reviewer per file being changed, in parallel, and tell each one the facts are already verified so it spends its whole budget on the value question. Require of each verdict:
 
 - `KEEP AS IS` / `TRIM` / `CUT` / `REFRAME`, with word counts now and proposed.
-- Evidence bullets that **quote something concrete** — the error string, the TSDoc line, the guides passage, the existing skill line that already says it. A verdict without quotes is an opinion.
+- Evidence bullets that **quote something concrete** — the error string, the TSDoc line, the existing skill line that already says it. A verdict without quotes is an opinion.
 - The exact replacement markdown when trimming, in this repo's conventions.
 - The strongest argument against its own verdict.
 
@@ -109,7 +109,7 @@ Run them in order. Name the one that decided it when you report the call.
 1. **Is it already ruled on?** Check this file, `MAINTAINING.md`, the `CHANGELOG`, and previous plans before evaluating anything. Re-running the rubric on a settled question is how a settled question gets re-opened. Precedent closes a question, not a defect: a verified defect in existing guidance is evaluated on its merits, whoever settled that guidance and whenever they settled it.
 2. **Failure mode.** Silent wrong behavior or data corruption is the top band. An error message or TypeScript error that states the rule is the bottom band, and usually means cut. The rubric above owns this.
 3. **Discoverability.** Would the agent hit it first in TSDoc, the error text, or `--help`? Then it does not earn its place. The rubric above owns this, including what does not count as discoverability.
-4. **Duplication.** Grep every `*.md`, and prefer routing to the file that already owns a concept over restating it there. The rubric above owns this.
+4. **Duplication.** Grep every `*.md`. The rubric above owns this.
 5. **Token cost against effect.** The rubric above owns this; a change that is a net cut clears it trivially.
 6. **Does it contradict a neighbor?** A rewording that reads as retracting nearby guidance costs more than it fixes.
 

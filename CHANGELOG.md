@@ -4,7 +4,7 @@
 
 ### Added
 
-- **`workers.md`** — "Automatic Retry" names the case where a job runs a second time without having failed: if a worker's lock lapses, BullMQ re-delivers the job while the first execution may still be running, and it links BullMQ's stalled-jobs guide. It also bounds the response, because the case is rare and the reflex is expensive — guard against it only where repeating the side effect actually costs something. Every other path to a re-run the file describes starts with a throw, so a reader otherwise comes away believing a job runs again only when it fails.
+- **`workers.md`** — "Automatic Retry" names the case where a job runs a second time without having failed: if a worker's lock lapses, BullMQ re-delivers the job while the first execution may still be running, and it links BullMQ's stalled-jobs guide. It also bounds the response, because the case is rare and the reflex is expensive — guard against it only where repeating the side effect actually costs something. Every other path to a re-run that section describes starts with a throw, so a reader otherwise comes away believing a job runs again only when it fails.
 
 ### Changed
 
