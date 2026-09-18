@@ -106,7 +106,7 @@ You own skill craft here. The maintainer owns product judgment. Sorting a questi
 
 Run them in order. Name the one that decided it when you report the call.
 
-1. **Is it already ruled on?** Check this file, `MAINTAINING.md`, the `CHANGELOG`, and previous plans before evaluating anything. Re-running the rubric on a settled question is how a settled question gets re-opened. Precedent closes a question, not a defect: a verified defect in existing guidance is evaluated on its merits, whoever settled that guidance and whenever they settled it.
+1. **Is it already ruled on?** Check this file, `MAINTAINING.md`, and the `CHANGELOG` before evaluating anything. Re-running the rubric on a settled question is how a settled question gets re-opened. Precedent closes a question, not a defect: a verified defect in existing guidance is evaluated on its merits, whoever settled that guidance and whenever they settled it.
 2. **Failure mode.** Silent wrong behavior or data corruption is the top band. An error message or TypeScript error that states the rule is the bottom band, and usually means cut. The rubric above owns this.
 3. **Discoverability.** Would the agent hit it first in TSDoc, the error text, or `--help`? Then it does not earn its place. The rubric above owns this, including what does not count as discoverability.
 4. **Duplication.** Grep every `*.md`. The rubric above owns this.
