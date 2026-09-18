@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.91.0 — 2026-09-18
+
+### Added
+
+- **`models.md`** — the Transactions section now opens by saying when to reach for a transaction at all: only when a set of writes must land together or not at all. It previously described only how to start one.
+
+### Changed
+
+- **`SKILL.md`** — ecosystem baseline: `@rvoh/dream` 2.31.x, `@rvoh/psychic` 3.14.x.
+
 ## 0.90.0 — 2026-09-17
 
 ### Added
