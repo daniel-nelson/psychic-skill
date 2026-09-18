@@ -8,7 +8,7 @@
 
 ### Changed
 
-- **`workers.md`** — the fan-out section's note on an interrupted kickoff says that only the expanders already enqueued will run, and that a retried kickoff job re-plucks from the beginning. It no longer calls the individual jobs idempotent or credits the `find`/early-return pattern with making re-runs safe: that lookup covers a record that has been deleted, and `_processOne` does its real work after it, so a second delivery repeats that work whenever the record is still there.
+- **`workers.md`** — the fan-out section's note on an interrupted kickoff says that only the expanders already enqueued will run, and that a retried kickoff job re-plucks from the beginning. It no longer calls the individual jobs idempotent or credits the `find`/early-return pattern with making re-runs safe: that lookup covers a record that has been deleted, and `_processOne` does its real work after it, so a second delivery repeats that work whenever the record is still there. The bullet ends with the cheap remedy for a record whose work is expensive to repeat: stamp a datetime column as each one finishes and filter the kickoff's `pluckEach` query on it, so a re-pluck skips what is already done.
 
 ### Removed
 
