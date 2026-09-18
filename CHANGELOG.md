@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.92.0 — 2026-09-18
+
+### Changed
+
+- **`SKILL.md`** — the Reference Map now opens with a directive addressed to the reader: open the named file before writing code in its area, not after something breaks, and read the whole file; copying a neighboring file in the app is not research, because it cannot tell you a helper exists. The line it replaces described the list's format rather than instructing anyone, and it was the only routing text in the file written in the third person about itself. The file's other re-read trigger fires only after a failure — "If something is failing unexpectedly, re-read this skill before debugging" — so the map had no counterpart that fires before the work starts.
+- **`SKILL.md`** — the Reference Map moves above the Critical Rules. Truncation keeps the start of a skill body, and when this file last exceeded the per-skill cap the entire routing map was dropped while the rules survived. The map is the half that makes the other seventeen files reachable, so it now sits where a cut reaches it last. Token-neutral; no rule number, heading, or anchor moves.
+
 ## 0.91.0 — 2026-09-18
 
 ### Added

@@ -31,6 +31,28 @@ All CLI commands run through the project's package manager. Examples here are wr
 
 **Ecosystem versions & staleness policy.** Written against `@rvoh/dream` 2.31.x, `@rvoh/psychic` 3.14.x, `@rvoh/psychic-workers` 2.7.x, `@rvoh/psychic-websockets` 3.5.x, `@rvoh/psychic-spec-helpers` 3.4.x. **Stay current:** when something here fails — an unrecognized generator flag, malformed shorthand, a missing API — update the out-of-date `@rvoh/*` packages rather than working around the skill. No feature is annotated with the version it landed in: assume current, upgrade if reality disagrees. A scoped `pnpm up -L "@rvoh/*"` leaves peers behind, so resolve every peer requirement it introduces (`kysely`, `kysely-codegen`).
 
+## Reference Map
+
+**Open the named file before you write code in its area — not after something breaks. Read the whole file.** Copying a neighboring file in the app is not research: it cannot tell you a helper exists.
+
+- **[generators.md](generators.md)** — before any generator. Owns the decision tree, `g:resource`'s argument contract, `--owning-model`, the post-generate workflow.
+- **[models.md](models.md)** — before an association, hook, validation, transaction, or a new variant of an existing concept. Owns columns, decorators, associations, hooks, validations, scopes, batching, upserts, date/time, `.txn(txn)`.
+- **[querying.md](querying.md)** — when a query reaches past Dream's public API or returns unexpected rows. Owns the query inventory, predicates, ordering, association chaining, preloading, `toKysely`.
+- **[controllers.md](controllers.md)** — before an action, `@OpenAPI` decorator, `@BeforeAction`, or param handling. Owns hierarchy/auth, routes, CRUD, params, responses, error handling, cookies, logging.
+- **[serializers.md](serializers.md)** — before writing or changing a serializer. Owns the named-export function pattern, every method, flattening, `serializerKey`, passthrough, `preloadFor`, STI and `ObjectSerializer`.
+- **[migrations.md](migrations.md)** — before writing or editing a migration. Owns the column-type DSL, `DreamMigrationHelpers`, keys, indexes, polymorphic/STI/soft-delete columns, enums.
+- **[sti.md](sti.md)** — before generating an STI parent or child, writing an STI serializer, or building the create action. Owns the generation workflow, the base-serializer shape, check constraints, the controller `switch`.
+- **[soft-delete.md](soft-delete.md)** — before adding `@SoftDelete()`, querying soft-deleted rows, or a `dependent: 'destroy'` chain. Owns setup, the `restrict`-not-`cascade` FK rule, `undestroy`/`reallyDestroy`.
+- **[locking.md](locking.md)** — before a claim: a write whose new value depends on a value just read. Owns `{ lock: true }` and its forms, what a lock costs, why a table lock is not the next step up.
+- **[workers.md](workers.md)** — before a backgrounded service, a scheduled job, or a hook that enqueues work. Owns the service pattern, the `AfterCommit` requirement, ID-only arguments, priorities, workstreams, fan-out, retry.
+- **[websockets.md](websockets.md)** — before channels, connection auth, or emitting from a worker. Owns the `PsychicAppWebsockets` initializer, typed `Ws` channels, auth, the origin allowlist, worker emits.
+- **[openapi.md](openapi.md)** — documenting an endpoint or customizing the spec. Owns spec derivation, `psy.set('openapi', ...)`, typed clients, custom error responses.
+- **[testing.md](testing.md)** — before a factory, a model or controller spec, or a feature spec. Owns the factory pattern, `session(...)`, the matchers, spec organization, worker and feature specifics.
+- **[i18n.md](i18n.md)** — before translating anything. Owns code-driven labels via `I18nProvider` and `src/conf/locales/`, data-driven content via the polymorphic `LocalizedText` model, locale passthrough.
+- **[console.md](console.md)** — before inspecting data by hand or running a one-off script. Owns the `NODE_ENV` defaults every `psy` command inherits, the Dream console and its auto-imports, dev-database scripts.
+- **[deploying.md](deploying.md)** — deploying, configuring an environment, or debugging a container. Owns the runtime model, health checks, the `AppEnv` contract, TLS, read replicas, production migrations.
+- **[utils.md](utils.md)** — before reaching for lodash or hand-rolling a helper. Owns the `@rvoh/dream/utils` inventory: case conversion, array and object helpers, `range`, `isEmpty`, `cloneDeepSafe`, `sanitizeString`, `Encrypt`.
+
 ## Critical Rules
 
 **If something is failing unexpectedly, re-read this skill before debugging.** Most common errors — type mismatches, missing associations, validation failures, generator syntax, migrations — are already documented here with solutions.
@@ -88,28 +110,6 @@ All CLI commands run through the project's package manager. Examples here are wr
 
 22. **The controller directory tree IS the auth architecture; a surface that loosens auth is its own top-level namespace.** Authed client endpoints live under `V1/`; any surface that loosens auth — public/maybe-authed, webhooks, partner API — is its own top-level namespace with the version nested inside (`Visitor/V1/`, `Webhooks/V1/`, `Api/V1/`), never `V1/Visitor/`. `Admin/` and `Internal/` are separate top-level surfaces with their own `AuthedController`. Generate the surface, then reparent its top-level namespace base controller once. Auth is enforced by ancestry: the placement *is* the enforcement. Full rules: [controllers.md](controllers.md#controller-hierarchy).
 23. **Reach for the simplest shape that satisfies the requirement; escalate only on evidence you can point at.** Before choosing anything heavier than a plain `update`, a `findEach`, or a database constraint, name the concrete scenario that breaks the simple shape — a specific concurrent writer, a measured row count, an invariant the database cannot express. "A race is conceivable" and "this table might get large" are not that. A one-shot data correction goes wrong most often: it is a `findEach` calling `update` per row, or the `Query#update` callback form when the new value derives from the row. When a review finding is an artifact of complexity you introduced, remove the complexity instead of hardening it. See [locking.md](locking.md#most-writes-need-no-lock).
-
-## Reference Map
-
-Each line below says when to load a reference file; read the whole file.
-
-- **[generators.md](generators.md)** — before any generator. Owns the decision tree, `g:resource`'s argument contract, `--owning-model`, the post-generate workflow.
-- **[models.md](models.md)** — before an association, hook, validation, transaction, or a new variant of an existing concept. Owns columns, decorators, associations, hooks, validations, scopes, batching, upserts, date/time, `.txn(txn)`.
-- **[querying.md](querying.md)** — when a query reaches past Dream's public API or returns unexpected rows. Owns the query inventory, predicates, ordering, association chaining, preloading, `toKysely`.
-- **[controllers.md](controllers.md)** — before an action, `@OpenAPI` decorator, `@BeforeAction`, or param handling. Owns hierarchy/auth, routes, CRUD, params, responses, error handling, cookies, logging.
-- **[serializers.md](serializers.md)** — before writing or changing a serializer. Owns the named-export function pattern, every method, flattening, `serializerKey`, passthrough, `preloadFor`, STI and `ObjectSerializer`.
-- **[migrations.md](migrations.md)** — before writing or editing a migration. Owns the column-type DSL, `DreamMigrationHelpers`, keys, indexes, polymorphic/STI/soft-delete columns, enums.
-- **[sti.md](sti.md)** — before generating an STI parent or child, writing an STI serializer, or building the create action. Owns the generation workflow, the base-serializer shape, check constraints, the controller `switch`.
-- **[soft-delete.md](soft-delete.md)** — before adding `@SoftDelete()`, querying soft-deleted rows, or a `dependent: 'destroy'` chain. Owns setup, the `restrict`-not-`cascade` FK rule, `undestroy`/`reallyDestroy`.
-- **[locking.md](locking.md)** — before a claim: a write whose new value depends on a value just read. Owns `{ lock: true }` and its forms, what a lock costs, why a table lock is not the next step up.
-- **[workers.md](workers.md)** — before a backgrounded service, a scheduled job, or a hook that enqueues work. Owns the service pattern, the `AfterCommit` requirement, ID-only arguments, priorities, workstreams, fan-out, retry.
-- **[websockets.md](websockets.md)** — before channels, connection auth, or emitting from a worker. Owns the `PsychicAppWebsockets` initializer, typed `Ws` channels, auth, the origin allowlist, worker emits.
-- **[openapi.md](openapi.md)** — documenting an endpoint or customizing the spec. Owns spec derivation, `psy.set('openapi', ...)`, typed clients, custom error responses.
-- **[testing.md](testing.md)** — before a factory, a model or controller spec, or a feature spec. Owns the factory pattern, `session(...)`, the matchers, spec organization, worker and feature specifics.
-- **[i18n.md](i18n.md)** — before translating anything. Owns code-driven labels via `I18nProvider` and `src/conf/locales/`, data-driven content via the polymorphic `LocalizedText` model, locale passthrough.
-- **[console.md](console.md)** — before inspecting data by hand or running a one-off script. Owns the `NODE_ENV` defaults every `psy` command inherits, the Dream console and its auto-imports, dev-database scripts.
-- **[deploying.md](deploying.md)** — deploying, configuring an environment, or debugging a container. Owns the runtime model, health checks, the `AppEnv` contract, TLS, read replicas, production migrations.
-- **[utils.md](utils.md)** — before reaching for lodash or hand-rolling a helper. Owns the `@rvoh/dream/utils` inventory: case conversion, array and object helpers, `range`, `isEmpty`, `cloneDeepSafe`, `sanitizeString`, `Encrypt`.
 
 ## Project Structure and Commands
 
