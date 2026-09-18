@@ -124,7 +124,7 @@ lines forces a token boundary at every newline and overstates the total.
 vocabulary; `tiktoken` cross-checks 5-6% lower. Treat the number as accurate to a few percent, and
 keep real headroom rather than shaving the cap.
 
-**Current state: `SKILL.md` is 4,931 tokens over 126 lines, with 69 tokens of headroom.** That
+**Current state: `SKILL.md` is 4,958 tokens over 126 lines, with 42 tokens of headroom.** That
 slack is tens of tokens, not hundreds. Any addition is measured with a real tokenizer *before* it
 is written, and anything added has to say where the room comes from.
 
@@ -318,7 +318,7 @@ There is no test suite, no lint config and no CI here. These are the checks, eac
 result, because a check with an undefined expected result is not verification.
 
 - **`wc -l SKILL.md`** — under 500. Currently 126.
-- **Token count of `SKILL.md`** — under 5,000, measured with the recipe above. Currently 4,931.
+- **Token count of `SKILL.md`** — under 5,000, measured with the recipe above. Currently 4,958.
 - **Every reference file still linked from `SKILL.md`**, all 17:
   `grep -o '](\([a-z0-9-]*\.md\)' SKILL.md | sed 's/](//' | sort -u`. The character class must
   include digits or `i18n.md` is missed.

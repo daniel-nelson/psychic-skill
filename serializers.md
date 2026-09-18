@@ -447,7 +447,7 @@ The action is then `@OpenAPI(PlaceWithNearbySerializer, { status: 200 })` over `
 
 ### Rendering an async-computed shape on the model
 
-`rendersOne` / `rendersMany` accept any declared property, not only associations, so a shape that must be computed asynchronously can be assigned in the controller and rendered as a field of the model itself. Prefer the compound envelope above; reach for this only when the computed shape has to sit *inside* the model's own object — typically when those models render as a collection, where an envelope cannot reach individual items. Either way, don't hand-write `openapi` for the nested shape ([Critical Rule 21](SKILL.md#critical-rules)).
+`rendersOne` / `rendersMany` accept any declared property, not only associations, so a shape that must be computed asynchronously can be assigned in the controller and rendered as a field of the model itself. Prefer the compound envelope above; reach for this only when the computed shape has to sit *inside* the model's own object — typically when those models render as a collection, where an envelope cannot reach individual items. Either way, don't hand-write `openapi` for the nested shape ([Critical Rule 19](SKILL.md#critical-rules)).
 
 ```typescript
 // Place.ts — a declared property, not a column (columns stay bare — see models.md)

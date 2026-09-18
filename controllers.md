@@ -1147,7 +1147,7 @@ repeatedly, and both are rejected:
 
 ### 409 from a database constraint
 
-Some invariants live only in the database — a unique index, or an `ON DELETE` action that blocks a delete. Turning one into a status is the narrow, specific catch [Critical Rule 14](SKILL.md#critical-rules) allows: `pgErrorType` maps a `pg.DatabaseError` to a string literal, so the match is on a constant rather than message text.
+Some invariants live only in the database — a unique index, or an `ON DELETE` action that blocks a delete. Turning one into a status is the narrow, specific catch [Critical Rule 13](SKILL.md#critical-rules) allows: `pgErrorType` maps a `pg.DatabaseError` to a string literal, so the match is on a constant rather than message text.
 
 ```typescript
 import { pgErrorType } from '@rvoh/dream/errors'
@@ -1392,7 +1392,7 @@ if (encrypted) {
 
 The `catch` exists to convert an untrusted-input failure into an auth decision **and emit the security signal** — not to swallow it. The original finding (R-019) was that silent-null *"conflates an attacker attempting forgery with this value never being set, and obscures bugs in app code — loses operationally important signal for incident logs."* A bare `catch { return unauthenticated }` reintroduces exactly that defect: it hides both forgery attempts and a broken key rotation.
 
-`DecryptionRotationError` is reachable only from the three-argument (current + legacy) form, and its safe default is to **rethrow**, not log-and-continue. A logged-and-swallowed rotation error still ships a broken rotation to production; a thrown one fails the first request at deploy time, which is exactly when a wrong legacy key or a prematurely-dropped legacy key must be caught. Downgrading it to log-at-error + unauthenticated is a deliberate, reversible posture you adopt *only after* a rotation has run cleanly in production for a prolonged window (so that genuinely expired ciphertext mid-rotation isn't a hard failure) — it is never the starting configuration. `DecryptionError` (single-key / no-rotation path) is the normal stale-or-forged-cookie case: log at `warn` and treat as unauthenticated. Never blanket-catch (see Critical Rule 14).
+`DecryptionRotationError` is reachable only from the three-argument (current + legacy) form, and its safe default is to **rethrow**, not log-and-continue. A logged-and-swallowed rotation error still ships a broken rotation to production; a thrown one fails the first request at deploy time, which is exactly when a wrong legacy key or a prematurely-dropped legacy key must be caught. Downgrading it to log-at-error + unauthenticated is a deliberate, reversible posture you adopt *only after* a rotation has run cleanly in production for a prolonged window (so that genuinely expired ciphertext mid-rotation isn't a hard failure) — it is never the starting configuration. `DecryptionError` (single-key / no-rotation path) is the normal stale-or-forged-cookie case: log at `warn` and treat as unauthenticated. Never blanket-catch (see Critical Rule 13).
 
 `Encrypt.decrypt` throws on failure rather than silently returning null, and the three errors export from `@rvoh/dream/errors` (not the `@rvoh/dream` root):
 
