@@ -685,6 +685,8 @@ This config is sent directly to BullMQ and can be customized in `conf/initialize
 
 **This is why using `find` instead of `findOrFail` matters in background jobs.** If a record has been deleted and the job uses `findOrFail`, the thrown error triggers 20 retries over 6 days — all of which will also fail, wasting resources. Using `find` and returning early when the record is `null` allows the job to exit cleanly.
 
+A job can also run twice without failing: if a worker's lock lapses, BullMQ re-delivers it while the first execution may still be running ([stalled jobs](https://docs.bullmq.io/guide/workers/stalled-jobs)). It is rare. Guard against it only where repeating the side effect actually costs something — most jobs are fine to repeat.
+
 ### App-Owned Retry Budgets
 
 There is no per-service retry budget — `backgroundJobConfig` carries `priority` and a routing key, nothing more. When one job's expected failure is worth retrying, but not twenty times over six days (an external service billed per attempt, say), the service owns the budget: the `_` implementation method takes a required `attempt` argument — the public entry method seeds it with `1` — catches its one expected error, and re-enqueues itself with the count incremented while it is under the threshold:
