@@ -289,10 +289,10 @@ Both reverse a plausible reading, so neither is re-litigated.
 
 **The guides are not a discoverability source for the agent using the skill.** In his words:
 "Agents won't know anything about the guides (or if they do, from training data, it is likely
-outdated and incorrect)." `CLAUDE.md`'s rubric point 2 names `~/work/psychic-guides` as something
-for the **skill author** to go read while evaluating a candidate, on a machine where that checkout
-exists. It is not a claim that an agent running in someone's Psychic app can reach them, and
-overlap with the guides is not by itself a reason to cut.
+outdated and incorrect)." `CLAUDE.md`'s rubric point 2 excludes overlap with the guides at
+`~/work/psychic-guides` from the discoverability test: they are developer documentation a human
+browses, not something an agent reads mid-task, so overlap with them is no evidence an agent would
+discover the thing on its own, and never by itself a reason to cut.
 
 **Opinionated practice is not generic advice.** In his words: "The Psychic framework is
 opinionated. This includes testing practices that I have seen many people and agents get 'wrong'
