@@ -1140,6 +1140,8 @@ Without a real unique index on the lookup attribute(s), `createOrFindBy`/`create
 
 Start a transaction with `ApplicationModel.transaction(async (txn) => { ... })`. If the callback throws, the entire transaction rolls back.
 
+Open one only when a set of writes must land together or not at all — a `Place` and the `Room`s created with it, a `Booking` and the row recording its payment. A single write never needs one, and neither does a set whose partial application the application can recover from.
+
 **Every model operation inside a transaction must be explicitly bound via `.txn(txn)`.** This includes creates, updates, destroys, queries, association operations — everything. If you forget `.txn(txn)`, the operation runs outside the transaction and won't roll back on failure.
 
 On a `@deco.Sortable` model the omission is worse than a lost rollback. A sortable write computes its position under a lock on its sort scope, so an unbound `room.destroy()` inside a transaction that is writing its `Place` opens a second transaction on another connection and waits on a lock the enclosing transaction is holding. Only one side is waiting, so Postgres's deadlock detector never sees it: the call hangs until `sortableScopeLockTimeout` expires, then throws `SortableScopeLockWaitTimedOut`. That error advises retrying; a retry cannot help here — add the missing `.txn(txn)`.
