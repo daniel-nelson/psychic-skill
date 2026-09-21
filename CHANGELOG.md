@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.93.0 — 2026-09-18
+
+### Added
+
+- **`workers.md`** — "Automatic Retry" names the case where a job runs a second time without having failed: if a worker's lock lapses, BullMQ re-delivers the job while the first execution may still be running, and it links BullMQ's stalled-jobs guide. It also bounds the response, because the case is rare and the reflex is expensive — guard against it only where repeating the side effect actually costs something. Every other path to a re-run that section describes starts with a throw, so a reader otherwise comes away believing a job runs again only when it fails.
+
+### Changed
+
+- **`workers.md`** — the fan-out section's note on an interrupted kickoff says that only the expanders already enqueued will run, and that a retried kickoff job re-plucks from the beginning. It no longer calls the individual jobs idempotent or credits the `find`/early-return pattern with making re-runs safe: that lookup covers a record that has been deleted, and `_processOne` does its real work after it, so a second delivery repeats that work whenever the record is still there. The bullet ends with the cheap remedy for a record whose work is expensive to repeat: stamp a datetime column as each one finishes and filter the kickoff's `pluckEach` query on it, so a re-pluck skips what is already done.
+
+### Removed
+
+- **`workers.md`** — the once-only prescription in "Debounce with jobId" — record a boolean or a `DateTime` column on the model, and return early when a later run finds it set. Two deliveries that overlap both read the marker unset, so the work runs twice anyway, and collapsing repeated work is not where a delivery guarantee gets answered. The section keeps what it is for: debounce runs the job at least once at or after the moment it was last scheduled, and when the timing rather than the collapsing is what matters, the shape is a scheduled job with a datetime check on the model.
+
 ## 0.92.0 — 2026-09-18
 
 ### Changed

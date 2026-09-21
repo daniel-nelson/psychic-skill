@@ -119,7 +119,7 @@ Debounce guarantees the job runs at least once, at or after the moment it was la
 
 The debounce delay must be at least 3 seconds; a shorter one throws.
 
-When the work must happen only once, record that it happened — a boolean or a `DateTime` column on the model — and return early when a later run finds it set. A job that fires while a new event re-arms the timer is not a problem under that pattern: the second run reads the flag and does nothing. If the timing itself is what matters rather than the collapsing, reach for a scheduled job with a datetime check on the model instead.
+If the timing itself is what matters rather than the collapsing, reach for a scheduled job with a datetime check on the model instead.
 
 ```typescript
 export default class IntercomSyncService extends ApplicationBackgroundedService {
@@ -334,7 +334,7 @@ Key points:
 - **Priorities create natural backpressure.** Expanders (`last`) yield to individual jobs (`not_urgent`), so the in-flight count of individual jobs never exceeds roughly `worker_count * concurrency * batch_size`. Priority orders worker slots; it does not throttle a running job's request rate. To bound pressure on an external service, put those jobs on a named workstream with a [`rateLimit`](#rate-limiting).
 - **The expander and individual-worker services must route to the same queue.** Priority is only meaningful within a single BullMQ queue: jobs in different queues have separate worker pools and never compete for the same slots, so putting expanders and individual jobs on different queues silently defeats the backpressure — each queue just drains independently, and you're back to unbounded fan-out.
 - **To isolate this fan-out to its own queue** (keeping it off the default queue entirely, e.g. so it can't crowd out unrelated default-queue work even at `not_urgent`/`last`), route both the expander and the individual-worker service to the same named `workstream`. The mapped priority is written to BullMQ's top-level `priority` on every job, grouped or not, so the expander/individual backpressure survives the isolation on open-source BullMQ and on Pro alike.
-- **If the kickoff is interrupted,** only the expanders already enqueued will run, and if the kickoff job itself is retried it will re-pluck from the beginning — but because each individual job is independent and idempotent (via the `find`/early-return pattern), re-runs are safe.
+- **If the kickoff is interrupted,** only the expanders already enqueued will run, and if the kickoff job itself is retried it will re-pluck from the beginning — so every ID already enqueued in a batch is enqueued again, and `_processOne` redoes that record's work when the record is still there. When repeating a record's work is expensive, stamp a datetime column on the record as each one finishes and filter the kickoff's `pluckEach` query on it, so a re-pluck skips what is already done.
 - **Individual jobs still follow the standard rule of passing IDs, not model instances.** Hydrate inside `_processOne`.
 
 ## Priority Levels
@@ -684,6 +684,8 @@ defaultBullMQQueueOptions: {
 This config is sent directly to BullMQ and can be customized in `conf/initializers/workers.ts`.
 
 **This is why using `find` instead of `findOrFail` matters in background jobs.** If a record has been deleted and the job uses `findOrFail`, the thrown error triggers 20 retries over 6 days — all of which will also fail, wasting resources. Using `find` and returning early when the record is `null` allows the job to exit cleanly.
+
+A job can also run twice without failing: if a worker's lock lapses, BullMQ re-delivers it while the first execution may still be running ([stalled jobs](https://docs.bullmq.io/guide/workers/stalled-jobs)). It is rare. Guard against it only where repeating the side effect actually costs something — most jobs are fine to repeat.
 
 ### App-Owned Retry Budgets
 
