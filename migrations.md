@@ -363,7 +363,7 @@ export async function up(db: Kysely<any>): Promise<void> {
 
 ## Raw Kysely Data Queries in Migrations
 
-A migration's `db` handle is the same Kysely instance Dream builds everywhere else, with `CamelCasePlugin` applied — so it works the same way here as it does anywhere else in a Dream app: write table and column identifiers in camelCase, and Kysely translates them to the real snake_case columns on the way out and camelCases every result key on the way back, unconditionally ([SKILL.md — Naming Conventions](SKILL.md#naming-conventions)). A migration is easy to get wrong here because the rest of the file — DDL, `DreamMigrationHelpers` calls — is written in snake_case, so a raw data query reads like it should be too:
+A migration's `db` handle is the same Kysely instance Dream builds everywhere else, with `CamelCasePlugin` applied — so it works the same way here as it does anywhere else in a Dream app: in the query builder, write table and column identifiers in camelCase and Kysely translates them to the real snake_case columns on the way out; it camelCases every result key on the way back, unconditionally ([SKILL.md — Naming Conventions](SKILL.md#naming-conventions)). A migration is easy to get wrong here because the rest of the file — DDL, `DreamMigrationHelpers` calls — is written in snake_case, so a builder query reads like it should be too:
 
 ```typescript
 export async function up(db: Kysely<any>): Promise<void> {
@@ -381,6 +381,8 @@ export async function up(db: Kysely<any>): Promise<void> {
   }
 }
 ```
+
+A `sql` tagged template is the one exception: its text reaches Postgres verbatim, so it names the real snake_case columns — but its rows still come back camelCased, and `sql<T>` checks nothing, so type it camelCase; a snake_case `T` compiles and every underscored key reads `undefined`.
 
 ## Foreign Keys
 
