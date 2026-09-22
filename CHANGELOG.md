@@ -5,7 +5,7 @@
 ### Added
 
 - **`controllers.md`** — "Error markers" shows how to send an object-shaped error body, not just a marker string. Export an `ObjectSerializer` for the body (the example is `BookingConflictSerializer`), declare the status on the action's `@OpenAPI` as `responses: { 409: { $serializer: BookingConflictSerializer } }`, and pass the serialized object to the error helper, `this.conflict(BookingConflictSerializer({ ... }))`. The helper renders it the same way `ok()` renders a body.
-- **`controllers.md`** — the automatic-error table adds a row for `save` / `update` on a loaded record whose row was deleted after it was loaded: Psychic returns 404 (`CannotSaveMissingDream`). The table's other 404 rows cover only `findOrFail` and `firstOrFail`.
+- **`controllers.md`** — the automatic-error table adds a row for a `save` / `update` that writes changes to a loaded record whose row was deleted after it was loaded: Psychic returns 404 (`CannotSaveMissingDream`). The table's other 404 rows cover only `findOrFail` and `firstOrFail`.
 
 ### Changed
 
