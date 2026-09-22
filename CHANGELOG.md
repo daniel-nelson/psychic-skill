@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.94.0 — 2026-09-21
+
+### Added
+
+- **`console.md`** — the Auto-imported Services table is followed by the rule that decides whether a global exists at all: the `Services…` global is the service file's default export, so a file with only named exports has no global, and a named export such as `nightlyRate` in `src/app/services/Booking/pricing.ts` is reached by importing the file, with a pointer to Manual Imports for the form. The table's own framing — a name "derived from the path" — otherwise reads as if every file under `src/app/services/` gets a global.
+- **`deploying.md`** — the process-role table's **console / migrator** row lists the Dream console's own entrypoint, `node ./dist/src/conf/repl.js`, beside `node ./dist/src/conf/system/cli.js db:migrate`, so the row named "console" carries a console command in the direct `node ./dist/...` form the file requires of production containers.
+
+### Changed
+
+- **`console.md`** — "Manual Imports" states the dynamic-import path base as `api/`, which is what a `./src/...` path resolves from; names the `./dist/src/...` form for the compiled console launched with `pnpm console:js`; and routes to `deploying.md`'s Runtime Model for the entrypoint rather than repeating it. Its one example is a named-export import, `const { nightlyRate } = await import('./src/app/services/Booking/pricing.js')`. The `.default` import of a service file is gone: a default-exporting service file is exactly what the loader already binds to a `Services…` global, so it was never a case for a manual import.
+- **`SKILL.md`** — ecosystem baseline: `@rvoh/dream` 2.32.x.
+
 ## 0.93.0 — 2026-09-18
 
 ### Added
