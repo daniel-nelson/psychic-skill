@@ -43,6 +43,8 @@ Models are available by their class name, derived from the file path relative to
 | `src/app/models/Client/Contract.ts` | `ClientContract` |
 | `src/app/models/Client/Contract/Invoice.ts` | `ClientContractInvoice` |
 
+Only Dream model classes that have a table become globals. `ApplicationModel` has no table and so no global, and neither does any other kind of default export under `src/app/models/`.
+
 ### Auto-imported Services
 
 Services are prefixed with `Services`, derived from the path relative to `src/app/services/`:
@@ -52,7 +54,7 @@ Services are prefixed with `Services`, derived from the path relative to `src/ap
 | `src/app/services/NotificationService.ts` | `ServicesNotificationService` |
 | `src/app/services/Host/OnboardingService.ts` | `ServicesHostOnboardingService` |
 
-The only automatic imports from `src/app/models/` and `src/app/services/` are default-exported classes. A default-exported function such as `nightlyRate` in `src/app/services/Booking/pricing.ts`, a named export, or a file elsewhere is imported by hand (see Manual Imports).
+Every file under `src/app/services/` contributes its default export as a `Services`-prefixed global, whatever that export is — a class, or a function such as `nightlyRate` in `src/app/services/Booking/pricing.ts`. A file with only named exports claims its name but leaves it `undefined`. Named exports, and files outside these two directories, are imported by hand (see Manual Imports).
 
 ### Auto-imported Utilities
 
@@ -63,10 +65,10 @@ Dream utilities are available globally:
 
 ### Manual Imports
 
-For anything not auto-imported — a default-exported function, a named export, a file elsewhere — use dynamic import with a path from `api/`. Bind with `let`, not `const`: a `const` cannot be reassigned in the REPL after a mistake, a `let` can.
+For anything not auto-imported — a named export, or a file outside `src/app/models/` and `src/app/services/` — use dynamic import with a path from `api/`. Bind with `let`, not `const`: a `const` cannot be reassigned in the REPL after a mistake, a `let` can.
 
 ```js
-let { default: nightlyRate } = await import('./src/app/services/Booking/pricing.js')
+let { PlaceSerializer } = await import('./src/app/serializers/PlaceSerializer.js')
 let { cleaningFee, formatNightly } = await import('./src/app/services/Booking/fees.js')
 ```
 
