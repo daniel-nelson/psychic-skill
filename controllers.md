@@ -1145,7 +1145,7 @@ Psychic automatically converts certain errors to HTTP responses:
 | Model validation fails | 400 | `isInvalid` with errors |
 | `findOrFail` no match | 404 | Record not found |
 | `firstOrFail` no match | 404 | Record not found |
-| `save` / `update` that writes changes to a loaded record | 404 | Row deleted since it was loaded (`CannotSaveMissingDream`) |
+| `save` / `update` that writes changes to a loaded record | 404 | Row deleted after it was loaded (`CannotSaveMissingDream`) |
 
 All validation-layer errors return 400 by design — this prevents attackers from distinguishing which layer rejected a request. Psychic's automatic conversions return a bare 400 with no body for param, requestBody, and model validation failures, so the response is opaque about which layer rejected.
 
