@@ -820,6 +820,33 @@ public async update() { /* ... this.forbidden('not_your_place') ... */ }
 
 Caveat, stated plainly: declaring the response only changes the spec and the generated types. It does not change runtime behavior and does not enforce the enum. You still write the `forbidden('not_your_place')` throw yourself and keep the thrown value in sync with the declared `enum` by hand — Psychic will not flag drift between them. A declared status replaces the default `$ref` for that one operation; the other default responses remain.
 
+**Object-shaped error bodies.** When the body is an object rather than a marker string, give it an exported [ObjectSerializer](serializers.md#objectserializer-for-non-dream-objects), declare the status with `$serializer`, and pass the serializer to the helper. It is rendered the same way an `ok()` body is:
+
+```typescript
+// app/serializers/BookingConflictSerializer.ts
+export const BookingConflictSerializer = (
+  conflict: { overlappingBookingId: string; startsOn: CalendarDate; endsOn: CalendarDate },
+) =>
+  ObjectSerializer(conflict)
+    .attribute('overlappingBookingId', { openapi: 'string' })
+    .attribute('startsOn', { openapi: 'date' })
+    .attribute('endsOn', { openapi: 'date' })
+
+// BookingsController
+@OpenAPI(Booking, {
+  status: 201,
+  responses: {
+    409: { $serializer: BookingConflictSerializer },
+  },
+})
+public async create() {
+  // ...
+  if (overlapping) {
+    this.conflict(BookingConflictSerializer({ overlappingBookingId: overlapping.id, startsOn, endsOn }))
+  }
+}
+```
+
 **Scope rule — where the typed response lives depends on where the cause is raised:**
 
 - An *action-specific* cause (e.g. `not_your_place`, raised only inside that one Place action) → put the typed `responses` override on that action's `@OpenAPI`, as above. It applies to that operation alone, which is correct.
