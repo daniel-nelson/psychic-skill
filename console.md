@@ -25,6 +25,8 @@ NODE_ENV=development pnpm console
 
 **The console command is `pnpm console`, not `pnpm psy console`.** The `psy` CLI is for generators, migrations, sync, and `db:reset`. The console is a separate top-level script in `api/package.json` alongside `pnpm web:dev` and `pnpm uspec`. If you see `error: unknown command 'console'`, you've prefixed `psy` by mistake — drop it.
 
+`pnpm console` runs the source tree (`tsx ./src/conf/repl.ts`), so a hand-typed import path is `./src/...`. The compiled console — `pnpm console:js`, i.e. `node ./dist/src/conf/repl.js`, the form a production container runs (entrypoint under [deploying.md](deploying.md#runtime-model)) — runs the built tree, where the same path is `./dist/src/...`. Examples below show `./src/...`.
+
 Wait for the console to fully load before using auto-imported names. The console does NOT live-reload — exit and re-launch after code changes.
 
 ### Exiting
@@ -41,6 +43,8 @@ Models are available by their class name, derived from the file path relative to
 | `src/app/models/Client/Contract.ts` | `ClientContract` |
 | `src/app/models/Client/Contract/Invoice.ts` | `ClientContractInvoice` |
 
+Only Dream model classes that have a table become globals. `ApplicationModel` has no table and so no global, and neither does any other kind of default export under `src/app/models/`.
+
 ### Auto-imported Services
 
 Services are prefixed with `Services`, derived from the path relative to `src/app/services/`:
@@ -49,6 +53,8 @@ Services are prefixed with `Services`, derived from the path relative to `src/ap
 |---|---|
 | `src/app/services/NotificationService.ts` | `ServicesNotificationService` |
 | `src/app/services/Host/OnboardingService.ts` | `ServicesHostOnboardingService` |
+
+Every file under `src/app/services/` contributes its default export as a `Services`-prefixed global, whatever that export is — a class, or a function such as `nightlyRate` in `src/app/services/Booking/pricing.ts`. A file with only named exports claims its name but leaves it `undefined`. Named exports, and files outside these two directories, are imported by hand (see Manual Imports).
 
 ### Auto-imported Utilities
 
@@ -59,24 +65,25 @@ Dream utilities are available globally:
 
 ### Manual Imports
 
-For code not auto-imported, use dynamic import with path relative to `src/`:
+For anything not auto-imported — a named export, or a file outside `src/app/models/` and `src/app/services/` — use dynamic import with a path from `api/`. Bind with `let`, not `const`: a `const` cannot be reassigned in the REPL after a mistake, a `let` can.
 
 ```js
-const helpers = (await import('./src/app/services/Host/pricingHelpers.js')).default
+let { PlaceSerializer } = await import('./src/app/serializers/PlaceSerializer.js')
+let { cleaningFee, formatNightly } = await import('./src/app/services/Booking/fees.js')
 ```
 
 ### Example Queries
 
 ```js
 await Place.count()
-const place = await Place.find('some-uuid')
-const place = await Place.preload('rooms').preload('hosts').first()
-const rooms = await place.associationQuery('rooms').all()
+let place = await Place.find('some-uuid')
+place = await Place.preload('rooms').preload('hosts').first()
+let rooms = await place.associationQuery('rooms').all()
 ```
 
 ## Non-interactive console use from an agent
 
-**`pnpm console` is interactive — designed for a human at a terminal who launches it, waits for full boot, then types or pastes queries.** Piping commands into stdin races the boot: the REPL begins reading before auto-imports finish, each newline is a separate evaluation (so `const x = ...` on line 1 isn't visible to line 2), and `process.exit(0)` can fire before async work resolves. Treat piping as unreliable, not as a documented option.
+**`pnpm console` is interactive — designed for a human at a terminal who launches it, waits for full boot, then types or pastes queries.** Piping commands into stdin races the boot: the REPL begins reading before auto-imports finish, each newline is a separate evaluation (so `let x = ...` on line 1 isn't visible to line 2), and `process.exit(0)` can fire before async work resolves. Treat piping as unreliable, not as a documented option.
 
 For non-interactive work from an agent, the answer is a **scratch script** using the boilerplate in "Running Scripts Against the Development Database" below. The boilerplate handles Psychic's load-bearing init order; do not hand-roll an alternative.
 

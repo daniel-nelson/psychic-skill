@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.94.0 — 2026-09-21
+
+### Added
+
+- **`console.md`** — "Launching" states, once, which tree each console runs: `pnpm console` runs the source tree, so a hand-typed import path is `./src/...`; the compiled console (`pnpm console:js`, i.e. `node ./dist/src/conf/repl.js`, the form a production container runs) runs the built tree, where the same path is `./dist/src/...`, with a pointer to `deploying.md`'s Runtime Model for the entrypoint. Every example in the file shows the `./src/...` form and relies on that one rule. Each auto-import table is followed by the boundary of that auto-import. Under `src/app/models/`, only Dream model classes that have a table become globals, so `ApplicationModel` gets none and neither does any other kind of default export. Under `src/app/services/`, every file contributes its default export as a `Services`-prefixed global whatever that export is — a class, or a function such as `nightlyRate` in `src/app/services/Booking/pricing.ts` — while a file with only named exports claims its name but leaves it `undefined`. Named exports, and files outside those two directories, are imported by hand, with a pointer to Manual Imports for the form.
+- **`deploying.md`** — the process-role table's **console / migrator** row lists the Dream console's own entrypoint, `node ./dist/src/conf/repl.js`, beside `node ./dist/src/conf/system/cli.js db:migrate`, so the row named "console" carries a console command in the direct `node ./dist/...` form the file requires of production containers.
+- **`migrations.md`** — "Raw Kysely Data Queries in Migrations" covers the `sql` tagged template as well as the query builder: the template's SQL text reaches Postgres verbatim, so it names the real snake_case columns, while its rows still come back with camelCased keys — and `sql<T>` checks nothing, so a snake_case `T` compiles and every underscored key reads `undefined`. The rule is snake_case in the SQL and camelCase in `T`, and the section's camelCase-identifier instruction now names the query builder as its scope.
+
+### Changed
+
+- **`console.md`** — "Manual Imports" states the dynamic-import path base as `api/`, which is what a `./src/...` path resolves from, and shows two imports in one block: a named export from a file outside the auto-imported directories, `let { PlaceSerializer } = await import('./src/app/serializers/PlaceSerializer.js')`, and named exports from a services file, `let { cleaningFee, formatNightly } = await import('./src/app/services/Booking/fees.js')`. Every REPL-typed example in the file binds with `let`, never `const` — a `const` binding cannot be reassigned in the REPL after a mistake — while the scratch-script boilerplate, a file, keeps `const`.
+- **`SKILL.md`** — ecosystem baseline: `@rvoh/dream` 2.32.x, `@rvoh/psychic` 3.15.x.
+
 ## 0.93.0 — 2026-09-18
 
 ### Added

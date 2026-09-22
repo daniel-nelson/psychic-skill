@@ -9,7 +9,7 @@ A Psychic application runs multiple process roles from a single built image. Eac
 | **web** | `node ./dist/src/main.js` | HTTP API server |
 | **websocket** | `node ./dist/src/ws.js` | WebSocket server (if using `@rvoh/psychic-websockets`) |
 | **worker** | `node ./dist/src/worker.js` | Background job processor (if using `@rvoh/psychic-workers`) |
-| **console / migrator** | `node ./dist/src/conf/system/cli.js db:migrate` | Database migrations and CLI tasks |
+| **console / migrator** | `node ./dist/src/conf/repl.js` · `node ./dist/src/conf/system/cli.js db:migrate` | Dream console · database migrations and CLI tasks |
 
 **Do not rely on `pnpm` (or any package manager runner) in production containers.** Use direct `node ./dist/...` commands in your deployment configuration (task definitions, Procfiles, Docker CMD, etc.).
 
