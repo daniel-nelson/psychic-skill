@@ -25,6 +25,8 @@ NODE_ENV=development pnpm console
 
 **The console command is `pnpm console`, not `pnpm psy console`.** The `psy` CLI is for generators, migrations, sync, and `db:reset`. The console is a separate top-level script in `api/package.json` alongside `pnpm web:dev` and `pnpm uspec`. If you see `error: unknown command 'console'`, you've prefixed `psy` by mistake — drop it.
 
+`pnpm console` runs the source tree (`tsx ./src/conf/repl.ts`), so a hand-typed import path is `./src/...`. The compiled console — `pnpm console:js`, i.e. `node ./dist/src/conf/repl.js`, the form a production container runs (entrypoint under [deploying.md](deploying.md#runtime-model)) — runs the built tree, where the same path is `./dist/src/...`. Examples below show `./src/...`.
+
 Wait for the console to fully load before using auto-imported names. The console does NOT live-reload — exit and re-launch after code changes.
 
 ### Exiting
@@ -50,7 +52,7 @@ Services are prefixed with `Services`, derived from the path relative to `src/ap
 | `src/app/services/NotificationService.ts` | `ServicesNotificationService` |
 | `src/app/services/Host/OnboardingService.ts` | `ServicesHostOnboardingService` |
 
-The global is the file's default export, so a file with only named exports has no global; reach `nightlyRate` from `src/app/services/Booking/pricing.ts` by importing the file (see Manual Imports).
+The only automatic imports from `src/app/models/` and `src/app/services/` are default-exported classes. A default-exported function such as `nightlyRate` in `src/app/services/Booking/pricing.ts`, a named export, or a file elsewhere is imported by hand (see Manual Imports).
 
 ### Auto-imported Utilities
 
@@ -61,24 +63,25 @@ Dream utilities are available globally:
 
 ### Manual Imports
 
-For anything not auto-imported — a named export, say — use dynamic import with a path from `api/`; in the compiled console (`pnpm console:js`) the path is `./dist/src/...` (entrypoint under [deploying.md](deploying.md#runtime-model)):
+For anything not auto-imported — a default-exported function, a named export, a file elsewhere — use dynamic import with a path from `api/`. Bind with `let`, not `const`: a `const` cannot be reassigned in the REPL after a mistake, a `let` can.
 
 ```js
-const { nightlyRate } = await import('./src/app/services/Booking/pricing.js')
+let { default: nightlyRate } = await import('./src/app/services/Booking/pricing.js')
+let { cleaningFee, formatNightly } = await import('./src/app/services/Booking/fees.js')
 ```
 
 ### Example Queries
 
 ```js
 await Place.count()
-const place = await Place.find('some-uuid')
-const place = await Place.preload('rooms').preload('hosts').first()
-const rooms = await place.associationQuery('rooms').all()
+let place = await Place.find('some-uuid')
+place = await Place.preload('rooms').preload('hosts').first()
+let rooms = await place.associationQuery('rooms').all()
 ```
 
 ## Non-interactive console use from an agent
 
-**`pnpm console` is interactive — designed for a human at a terminal who launches it, waits for full boot, then types or pastes queries.** Piping commands into stdin races the boot: the REPL begins reading before auto-imports finish, each newline is a separate evaluation (so `const x = ...` on line 1 isn't visible to line 2), and `process.exit(0)` can fire before async work resolves. Treat piping as unreliable, not as a documented option.
+**`pnpm console` is interactive — designed for a human at a terminal who launches it, waits for full boot, then types or pastes queries.** Piping commands into stdin races the boot: the REPL begins reading before auto-imports finish, each newline is a separate evaluation (so `let x = ...` on line 1 isn't visible to line 2), and `process.exit(0)` can fire before async work resolves. Treat piping as unreliable, not as a documented option.
 
 For non-interactive work from an agent, the answer is a **scratch script** using the boilerplate in "Running Scripts Against the Development Database" below. The boilerplate handles Psychic's load-bearing init order; do not hand-roll an alternative.
 
