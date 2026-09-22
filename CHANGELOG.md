@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.95.0 — 2026-09-22
+
+### Added
+
+- **`controllers.md`** — "Error markers" shows how to send an object-shaped error body, not just a marker string. Export an `ObjectSerializer` for the body (the example is `BookingConflictSerializer`), declare the status on the action's `@OpenAPI` as `responses: { 409: { $serializer: BookingConflictSerializer } }`, and pass the serialized object to the error helper, `this.conflict(BookingConflictSerializer({ ... }))`. The helper renders it the same way `ok()` renders a body.
+- **`controllers.md`** — the automatic-error table adds a row for `save` / `update` on a loaded record whose row was deleted after it was loaded: Psychic returns 404 (`CannotSaveMissingDream`). The table's other 404 rows cover only `findOrFail` and `firstOrFail`.
+
+### Changed
+
+- **`querying.md`** — "Escaping user input in LIKE / ILIKE patterns" teaches `ops.like.escape(term)`, imported through `ops` from `@rvoh/dream`. It escapes `\`, `%` and `_`, and it is the single escape helper for `like`, `ilike`, `not.like` and `not.ilike`.
+- **`SKILL.md`** — ecosystem baseline: `@rvoh/psychic` 3.15.1. This is the release in which error helpers render a serializer passed to them, which the object-shaped error body above depends on.
+
 ## 0.94.0 — 2026-09-21
 
 ### Added
