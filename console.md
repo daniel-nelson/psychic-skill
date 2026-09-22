@@ -50,6 +50,8 @@ Services are prefixed with `Services`, derived from the path relative to `src/ap
 | `src/app/services/NotificationService.ts` | `ServicesNotificationService` |
 | `src/app/services/Host/OnboardingService.ts` | `ServicesHostOnboardingService` |
 
+The global is the file's default export, so a file with only named exports has no global; reach `nightlyRate` from `src/app/services/Booking/pricing.ts` by importing the file (see Manual Imports).
+
 ### Auto-imported Utilities
 
 Dream utilities are available globally:
@@ -59,10 +61,10 @@ Dream utilities are available globally:
 
 ### Manual Imports
 
-For code not auto-imported, use dynamic import with path relative to `src/`:
+For anything not auto-imported — a named export, say — use dynamic import with a path from `api/`; in the compiled console (`pnpm console:js`) the path is `./dist/src/...` (entrypoint under [deploying.md](deploying.md#runtime-model)):
 
 ```js
-const helpers = (await import('./src/app/services/Host/pricingHelpers.js')).default
+const { nightlyRate } = await import('./src/app/services/Booking/pricing.js')
 ```
 
 ### Example Queries
