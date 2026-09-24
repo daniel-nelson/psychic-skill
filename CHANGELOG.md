@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.97.0 — 2026-09-24
+
+### Added
+
+- **`migrations.md`** — the Overview says that migrations `main` brings in may sort between a branch's own, and `pnpm psy db:migrate` still runs every pending one. It says never to rename a migration to reorder it: a database that already ran it, such as the user's dev DB or a deployed branch, keeps the old name recorded and fails `db:migrate` with `corrupted migrations`. The same paragraph says what that error means — the database recorded a migration whose file is missing, usually after switching branches — and that on the test DB the fix is `pnpm psy db:reset`.
+
+### Changed
+
+- **`SKILL.md`** — the Reference Map routes debugging a migration, not just writing or editing one, to `migrations.md`.
+- **`SKILL.md`** — the truncation-recovery line above the H1 names `## Naming Conventions`, the file's last heading.
+
+### Removed
+
+- **`SKILL.md`** — the Troubleshooting Migrations section. Its `corrupted migrations` guidance lives in `migrations.md`.
+
 ## 0.96.0 — 2026-09-24
 
 ### Added
