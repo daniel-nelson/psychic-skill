@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.96.0 — 2026-09-24
+
+### Added
+
+- **`models.md`** — the Transactions section names the cost that survives binding every write correctly: a sortable write holds the lock on its sort scope until the transaction commits, so a transaction writing `Room`s across many `Place`s holds one lock per place at once, and nothing releases them along the way. Advisory locks come from a table the whole Postgres cluster shares, so exhausting it fails other connections' transactions with `out of shared memory`, away from the code that caused it. The remedy is to narrow the transaction to the writes that must land together — a loop whose sortable writes span many `Place` scopes is not one of them — at the cost of atomicity across the loop, which leaves a re-run after a later iteration fails responsible for skipping what already committed. It also says never to unbind a write inside a transaction it did not open; the paragraph above it covers that opposite mistake, a write left unbound, whose fix is the reverse.
+
 ## 0.95.0 — 2026-09-22
 
 ### Added

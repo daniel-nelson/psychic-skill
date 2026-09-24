@@ -1146,6 +1146,8 @@ Open one only when a set of writes must land together or not at all — a `Place
 
 On a `@deco.Sortable` model the omission is worse than a lost rollback. A sortable write computes its position under a lock on its sort scope, so an unbound `room.destroy()` inside a transaction that is writing its `Place` opens a second transaction on another connection and waits on a lock the enclosing transaction is holding. Only one side is waiting, so Postgres's deadlock detector never sees it: the call hangs until `sortableScopeLockTimeout` expires, then throws `SortableScopeLockWaitTimedOut`. That error advises retrying; a retry cannot help here — add the missing `.txn(txn)`.
 
+Binding every write correctly leaves a second cost. A sortable write holds the lock on its sort scope until the transaction commits, and nothing releases them along the way, so a transaction that writes `Room`s across many `Place`s holds one lock per place at once. Advisory locks come from a table the whole Postgres cluster shares, so exhausting it fails other connections' transactions with `out of shared memory` — the symptom lands away from the code that caused it. Keep the transaction to the writes that must land together; a loop whose sortable writes span many `Place` scopes is not one of them, and atomicity across the loop is what narrowing it costs. A re-run after a later iteration fails must skip what already committed. Inside a transaction you did not open, every write still binds to that `txn` — breaking one out is the hang above.
+
 ```typescript
 await ApplicationModel.transaction(async (txn) => {
   const user = await User.txn(txn).create({ email: 'test@test.com' })
