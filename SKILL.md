@@ -16,7 +16,7 @@ user-invocable: false
 allowed-tools: Read, Grep, Glob, Bash, Edit, Write
 ---
 
-**If `## Troubleshooting Migrations` is missing below, this copy was truncated by compaction — re-read this skill's `SKILL.md` in full before acting on it.**
+**If `## Naming Conventions` is missing below, this copy was truncated by compaction — re-read this skill's `SKILL.md` in full before acting on it.**
 
 # Dream ORM & Psychic Web Framework Development Guide
 
@@ -40,7 +40,7 @@ All CLI commands run through the project's package manager. Examples here are wr
 - **[querying.md](querying.md)** — when a query reaches past Dream's public API or returns unexpected rows. Owns the query inventory, predicates, ordering, association chaining, preloading, `toKysely`.
 - **[controllers.md](controllers.md)** — before an action, `@OpenAPI` decorator, `@BeforeAction`, or param handling. Owns hierarchy/auth, routes, CRUD, params, responses, error handling, cookies, logging.
 - **[serializers.md](serializers.md)** — before writing or changing a serializer. Owns the named-export function pattern, every method, flattening, `serializerKey`, passthrough, `preloadFor`, STI and `ObjectSerializer`.
-- **[migrations.md](migrations.md)** — before writing or editing a migration. Owns the column-type DSL, `DreamMigrationHelpers`, keys, indexes, polymorphic/STI/soft-delete columns, enums.
+- **[migrations.md](migrations.md)** — before writing, editing, or debugging a migration. Owns the column-type DSL, `DreamMigrationHelpers`, keys, indexes, polymorphic/STI/soft-delete columns, enums.
 - **[sti.md](sti.md)** — before generating an STI parent or child, writing an STI serializer, or building the create action. Owns the generation workflow, the base-serializer shape, check constraints, the controller `switch`.
 - **[soft-delete.md](soft-delete.md)** — before adding `@SoftDelete()`, querying soft-deleted rows, or a `dependent: 'destroy'` chain. Owns setup, the `restrict`-not-`cascade` FK rule, `undestroy`/`reallyDestroy`.
 - **[locking.md](locking.md)** — before a claim: a write whose new value depends on a value just read. Owns `{ lock: true }` and its forms, what a lock costs, why a table lock is not the next step up.
@@ -120,7 +120,3 @@ All CLI commands run through the project's package manager. Examples here are wr
 ## Naming Conventions
 
 Database columns, enum types (suffixed `_enum`), enum values and generator column arguments (`name:string`, `User:belongs_to`) are snake_case; model properties camelCase; model, controller and serializer classes and files PascalCase; route paths kebab-case. STI `type` values are PascalCase and **MUST match the STI child class names** (`Bedroom`). `date` columns end in `On` and `datetime` columns in `At`.
-
-## Troubleshooting Migrations
-
-**"Corrupted migrations"**: switching branches between different migration sets makes `pnpm psy db:migrate` fail this way; the fix is `pnpm psy db:reset`. Everything else migration-related is in [migrations.md](migrations.md).
