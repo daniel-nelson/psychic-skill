@@ -16,6 +16,8 @@ This reset is especially important after hand-editing Kysely DDL fragments such 
 
 Use `git diff --name-only origin/main -- api/src/db/migrations/` to confirm a migration is still on your branch before editing.
 
+Migrations `main` brings in may sort between your branch's; `pnpm psy db:migrate` still runs every pending one. Never rename a migration to reorder it: a database that already ran it (the user's dev DB, a deployed branch) keeps the old name recorded and fails `db:migrate` with `corrupted migrations`. That error means the database recorded a migration whose file is missing, usually after switching branches; on the test DB, the fix is `pnpm psy db:reset`.
+
 Every `pnpm psy` command boots the full app, importing all models, before any type-regeneration step — so a stale `src/types/db.ts` (referencing a column the model no longer has, for example) crashes the CLI at import, before even `pnpm psy db:reset` or `pnpm psy sync` can reach the fix. Recover with `git checkout HEAD -- src/types/db.ts src/types/dream.ts`, then `pnpm psy db:reset` (or `sync`) to regenerate from a clean baseline. This only helps when `db.ts`/`dream.ts` themselves regressed — overwritten by a fresh scaffold's version, for example. If the real cause is a model referencing a column that was never migrated, `HEAD`'s version is equally stale and the checkout is a no-op — run the missing migration (or revert the model edit) first, then sync.
 
 ### NOT NULL columns and defaults

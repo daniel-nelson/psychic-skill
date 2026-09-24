@@ -124,15 +124,15 @@ lines forces a token boundary at every newline and overstates the total.
 vocabulary; `tiktoken` cross-checks 5-6% lower. Treat the number as accurate to a few percent, and
 keep real headroom rather than shaving the cap.
 
-**Current state: `SKILL.md` is 4,958 tokens over 126 lines, with 42 tokens of headroom.** That
-slack is tens of tokens, not hundreds. Any addition is measured with a real tokenizer *before* it
+**Current state: `SKILL.md` is 4,897 tokens over 122 lines, with 103 tokens of headroom.** That
+slack is about a hundred tokens, not hundreds. Any addition is measured with a real tokenizer *before* it
 is written, and anything added has to say where the room comes from.
 
 `SKILL.md` carries a sentinel line above its H1 so a truncated copy can notice it is truncated: it
 names the file's last heading and says what to do if that heading is missing. If the last heading
 is ever renamed, the sentinel must be updated with it. Check it with `grep -qxF`, never `grep -qF` —
 a substring match passes against a heading that merely *starts* with the sentinel text (renaming
-`## Troubleshooting Migrations` to `## Troubleshooting Migrations and Seeds` satisfies `-qF` and
+`## Naming Conventions` to `## Naming Conventions and Casing` satisfies `-qF` and
 correctly fails `-qxF`).
 
 **Recovery is the agent's own `Read`, which is why the sentinel is worded as an instruction to
@@ -317,8 +317,8 @@ working from the restatement.
 There is no test suite, no lint config and no CI here. These are the checks, each with its expected
 result, because a check with an undefined expected result is not verification.
 
-- **`wc -l SKILL.md`** — under 500. Currently 126.
-- **Token count of `SKILL.md`** — under 5,000, measured with the recipe above. Currently 4,958.
+- **`wc -l SKILL.md`** — under 500. Currently 122.
+- **Token count of `SKILL.md`** — under 5,000, measured with the recipe above. Currently 4,897.
 - **Every reference file still linked from `SKILL.md`**, all 17:
   `grep -o '](\([a-z0-9-]*\.md\)' SKILL.md | sed 's/](//' | sort -u`. The character class must
   include digits or `i18n.md` is missed.
