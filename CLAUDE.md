@@ -18,7 +18,7 @@ Every example in the skill — models, controllers, serializers, generators, mig
 
 Four things bind regardless:
 
-- **`SKILL.md` has a hard 5,000-token ceiling, not a line ceiling.** Claude Code re-injects only the first 5,000 tokens of a skill body after compaction and drops the rest. The file sits at 4,897 tokens with **103 tokens of headroom** — measure any addition with a real tokenizer before writing it, and say where the room comes from.
+- **`SKILL.md` has a hard 5,000-token ceiling, not a line ceiling.** Claude Code re-injects only the first 5,000 tokens of a skill body after compaction and drops the rest. The file sits at 4,948 tokens with **52 tokens of headroom** — measure any addition with a real tokenizer before writing it, and say where the room comes from.
 - **The standard is `agentskills.io`**, five pages, each served as raw markdown by appending `.md`. `anthropics/skills` redirects there and Claude Code's docs defer to it. It has moved before; re-check before trusting any source list, including that one.
 - **Verify a quotation's page and enclosing section, not merely that the text exists.** Three genuine quotes were used past their scope in one maintenance pass.
 - **Three validators fail this repo on purpose.** `MAINTAINING.md` names the expected diagnostics; anything beyond them is a regression. Do not "fix" the expected ones.
