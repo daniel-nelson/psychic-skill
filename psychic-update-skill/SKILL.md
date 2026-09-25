@@ -33,11 +33,13 @@ _AUTO=""
 echo "AUTO_UPGRADE=$_AUTO SKILL_DIR=$_SKILL_DIR"
 ```
 
-**If `AUTO_UPGRADE=true`:** Skip AskUserQuestion. Log "Auto-upgrading psychic-skill v{old} → v{new}..." and proceed directly to Step 2. If `./setup` fails during auto-upgrade, restore from backup (`.bak` directory) and warn the user: "Auto-upgrade failed — restored previous version. Run `/psychic-update-skill` manually to retry."
+**If `AUTO_UPGRADE=true`:** Skip AskUserQuestion. Log "Auto-upgrading psychic-skill v{old} → v{new}..." and proceed directly to Step 2. If Step 2 fails, follow **If an upgrade fails** there.
 
 **Otherwise**, use AskUserQuestion:
 - Question: "psychic-skill **v{new}** is available (you're on v{old}). Upgrade now?"
 - Options: ["Yes, upgrade now", "Always keep me up to date", "Not now", "Never ask again"]
+
+Answers "Always keep me up to date", "Not now" and "Never ask again" write to `~/.psychic-skill`, which is outside the workspace, so run their commands as **Sandboxed hosts** in Step 2 says.
 
 **If "Yes, upgrade now":** Proceed to Step 2.
 
@@ -86,7 +88,17 @@ via fetch + reset and vendored copies via a single re-clone, reconciling both
 global and project-local installs.
 
 Find a copy that ships the script (prefer the newest, since a stale copy may
-predate it), then run it:
+predate it), then run it.
+
+**Sandboxed hosts.** The apply step fetches from the network and writes the
+install directories, which a sandbox can keep read-only even inside the
+workspace: Codex refuses writes to `~/.agents`, `~/.claude` and a project's
+`.agents`. Where the host sandboxes commands and offers a way to request
+escalation, request it on the first attempt instead of waiting for a failure.
+On Codex that is `sandbox_permissions: "require_escalated"`, with a
+`justification` such as "Do you want to let psychic-update-skill write its
+installed skill copies?". Where the host offers no escalation (Codex under
+approval policy `never`, for one), run the command as it is.
 
 ```bash
 APPLY=""
@@ -110,16 +122,36 @@ Read the script's output and relay it:
 - One `COPY <dir> <old> -> <new> <status>` line per copy. Statuses: `upgraded`,
   `unchanged` (already current), `stashed` (upgraded, but local git changes were
   stashed — tell the user to `git stash pop` in that dir), `dev-symlink-skipped`
-  (a developer install; leave it, they `git pull` the source clone), `failed`.
+  (a developer install; leave it, they `git pull` the source clone),
+  `failed:<reason>` (the copy did not upgrade; `failed:not-writable` means a
+  write into it was refused before anything changed — a read-only install, or a
+  sandbox that confines writes).
 - `SUMMARY <oldmin> -> <new> (<u> upgraded, <c> unchanged, <s> skipped, <f> failed)`.
 
-If any copy is `failed`, tell the user which one and that they can re-run
-`/psychic-update-skill`. The script writes the just-upgraded marker and clears
-the update cache itself when at least one copy was upgraded. If any copy was
-vendored (project-local, no `.git`), remind the user to commit it.
+**If an upgrade fails** — the script exits 2 (remote unreachable, before any
+copy is tried) or any copy is `failed:<reason>`:
+
+1. Retry once, escalated, if this run was not already escalated, the host
+   sandboxes commands and offers escalation, and the failure is one the sandbox
+   can cause: exit 2, `failed:not-writable`, `failed:fetch-failed` or
+   `failed:clone-failed`. Rerun `"$APPLY"` as **Sandboxed hosts** above says.
+   One retry per invocation, never a loop.
+2. Otherwise — any other reason, an escalated run that failed, or a host with no
+   sandbox — tell the user in one line which copy failed and why. The remedy is
+   to re-run `/psychic-update-skill`, except `setup-failed` on a git copy (its
+   `COPY` line shows the new version, so the check will not offer the upgrade
+   again): name `./setup` in that directory, plus `git stash pop` there if
+   `git stash list` shows the upgrade stashed local changes.
+
+Never copy, clone or delete skill files by hand to work around a failure; the
+script owns backups and restores. Then carry on: Step 3 if any copy upgraded,
+then Step 4. A failed upgrade never stops the run. The script writes the
+just-upgraded marker and clears the update cache itself when at least one copy
+was upgraded. If any copy was vendored (project-local, no `.git`), remind the
+user to commit it.
 
 **Fallback (only if `NO_APPLY_SCRIPT`):** every installed copy predates this
-updater, so reconcile the git copies inline:
+updater, so reconcile the git copies inline, run as **Sandboxed hosts** above says:
 
 ```bash
 for d in "$HOME/.agents/skills/psychic-skill" "$HOME/.claude/skills/psychic-skill" ".agents/skills/psychic-skill" ".claude/skills/psychic-skill"; do
@@ -223,4 +255,4 @@ echo "UPDATE_CHECK_OUTPUT=$UPDATE_CHECK_OUTPUT"
 
 2. If `UPDATE_CHECK_OUTPUT` contains `UPGRADE_AVAILABLE <old> <new>`: run the inline flow (Step 2 reconcile onward). The `--plan` preview is a good idea here so the user sees which copies are behind before anything changes.
 
-3. **Otherwise — do not trust silence.** No output can mean the check was cached, hit a disabled flag, or failed (sandbox filesystem restrictions); it does **not** prove the install is current. Just run the reconcile directly — `bin/psychic-skill-update-apply` fetches the remote version itself, is a no-op for copies already current, and reports per-copy status, so it is safe to run unconditionally. Locate it as in Step 2 and run `"$APPLY" --plan` then `"$APPLY"`. If no copy ships the script either, use the Step 2 fallback loop. If the reconcile reports every copy `unchanged`, tell the user "You're on the latest version (v{version}); all installed copies are up to date."
+3. **Otherwise — do not trust silence.** No output can mean the check was cached, hit a disabled flag, or failed (sandbox filesystem restrictions); it does **not** prove the install is current. Just run the reconcile directly — `bin/psychic-skill-update-apply` fetches the remote version itself, is a no-op for copies already current, and reports per-copy status, so it is safe to run unconditionally. Locate it as in Step 2 and run `"$APPLY" --plan` then `"$APPLY"`, running `"$APPLY"` as **Sandboxed hosts** in Step 2 says and handling a failure as **If an upgrade fails** there says. If no copy ships the script either, use the Step 2 fallback loop. If the reconcile reports every copy `unchanged`, tell the user "You're on the latest version (v{version}); all installed copies are up to date."

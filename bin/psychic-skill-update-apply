@@ -16,9 +16,32 @@
 #
 # Output (parseable; the /psychic-update-skill flow relays it):
 #   REMOTE <version>
+#   MIGRATE <dir> <result>               result: moved|dropped|dev-symlink-skipped|
+#                                        move-failed|drop-failed
 #   COPY <dir> <old> -> <new> <status>   status: upgraded|unchanged|
-#                                        dev-symlink-skipped|stashed|failed
+#                                        dev-symlink-skipped|stashed|failed:<reason>
 #   SUMMARY <oldmin> -> <new> (<u> upgraded, <c> unchanged, <s> skipped, <f> failed)
+#
+# failed:<reason> — <new> is the version on disk afterwards:
+#   not-writable   a write into the copy (git: the copy and its .git; vendored: the
+#                  copy and its parent, where the backup goes) was refused before
+#                  anything changed — a read-only install, or a sandbox that
+#                  confines writes (Codex keeps ~/.agents, ~/.claude and a
+#                  project's .agents read-only)
+#   fetch-failed   git: `git fetch origin` failed (network, auth, missing remote);
+#                  the copy is unchanged
+#   reset-failed   git: `git reset --hard origin/main` failed after a fetch
+#   clone-failed   vendored: cloning the source failed (network); unchanged
+#   backup-failed  vendored: <dir>.bak could not be cleared or written; unchanged
+#   copy-failed    vendored: replacing the copy failed; restored from this run's
+#                  backup (left at <dir>.bak if even that failed)
+#   setup-failed   ./setup exited non-zero. git: the new version is on disk and
+#                  needs `./setup` run there; vendored: restored to <old>
+# --plan prints plan:<git|vendored>:<would-upgrade|up-to-date|would-fail-not-writable>.
+# The writability verdict comes from a probe, never from parsing error text:
+# --plan asks `test -w` (mutates nothing); a real run creates and removes a
+# temporary file in each directory, since some sandboxes refuse the write
+# without changing what `test -w` reports.
 #
 # Exit: 0 ok · 2 remote unreachable · 3 one or more copies failed
 #
@@ -105,7 +128,11 @@ migrate_codex_to_agents() {
         echo "MIGRATE $(disp "$codex") plan:drop (.agents copy exists)"
       else
         rm -rf "$codex" 2>/dev/null || true
-        echo "MIGRATE $(disp "$codex") dropped (.agents copy exists)"
+        if [ -e "$codex" ] || [ -L "$codex" ]; then
+          echo "MIGRATE $(disp "$codex") drop-failed"
+        else
+          echo "MIGRATE $(disp "$codex") dropped (.agents copy exists)"
+        fi
       fi
     else
       if $PLAN; then
@@ -149,10 +176,37 @@ ensure_src() {
   fi
   return 1
 }
-cleanup() { [ -n "$TMP_CLONE" ] && rm -rf "$TMP_CLONE" 2>/dev/null || true; }
+PROBE=""
+cleanup() {
+  [ -n "$TMP_CLONE" ] && rm -rf "$TMP_CLONE" 2>/dev/null
+  [ -n "$PROBE" ] && rm -f "$PROBE" 2>/dev/null
+  return 0
+}
 trap cleanup EXIT
 
 run_setup() { [ "${PSYCHIC_SKILL_NO_SETUP:-}" = "1" ] && return 0; ( cd "$1" && ./setup >/dev/null 2>&1 ); }
+
+# can_write <dir>... — true when every dir accepts a write. See the header for
+# why a real run writes instead of asking `test -w`.
+can_write() {
+  local d
+  for d in "$@"; do
+    if $PLAN; then
+      [ -w "$d" ] || return 1
+      continue
+    fi
+    PROBE="$(mktemp "$d/.psychic-skill-write-probe.XXXXXX" 2>/dev/null)" || { PROBE=""; return 1; }
+    rm -f "$PROBE" 2>/dev/null
+    PROBE=""
+  done
+  return 0
+}
+
+# fail_copy <dir> <old> <reason> — report a copy that did not upgrade.
+fail_copy() {
+  echo "COPY $(disp "$1") $2 -> $(read_ver "$1") failed:$3"
+  FAIL=$((FAIL + 1))
+}
 
 UP=0; UNCH=0; SKIP=0; FAIL=0
 OLDMIN=""
@@ -172,45 +226,76 @@ while IFS= read -r dir; do
   is_git=false
   [ -d "$dir/.git" ] && is_git=true
 
+  # Probe before anything is mutated: git writes the worktree and .git; a
+  # vendored copy is backed up beside itself, so its parent must take writes too.
+  if $is_git; then
+    can_write "$dir" "$dir/.git" && writable=true || writable=false
+  else
+    can_write "$dir" "$(dirname "$dir")" && writable=true || writable=false
+  fi
+
   if $PLAN; then
-    if ver_lt "$old" "$REMOTE"; then act="would-upgrade"; else act="up-to-date"; fi
+    if ! $writable; then act="would-fail-not-writable"
+    elif ver_lt "$old" "$REMOTE"; then act="would-upgrade"; else act="up-to-date"; fi
     $is_git && kind=git || kind=vendored
     echo "COPY $(disp "$dir") $old -> $REMOTE plan:$kind:$act"
     continue
   fi
 
+  if ! $writable; then
+    fail_copy "$dir" "$old" not-writable
+    continue
+  fi
+
   status=""
   if $is_git; then
+    # Fetch first: it leaves the worktree alone, so a network failure leaves
+    # the copy exactly as it was.
+    if ! git -C "$dir" fetch origin >/dev/null 2>&1; then
+      fail_copy "$dir" "$old" fetch-failed
+      continue
+    fi
     stash_out="$(git -C "$dir" stash 2>&1)"
-    if git -C "$dir" fetch origin >/dev/null 2>&1 &&
-       git -C "$dir" reset --hard origin/main >/dev/null 2>&1; then
-      run_setup "$dir" || true
-      case "$stash_out" in *"Saved working directory"*) status="stashed" ;; esac
-    else
-      echo "COPY $(disp "$dir") $old -> $old failed"
-      FAIL=$((FAIL + 1))
+    case "$stash_out" in *"Saved working directory"*) status="stashed" ;; esac
+    if ! git -C "$dir" reset --hard origin/main >/dev/null 2>&1; then
+      fail_copy "$dir" "$old" reset-failed
+      continue
+    fi
+    if ! run_setup "$dir"; then
+      fail_copy "$dir" "$old" setup-failed
       continue
     fi
   else
     if ! ensure_src; then
-      echo "COPY $(disp "$dir") $old -> $old failed"
-      FAIL=$((FAIL + 1))
+      fail_copy "$dir" "$old" clone-failed
+      continue
+    fi
+    # Only a backup this run made is ever restored. A leftover .bak that will
+    # not go away stops the upgrade before the copy is touched, and a backup
+    # that fails to write is removed, never followed by removing the copy.
+    rm -rf "$dir.bak" 2>/dev/null
+    if [ -e "$dir.bak" ] || [ -L "$dir.bak" ]; then
+      fail_copy "$dir" "$old" backup-failed
+      continue
+    fi
+    if ! cp -R "$dir" "$dir.bak" 2>/dev/null; then
+      rm -rf "$dir.bak" 2>/dev/null
+      fail_copy "$dir" "$old" backup-failed
+      continue
+    fi
+    reason=""
+    if ! { rm -rf "$dir" 2>/dev/null && cp -R "$SRC" "$dir" 2>/dev/null && rm -rf "$dir/.git" 2>/dev/null; }; then
+      reason=copy-failed
+    elif ! run_setup "$dir"; then
+      reason=setup-failed
+    fi
+    if [ -n "$reason" ]; then
+      rm -rf "$dir" 2>/dev/null
+      [ -e "$dir" ] || mv "$dir.bak" "$dir" 2>/dev/null
+      fail_copy "$dir" "$old" "$reason"
       continue
     fi
     rm -rf "$dir.bak" 2>/dev/null || true
-    if cp -R "$dir" "$dir.bak" 2>/dev/null &&
-       rm -rf "$dir" 2>/dev/null &&
-       cp -R "$SRC" "$dir" 2>/dev/null &&
-       rm -rf "$dir/.git" 2>/dev/null &&
-       run_setup "$dir"; then
-      rm -rf "$dir.bak" 2>/dev/null || true
-    else
-      rm -rf "$dir" 2>/dev/null || true
-      [ -d "$dir.bak" ] && mv "$dir.bak" "$dir" 2>/dev/null || true
-      echo "COPY $(disp "$dir") $old -> $old failed"
-      FAIL=$((FAIL + 1))
-      continue
-    fi
   fi
 
   new="$(read_ver "$dir")"

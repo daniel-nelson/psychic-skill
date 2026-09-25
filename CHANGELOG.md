@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.99.0 — 2026-09-25
+
+### Changed
+
+- **`/psychic-update-skill`** — on a host that sandboxes commands, the apply step asks for escalation on the first try (on Codex, `sandbox_permissions: "require_escalated"`). Codex keeps `~/.agents`, `~/.claude` and a project's `.agents` read-only, so an unescalated upgrade from Codex failed on every copy.
+- **`/psychic-update-skill`** — one failure rule replaces "restore from backup": a failure the sandbox can cause is retried once with escalation; anything else gets a one-line report with its remedy, and the task continues. Skill files are never copied or deleted by hand to work around a failure.
+- **`bin/psychic-skill-update-apply`** — a failed copy reports why, as `failed:<reason>` (`not-writable`, `fetch-failed`, `reset-failed`, `clone-failed`, `backup-failed`, `copy-failed`, `setup-failed`), and a failed `.codex` cleanup reports `drop-failed`. Writability is probed before anything changes, and `--plan` flags copies that would fail it. A failed `./setup` is no longer reported as `upgraded`, a git copy whose fetch fails is left untouched, and a vendored copy whose backup fails is no longer removed.
+
 ## 0.98.0 — 2026-09-25
 
 ### Added
