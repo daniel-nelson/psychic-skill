@@ -6,10 +6,6 @@
 
 - **`SKILL.md`** — Critical Rule 21 names a second thing that is not a concrete race: a fact that arrives while an action is already underway, such as a guest cancelling as their confirmation email sends. The result is correct if it would have been correct had the cancellation arrived a minute later; the late fact governs what happens next, not what already started.
 
-### Changed
-
-- **`SKILL.md`** — the ecosystem baseline is `@rvoh/dream` 2.33.x.
-
 ## 0.97.0 — 2026-09-24
 
 ### Added
