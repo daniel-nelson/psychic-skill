@@ -48,7 +48,7 @@ If the proxy terminates TLS and forwards plain HTTP to the container, no additio
 
 ## Postgres TLS
 
-`SingleDbCredential` accepts an `ssl?: TlsConnectionOptions | false` field that flows directly to the underlying `pg.Pool` connection. The bare `ssl: true` shorthand is rejected — callers must choose explicitly between verified TLS (`{ rejectUnauthorized: true }`) and unverified TLS (`{ rejectUnauthorized: false }`). `ssl: false` is the explicit TLS-off sentinel.
+`DreamDbConfig` accepts an `ssl?: TlsConnectionOptions | false` field that flows directly to the underlying `pg.Pool` connection. The bare `ssl: true` shorthand is rejected — callers must choose explicitly between verified TLS (`{ rejectUnauthorized: true }`) and unverified TLS (`{ rejectUnauthorized: false }`). `ssl: false` is the explicit TLS-off sentinel.
 
 `app.set('db', ...)` throws `MissingDbSslDirective` at setter time — in every environment, not just production — if neither `ssl` nor the legacy `useSsl` is set on a credential, so the call site has to make TLS posture explicit.
 
@@ -60,7 +60,7 @@ const dbSsl: { rejectUnauthorized: true } | false = AppEnv.boolean('DB_NO_SSL')
   : { rejectUnauthorized: true }
 
 app.set('db', {
-  primary: { /* host, port, user, password, database */ ssl: dbSsl },
+  primary: { /* host, port, user, password, name */ ssl: dbSsl },
   replica: hasReplica ? { /* ... */ ssl: dbSsl } : undefined,
 })
 ```
@@ -77,8 +77,8 @@ Most managed Postgres providers (Supabase, Neon, Render, Azure Database for Post
 
 ```typescript
 // Verified TLS with a pinned CA — e.g., AWS RDS
-const credential: SingleDbCredential = {
-  // ...host, port, user, password, database
+const credential: DreamDbConfig = {
+  // ...host, port, user, password, name
   ssl: {
     rejectUnauthorized: true,
     ca: AppEnv.string('PG_CA_CERT'),
@@ -87,7 +87,7 @@ const credential: SingleDbCredential = {
 
 // Unverified TLS — the self-signed-cert path. Only when the provider serves a cert that
 // doesn't chain to a known root (Heroku Hobby, some local Docker images). Not the default.
-const credential: SingleDbCredential = {
+const credential: DreamDbConfig = {
   // ...
   ssl: { rejectUnauthorized: false },
 }
@@ -103,9 +103,9 @@ A credential still carrying the deprecated `useSsl: true` resolves to **unverifi
 
 ```typescript
 app.set('db', {
-  primary: { host: AppEnv.string('DB_HOST'), /* port, user, password, database */ ssl: dbSsl },
+  primary: { host: AppEnv.string('DB_HOST'), /* port, user, password, name */ ssl: dbSsl },
   replica: hasReplica
-    ? { host: AppEnv.string('DB_REPLICA_HOST'), /* port, user, password, database */ ssl: dbSsl }
+    ? { host: AppEnv.string('DB_REPLICA_HOST'), /* port, user, password, name */ ssl: dbSsl }
     : undefined,
 })
 ```
