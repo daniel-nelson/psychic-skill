@@ -141,7 +141,10 @@ copy is tried) or any copy is `failed:<reason>`:
    to re-run `/psychic-update-skill`, except `setup-failed` on a git copy (its
    `COPY` line shows the new version, so the check will not offer the upgrade
    again): name `./setup` in that directory, plus `git stash pop` there if
-   `git stash list` shows the upgrade stashed local changes.
+   `git stash list` shows the upgrade stashed local changes. For
+   `copy-failed` or `backup-failed` with new version `unknown`, the intact copy
+   is `<dir>.bak`: name it, and for a vendored copy name
+   `git checkout -- <dir>` in the project before the re-run.
 
 Never copy, clone or delete skill files by hand to work around a failure; the
 script owns backups and restores. Then carry on: Step 3 if any copy upgraded,

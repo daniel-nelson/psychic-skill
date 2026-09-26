@@ -32,7 +32,9 @@
 #                  the copy is unchanged
 #   reset-failed   git: `git reset --hard origin/main` failed after a fetch
 #   clone-failed   vendored: cloning the source failed (network); unchanged
-#   backup-failed  vendored: <dir>.bak could not be cleared or written; unchanged
+#   backup-failed  vendored: <dir>.bak could not be cleared or written, or is
+#                  kept because the copy has no readable VERSION (the .bak may
+#                  be the only intact copy); unchanged
 #   copy-failed    vendored: replacing the copy failed; restored from this run's
 #                  backup (left at <dir>.bak if even that failed)
 #   setup-failed   ./setup exited non-zero. git: the new version is on disk and
@@ -273,6 +275,12 @@ while IFS= read -r dir; do
     # Only a backup this run made is ever restored. A leftover .bak that will
     # not go away stops the upgrade before the copy is touched, and a backup
     # that fails to write is removed, never followed by removing the copy.
+    # A leftover .bak beside a copy with no readable VERSION may be the only
+    # intact copy (an earlier copy-failed), so it is never deleted.
+    if { [ -e "$dir.bak" ] || [ -L "$dir.bak" ]; } && ! [ -r "$dir/VERSION" ]; then
+      fail_copy "$dir" "$old" backup-failed
+      continue
+    fi
     rm -rf "$dir.bak" 2>/dev/null
     if [ -e "$dir.bak" ] || [ -L "$dir.bak" ]; then
       fail_copy "$dir" "$old" backup-failed
