@@ -95,6 +95,8 @@ const credential: SingleDbCredential = {
 
 A credential still carrying the deprecated `useSsl: true` resolves to **unverified** TLS (`{ rejectUnauthorized: false }`), not the verified default. Replace it with an explicit `ssl` value from the matrix above.
 
+**Short-lived passwords** (AWS RDS IAM auth tokens): a token fetched once at boot stops working when it expires, and every new pool connection opened after that fails authentication. Set `password` on `primary` and any `replica` to a function returning the token or a promise of it — `password: () => signer.getAuthToken()` with `@aws-sdk/rds-signer` — so each new connection gets a fresh token.
+
 ## Read Replicas
 
 `app.set('db', { primary, replica })` accepts an optional `replica` credential alongside `primary`, same shape (`host`, `port`, `user`, `password`, `name`, `ssl`) pointed at your read replica instance:
