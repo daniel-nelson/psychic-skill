@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.100.0 — 2026-09-25
+
+### Added
+
+- **`testing.md`** — "Replacing a function a module exports": import the module as a namespace and `vi.spyOn` the export (`'default'` for a default export), so code that imports `{ cleaningFee }` gets the spy. Don't `vi.mock` a services module: booting a spec runs `psy.load('services', …)`, which reads each file's default export, so a factory without one fails the whole spec file with `No "default" export is defined on the … mock`.
+- **`deploying.md`** — "Postgres TLS" covers short-lived passwords such as AWS RDS IAM auth tokens: a token fetched once at boot fails authentication on every new pool connection after it expires, so `password` on `primary` and any `replica` is set to a function returning the token or a promise of it (`password: () => signer.getAuthToken()`, where `signer` is an `@aws-sdk/rds-signer` `Signer` for that credential's host), giving each new connection a fresh token.
+
+### Changed
+
+- **`deploying.md`** — the "Postgres TLS" and "Read Replicas" examples type a credential as `DreamDbConfig` and name the database field `name`, matching the shape `app.set('db', ...)` accepts.
+
 ## 0.99.0 — 2026-09-25
 
 ### Changed

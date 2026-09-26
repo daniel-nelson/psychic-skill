@@ -686,6 +686,18 @@ The setter writes `process.env`, which nothing restores automatically — the ge
 
 The derived getters (`AppEnv.isTest`, `.nodeEnv`, `.serviceRole`) have no setter, so spy on those: `vi.spyOn(AppEnv, 'isTest', 'get').mockReturnValue(false)`.
 
+### Replacing a function a module exports
+
+Import the module as a namespace and spy on the export, the same way you spy on a class's static method:
+
+```typescript
+import * as feesModule from '@services/Booking/fees.js'
+
+vi.spyOn(feesModule, 'cleaningFee').mockReturnValue(0)
+```
+
+Code that imports `{ cleaningFee }` gets the spy. For a default export, spy on `'default'`. Don't `vi.mock` a services module: booting a spec runs `psy.load('services', …)`, which reads each file's default export, so a factory without one fails the whole spec file with `No "default" export is defined on the … mock`.
+
 ## Background Worker Testing
 
 ```typescript
