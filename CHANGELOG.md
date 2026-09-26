@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.100.0 — 2026-09-25
+
+### Added
+
+- **`testing.md`** — "Mocking a module the boot-time loader imports": booting a unit or feature spec imports every file under `src/app/services/` and reads its default export, so a `vi.mock` of a services module needs a `default` key or the whole spec file fails with `No "default" export is defined on the ... mock`. Spreading `importOriginal()` doesn't add one when the real module has only named exports; the example mock of `@services/Booking/fees.js` sets `default: undefined` beside the spread.
+- **`deploying.md`** — "Postgres TLS" covers short-lived passwords such as AWS RDS IAM auth tokens: a token fetched once at boot fails authentication on every new pool connection after it expires, so `password` on `primary` and any `replica` is set to a function returning the token or a promise of it (`password: () => signer.getAuthToken()` with `@aws-sdk/rds-signer`), giving each new connection a fresh token.
+
+### Changed
+
+- **`deploying.md`** — the "Postgres TLS" and "Read Replicas" examples type a credential as `DreamDbConfig` and name the database field `name`, matching the shape `app.set('db', ...)` accepts.
+
 ## 0.99.0 — 2026-09-25
 
 ### Changed
