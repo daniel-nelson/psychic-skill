@@ -686,6 +686,18 @@ The setter writes `process.env`, which nothing restores automatically — the ge
 
 The derived getters (`AppEnv.isTest`, `.nodeEnv`, `.serviceRole`) have no setter, so spy on those: `vi.spyOn(AppEnv, 'isTest', 'get').mockReturnValue(false)`.
 
+### Mocking a module the boot-time loader imports
+
+Booting a unit or feature spec runs `psy.load('services', …)`, which imports every file under `src/app/services/` and reads its default export. So a `vi.mock` of a services module needs a `default` key, or the whole spec file fails with `[vitest] No "default" export is defined on the "@services/Booking/fees.js" mock`. Spreading `importOriginal()`, as the message suggests, doesn't add one when the real module has only named exports:
+
+```typescript
+vi.mock('@services/Booking/fees.js', async importOriginal => ({
+  ...(await importOriginal<typeof import('@services/Booking/fees.js')>()),
+  default: undefined,
+  cleaningFee: vi.fn(),
+}))
+```
+
 ## Background Worker Testing
 
 ```typescript
