@@ -686,17 +686,17 @@ The setter writes `process.env`, which nothing restores automatically — the ge
 
 The derived getters (`AppEnv.isTest`, `.nodeEnv`, `.serviceRole`) have no setter, so spy on those: `vi.spyOn(AppEnv, 'isTest', 'get').mockReturnValue(false)`.
 
-### Mocking a module the boot-time loader imports
+### Replacing a function a module exports
 
-Booting a unit or feature spec runs `psy.load('services', …)`, which imports every file under `src/app/services/` and reads its default export. So a `vi.mock` of a services module needs a `default` key, or the whole spec file fails with `[vitest] No "default" export is defined on the "@services/Booking/fees.js" mock`. Spreading `importOriginal()`, as the message suggests, doesn't add one when the real module has only named exports:
+Import the module as a namespace and spy on the export, the same way you spy on a class's static method:
 
 ```typescript
-vi.mock('@services/Booking/fees.js', async importOriginal => ({
-  ...(await importOriginal<typeof import('@services/Booking/fees.js')>()),
-  default: undefined,
-  cleaningFee: vi.fn(),
-}))
+import * as feesModule from '@services/Booking/fees.js'
+
+vi.spyOn(feesModule, 'cleaningFee').mockReturnValue(0)
 ```
+
+Code that imports `{ cleaningFee }` gets the spy. For a default export, spy on `'default'`. Don't `vi.mock` a services module: booting a spec runs `psy.load('services', …)`, which reads each file's default export, so a factory without one fails the whole spec file with `No "default" export is defined on the … mock`.
 
 ## Background Worker Testing
 

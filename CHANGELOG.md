@@ -4,7 +4,7 @@
 
 ### Added
 
-- **`testing.md`** — "Mocking a module the boot-time loader imports": booting a unit or feature spec imports every file under `src/app/services/` and reads its default export, so a `vi.mock` of a services module needs a `default` key or the whole spec file fails with `No "default" export is defined on the ... mock`. Spreading `importOriginal()` doesn't add one when the real module has only named exports; the example mock of `@services/Booking/fees.js` sets `default: undefined` beside the spread.
+- **`testing.md`** — "Replacing a function a module exports": import the module as a namespace and `vi.spyOn` the export (`'default'` for a default export), so code that imports `{ cleaningFee }` gets the spy. Don't `vi.mock` a services module: booting a spec runs `psy.load('services', …)`, which reads each file's default export, so a factory without one fails the whole spec file with `No "default" export is defined on the … mock`.
 - **`deploying.md`** — "Postgres TLS" covers short-lived passwords such as AWS RDS IAM auth tokens: a token fetched once at boot fails authentication on every new pool connection after it expires, so `password` on `primary` and any `replica` is set to a function returning the token or a promise of it (`password: () => signer.getAuthToken()`, where `signer` is an `@aws-sdk/rds-signer` `Signer` for that credential's host), giving each new connection a fresh token.
 
 ### Changed
