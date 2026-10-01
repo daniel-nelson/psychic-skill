@@ -220,7 +220,8 @@ await PhotoProcessingService.processOne(photoId)
 A commit hook's enqueue can fail after its write commits ([models.md](models.md#after-commit-hooks-run-after-transaction-commits)), and a deploy or crash can land between a commit and the job meant to follow it. When losing that work costs something real, such as the charge for a confirmed booking, let Postgres hold it: the confirming write leaves the charge owed, a scheduled sweep re-enqueues whatever is still owed, and the gateway call carries an idempotency key fixed to the booking. The commit hook stays the fast path; the sweep is the guarantee, at up to one sweep's delay.
 
 ```typescript
-// Confirmed with chargedAt null is the record that the charge is owed.
+// Confirmed with chargedAt null is the record that the charge is owed; every write
+// that confirms a booking also sets confirmedAt, which the window below reads.
 // Booking's @deco.AfterUpdateCommit({ ifChanged: ['status'] }) enqueues
 // BookingChargeService.charge when the new status is 'confirmed'.
 await Booking.where({ id: booking.id, status: 'pending' })
@@ -256,7 +257,11 @@ export default class BookingChargeService extends ApplicationBackgroundedService
         await this.charge(id)
       })
 
-    if (await owed.where({ confirmedAt: range(null, keyWindowStart()) }).count()) {
+    const beyondTheSweep = owed.whereAny([
+      { confirmedAt: range(null, keyWindowStart()) },
+      { confirmedAt: null }, // a confirming write that skipped confirmedAt
+    ])
+    if (await beyondTheSweep.count()) {
       // report to the app's error-reporting service: reconcile these against the gateway
     }
   }
