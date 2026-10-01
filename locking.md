@@ -59,11 +59,6 @@ they would on `booking.update(...)`. `skipHooks: true` composes with `lock: true
 per-instance path: hooks are skipped, but custom setters — including the setters `@deco.Encrypted`
 attributes encrypt through — still run.
 
-When the guard fits the `where` clause and the lifecycle should not run at all, the no-`lock`
-single-statement form, `update(attrs, { skipHooks: true })`, is also a compare-and-set: its one
-`UPDATE ... WHERE` re-checks the conditions under each row's lock, and its count is the rows that
-statement matched. `lock: true` is the claim that keeps the lifecycle.
-
 What this form cannot express: a guard the database can't compare — an `@deco.Encrypted` property has
 no queryable column, and re-encrypts to fresh ciphertext on every write — and attributes that differ
 per record.

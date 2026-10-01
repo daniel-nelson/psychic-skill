@@ -43,7 +43,7 @@ All CLI commands run through the project's package manager. Examples here are wr
 - **[migrations.md](migrations.md)** — before writing, editing, or debugging a migration. Owns the column-type DSL, `DreamMigrationHelpers`, keys, indexes, polymorphic/STI/soft-delete columns, enums.
 - **[sti.md](sti.md)** — before generating an STI parent or child, writing an STI serializer, or building the create action. Owns the generation workflow, the base-serializer shape, check constraints, the controller `switch`.
 - **[soft-delete.md](soft-delete.md)** — before adding `@SoftDelete()`, querying soft-deleted rows, or a `dependent: 'destroy'` chain. Owns setup, the `restrict`-not-`cascade` FK rule, `undestroy`/`reallyDestroy`.
-- **[locking.md](locking.md)** — before a claim: a write whose new value depends on a value just read. Owns `{ lock: true }` and its forms, what a lock costs, why a table lock is not the next step up.
+- **[locking.md](locking.md)** — before a guarded or conditional write: one whose new value depends on a value just read. Owns `{ lock: true }` and its forms, what a lock costs, why a table lock is not the next step up.
 - **[workers.md](workers.md)** — before a backgrounded service, a scheduled job, or a hook that enqueues work. Owns the service pattern, the `AfterCommit` requirement, ID-only arguments, priorities, workstreams, fan-out, retry.
 - **[websockets.md](websockets.md)** — before channels, connection auth, or emitting from a worker. Owns the `PsychicAppWebsockets` initializer, typed `Ws` channels, auth, the origin allowlist, worker emits.
 - **[openapi.md](openapi.md)** — documenting an endpoint or customizing the spec. Owns spec derivation, `psy.set('openapi', ...)`, typed clients, custom error responses.
