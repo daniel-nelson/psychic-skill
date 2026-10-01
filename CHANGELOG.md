@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.102.0 — 2026-10-01
+
+### Added
+
+- **`models.md`** — "After Commit Hooks" says a commit hook that throws rejects its writer after the write has committed: the `create`, `update` or `destroy`, or the enclosing `ApplicationModel.transaction(...)`, rejects, the code after it and any later commit hooks are skipped, and nothing rolls back. A failed `background(...)` in a `Booking` `@deco.AfterUpdateCommit` leaves the booking confirmed with nothing enqueued.
+- **`workers.md`** — "Work that must not be lost after a commit" teaches the shape for follow-on work whose loss costs something real, such as the charge for a confirmed booking. The confirming write leaves the work owed in Postgres (`confirmed` with `chargedAt` null), the commit hook's enqueue is the fast path, a scheduled sweep re-enqueues whatever is still owed, and the gateway call carries an idempotency key fixed to the booking (`booking-charge-${id}`). The job finds the booking, returns once `chargedAt` is set, charges, then stamps `chargedAt`; the key, not that check, is what makes an overlapping or repeated run harmless. A booking that can never be charged gets an app-owned retry budget whose exhausted branch moves it to a status the sweep does not select.
+- **`locking.md`** — "When a lock is warranted" says a retried claim can get `0` from its own earlier attempt's committed claim, with the work meant to follow it never done, and routes to the `workers.md` shape.
+- **`serializers.md`** — `.customAttribute` renders a nested object by returning an exported ObjectSerializer's builder, `PlaceAvailabilitySummaryViewSerializer(passthrough.availabilitySummary)`, with `openapi: { $serializer: PlaceAvailabilitySummaryViewSerializer }` deriving the schema. Return the builder, not its `.render()` output, which drops the outer render's passthrough and casing, and not a raw object, which goes out as-is, extra keys included.
+- **`serializers.md`** — "Rendering an async-computed shape on the model" offers a way to keep the shape off the model when rendering a single `Place`: hand it in with `this.serializerPassthrough({ availabilitySummary })` and render it with that `customAttribute`. Passthrough is one value for the whole render, so a collection takes the declared property instead, and every action rendering `PlaceSerializer` must supply the value or the field renders `null` and fails response validation.
+
 ## 0.101.0 — 2026-10-01
 
 ### Changed
