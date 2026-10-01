@@ -207,10 +207,8 @@ incoming values still counts. Under `{ skipHooks: true }` the filter and the wri
 `UPDATE ... WHERE` statement and the count is the rows that statement matched.
 
 When the value being written depends on a value just read — claiming a record out of a state, so a
-concurrent writer must not clobber the result — reach for `{ lock: true }`, the compare-and-set that
-keeps the lifecycle. The single-statement `{ skipHooks: true }` form is also a compare-and-set — its
-one `UPDATE ... WHERE` re-checks the conditions under each row's lock — but choosing it is choosing
-to skip the hooks, per the rule above. See [locking.md](locking.md).
+concurrent writer must not clobber the result — use `{ lock: true }`: it re-checks the `where` under
+a row lock, and hooks and validations still run. See [locking.md](locking.md).
 
 ### Range Predicates
 

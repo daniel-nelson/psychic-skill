@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.101.0 — 2026-10-01
+
+### Changed
+
+- **`querying.md`**, **`locking.md`** — a guarded write, one whose new value depends on a value just read, has one shape: `update(attrs, { lock: true })`, which re-checks the `where` under a row lock while hooks and validations still run. The single-statement `update(attrs, { skipHooks: true })` is no longer offered as an alternative compare-and-set; `skipHooks` is the bulk path for writing many rows in one statement.
+- **`SKILL.md`** — the Reference Map routes to `locking.md` before any guarded or conditional write, not only before a claim.
+
 ## 0.100.0 — 2026-09-25
 
 ### Added
