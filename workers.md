@@ -221,9 +221,13 @@ A commit hook's enqueue can fail after its write commits ([models.md](models.md#
 
 ```typescript
 // Confirmed with chargedAt null is the record that the charge is owed.
-// Booking's @deco.AfterUpdateCommit({ ifChanged: ['status'] }) enqueues BookingChargeService.charge.
+// Booking's @deco.AfterUpdateCommit({ ifChanged: ['status'] }) enqueues
+// BookingChargeService.charge when the new status is 'confirmed'.
 await Booking.where({ id: booking.id, status: 'pending' })
   .update({ status: 'confirmed', confirmedAt: DateTime.now() }, { lock: true })
+
+// the gateway keeps an idempotency key for 24 hours; stay inside that
+const keyWindowStart = () => DateTime.now().minus({ hours: 20 })
 
 export default class BookingChargeService extends ApplicationBackgroundedService {
   public static async charge(bookingId: string) {
@@ -231,27 +235,35 @@ export default class BookingChargeService extends ApplicationBackgroundedService
   }
 
   public static async _charge(bookingId: string) {
-    const booking = await Booking.find(bookingId)
-    if (!booking || booking.chargedAt) return
+    const booking = await Booking.findBy({
+      id: bookingId,
+      status: 'confirmed',
+      chargedAt: null,
+      confirmedAt: range(keyWindowStart()),
+    })
+    if (!booking) return
     await PaymentGateway.charge(booking, { idempotencyKey: `booking-charge-${booking.id}` })
     await booking.update({ chargedAt: DateTime.now() })
   }
 
   // called from the hourly scheduled orchestrator
   public static async chargeOwed() {
-    await Booking.where({
-      status: 'confirmed',
-      chargedAt: null,
-      // leave fresh confirmations to the commit hook's fast path
-      confirmedAt: range(null, DateTime.now().minus({ minutes: 15 })),
-    }).pluckEach('id', async (id: string) => {
-      await this.charge(id)
-    })
+    const owed = Booking.where({ status: 'confirmed', chargedAt: null })
+    // leave fresh confirmations to the commit hook's fast path
+    await owed
+      .where({ confirmedAt: range(keyWindowStart(), DateTime.now().minus({ minutes: 15 })) })
+      .pluckEach('id', async (id: string) => {
+        await this.charge(id)
+      })
+
+    if (await owed.where({ confirmedAt: range(null, keyWindowStart()) }).count()) {
+      // report to the app's error-reporting service: reconcile these against the gateway
+    }
   }
 }
 ```
 
-The `chargedAt` check only skips finished work: overlapping runs both pass it, and a charge can succeed before `chargedAt` is saved, so the key is what makes a repeat harmless. A booking that can never be charged stays owed and is re-enqueued by every sweep, so give `_charge` an [app-owned retry budget](#app-owned-retry-budgets) whose exhausted branch, beside the report, moves the booking to a status the sweep does not select.
+`_charge`'s lookup only skips work no longer owed: overlapping runs both pass it, and a charge can succeed before `chargedAt` is saved, so the key is what makes a repeat harmless. It does so only while the gateway keeps the key, commonly 24 hours; past that a repeat is a new charge, so the job and the sweep both stop at 20 hours and leave anything older to a person, who checks the gateway first. A booking that can never be charged is re-enqueued by every sweep until then, so give `_charge` an [app-owned retry budget](#app-owned-retry-budgets) whose exhausted branch, beside the report, moves the booking to a status neither the lookup nor the sweep selects. When adding `chargedAt` to a table that already holds confirmed bookings, backfill it in the same migration for the ones already charged, so only new confirmations read as owed.
 
 ## Never Rescue Exceptions Inside Backgrounded Services
 
