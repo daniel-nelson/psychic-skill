@@ -39,7 +39,9 @@ the query's conditions against the locked rows, then writes and commits. A recor
 has already moved out of the query drops out of the locked read and is left alone.
 
 The return value is the count of records actually claimed, so the caller detects a lost race by
-comparing it against what it expected.
+comparing it against what it expected. A retry can get `0` from its own earlier attempt's committed
+claim, with the work meant to follow it never done — see
+[workers.md](workers.md#work-that-must-not-be-lost-after-a-commit).
 
 ## `update(attributes, { lock: true })`
 

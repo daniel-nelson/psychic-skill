@@ -215,6 +215,44 @@ await PhotoProcessingService.processOne(photoId)
 
 **Red flag:** if a service takes a `txn` parameter AND its method body contains `background(`, it is almost always a bug.
 
+### Work that must not be lost after a commit
+
+A commit hook's enqueue can fail after its write commits ([models.md](models.md#after-commit-hooks-run-after-transaction-commits)), and a deploy or crash can land between a commit and the job meant to follow it. When losing that work costs something real, such as the charge for a confirmed booking, let Postgres hold it: the confirming write leaves the charge owed, a scheduled sweep re-enqueues whatever is still owed, and the gateway call carries an idempotency key fixed to the booking. The commit hook stays the fast path; the sweep is the guarantee, at up to one sweep's delay.
+
+```typescript
+// Confirmed with chargedAt null is the record that the charge is owed.
+// Booking's @deco.AfterUpdateCommit({ ifChanged: ['status'] }) enqueues BookingChargeService.charge.
+await Booking.where({ id: booking.id, status: 'pending' })
+  .update({ status: 'confirmed', confirmedAt: DateTime.now() }, { lock: true })
+
+export default class BookingChargeService extends ApplicationBackgroundedService {
+  public static async charge(bookingId: string) {
+    await this.background('_charge', bookingId)
+  }
+
+  public static async _charge(bookingId: string) {
+    const booking = await Booking.find(bookingId)
+    if (!booking || booking.chargedAt) return
+    await PaymentGateway.charge(booking, { idempotencyKey: `booking-charge-${booking.id}` })
+    await booking.update({ chargedAt: DateTime.now() })
+  }
+
+  // called from the hourly scheduled orchestrator
+  public static async chargeOwed() {
+    await Booking.where({
+      status: 'confirmed',
+      chargedAt: null,
+      // leave fresh confirmations to the commit hook's fast path
+      confirmedAt: range(null, DateTime.now().minus({ minutes: 15 })),
+    }).pluckEach('id', async (id: string) => {
+      await this.charge(id)
+    })
+  }
+}
+```
+
+The `chargedAt` check only skips finished work: overlapping runs both pass it, and a charge can succeed before `chargedAt` is saved, so the key is what makes a repeat harmless. A booking that can never be charged stays owed and is re-enqueued by every sweep, so give `_charge` an [app-owned retry budget](#app-owned-retry-budgets) whose exhausted branch, beside the report, moves the booking to a status the sweep does not select.
+
 ## Never Rescue Exceptions Inside Backgrounded Services
 
 Inside any class extending `ApplicationBackgroundedService` or `ApplicationBackgroundedModel`, the bar for adding a `try/catch` is much higher than [Critical Rule 13](SKILL.md#critical-rules). The default is **no catch, ever**, and you need a named, justified reason to deviate.

@@ -601,6 +601,8 @@ public removeFromSearchIndex(this: Place) { ... }
 
 **Gating on an encrypted property.** When the gated property is `@deco.Encrypted`, list the persisted column name `encrypted<Name>` in `ifChanged` (e.g. `ifChanged: ['encryptedPhone']`), not the plaintext virtual (`phone`). `ifChanged` is typed over the real persisted columns (`DreamColumnNames`); setting the virtual marks the underlying `encrypted<Name>` column dirty, which is what change detection sees.
 
+**A commit hook that throws rejects its writer after the write has committed.** The `create`, `update` or `destroy` — or the enclosing `ApplicationModel.transaction(...)` — rejects, skipping the code after it and any later commit hooks, and nothing rolls back. A failed `background(...)` in a `Booking` `@deco.AfterUpdateCommit` leaves the booking confirmed with nothing enqueued. For work that must not be lost, see [workers.md](workers.md#work-that-must-not-be-lost-after-a-commit).
+
 ### Hook order around a `dependent: 'destroy'` cascade
 
 A destroy runs the record's own `beforeDestroy` hooks **first**, then the `dependent: 'destroy'` cascade, then `afterDestroy` — so a `beforeDestroy` on `Place` still sees its `Room` records present, and an `afterDestroy` sees them gone. Work that must read, count, or archive the children belongs in `beforeDestroy`; work that assumes they are already deleted belongs in `afterDestroy`, which still runs inside the destroy's transaction.
