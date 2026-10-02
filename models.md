@@ -1003,21 +1003,23 @@ Only `BelongsTo` associations are assignable through `create` / `update` params 
 ## Dirty Tracking
 
 ```typescript
-const user = await User.findOrFail(id)
-user.name = 'New Name'
+const place = await Place.findOrFail(id) // name: 'Cozy Cabin'
+place.name = 'Bear Den Lodge'
 
-user.isDirty()                    // true
-user.isClean()                    // false
-user.changedAttributes()          // { name: 'New Name' }
-user.hasChanges('name')           // true
-user.hasChanges('email')          // false
+place.isDirty                            // true
+place.willSaveChangeToAttribute('name')  // true
+place.willSaveChangeToAttribute('style') // false
+place.dirtyAttributes()                  // { name: 'Bear Den Lodge' } — pending values
+place.changedAttributes()                // { name: 'Cozy Cabin' } — original values
 ```
 
-`changedAttributes()` works before the first save too. `User.new({ name: 'Alice' })` marks `name` dirty immediately, so `changedAttributes()` is populated on the unpersisted instance.
+In a validation or `Before*` hook, `this.willSaveChangeToAttribute('status')` tells whether this save changes `status`: `this.status` is the value being saved, `changedAttributes().status` is the value before the change, and `changes()` gives both as `{ was, now }`. To run a `Before*` hook only when a column changes, gate it with `ifChanging`, which on a create counts only the columns that were assigned.
+
+Save's after hooks run once the snapshot has been refreshed, so there `willSaveChangeToAttribute` is `false` and `dirtyAttributes()` is empty; `savedChangeToAttribute(column)` and `changes()` report the last save. To run an after hook only when a column changed, gate it with `ifChanged`, which is checked at the save itself and on a create counts only the columns that were assigned.
 
 A persisted instance with nothing dirty issues no `UPDATE` on `save()` or `update()` and leaves `updatedAt` unstamped — `update({})`, or an `update()` assigning values equal to the current ones, is a no-op rather than a touch. Re-assigning the same plaintext to an `@deco.Encrypted()` property is always a real write: each assignment re-encrypts to fresh ciphertext. Before-save hooks and validations still run first, so a hook that dirties the record turns it back into a real write. The comparison is against the instance's own snapshot from its last load or save, not against the row currently in the database.
 
-For an `@deco.Encrypted()` property, `changedAttributes()` reports the persisted `encrypted<Name>` key, not the plaintext virtual property. `getAttribute('<plaintext>')` returns `undefined` — it isn't the decrypting accessor; `getAttribute('encrypted<Name>')` returns ciphertext. Read the decrypted value via the instance property (`instance.<plaintext>`) — see [Encrypted](#special-decorators) above.
+For an `@deco.Encrypted()` property, `dirtyAttributes()` and `changedAttributes()` report the persisted `encrypted<Name>` key, not the plaintext virtual property. `getAttribute('<plaintext>')` returns `undefined` — it isn't the decrypting accessor; `getAttribute('encrypted<Name>')` returns ciphertext. Read the decrypted value via the instance property (`instance.<plaintext>`) — see [Encrypted](#special-decorators) above.
 
 ## Batch Processing
 
