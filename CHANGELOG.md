@@ -10,6 +10,10 @@
 - **`serializers.md`** — `.customAttribute` renders a nested object by returning an exported ObjectSerializer's builder, `PlaceAvailabilitySummaryViewSerializer(passthrough.availabilitySummary)`, with `openapi: { $serializer: PlaceAvailabilitySummaryViewSerializer }` deriving the schema. Return the builder, not its `.render()` output, which drops the outer render's passthrough and casing, and not a raw object, which goes out as-is, extra keys included.
 - **`serializers.md`** — "Rendering an async-computed shape on the model" offers a way to keep the shape off the model when rendering a single `Place`: hand it in with `this.serializerPassthrough({ availabilitySummary })` and render it with that `customAttribute`. Passthrough is one value for the whole render, so a collection takes the declared property instead, and every action rendering `PlaceSerializer` must supply the value or the field renders `null` and fails response validation.
 
+### Changed
+
+- **`models.md`**, **`workers.md`**, **`websockets.md`**, **`testing.md`** — every caller outside a backgrounded service, whether a model hook, a spec or another service, now calls a public entry point that takes the model (`GuestMailerService.sendWelcome(guest)`, `NotificationService.placeBooked(booking)`, `PlacePhotoProcessingService.processOne(placePhoto)`), and the service backgrounds its private `_` method with the id itself. The fan-out expander `findEach`es its batch of ids and hands each `PlacePhoto` to `processOne`.
+
 ## 0.101.0 — 2026-10-01
 
 ### Changed

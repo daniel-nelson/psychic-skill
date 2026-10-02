@@ -583,13 +583,13 @@ export default class SeedDefaultRooms {
 
 ```typescript
 @deco.AfterCreateCommit()
-public async sendWelcomeEmail(this: User) {
-  await EmailService.background('sendWelcome', this.id)
+public async sendWelcomeEmail(this: Guest) {
+  await GuestMailerService.sendWelcome(this)
 }
 
 @deco.AfterUpdateCommit({ ifChanged: ['status'] })
 public async notifyStatusChange(this: Place) {
-  await NotificationService.background('statusChanged', this.id)
+  await NotificationService.placeStatusChanged(this)
 }
 
 @deco.AfterSaveCommit()
@@ -1224,7 +1224,7 @@ for (const place of created) {
 const prepared: Array<{ record: Record; bucketPath: string }> = []
 for (const record of records) {
   const buffer = await (await fetch(record.photoUrl)).arrayBuffer()
-  const bucketPath = PlacePhotoMediaService.objectKey(host.id, record)
+  const bucketPath = PlacePhotoMediaService.objectKey(host, record)
   await s3.send(new PutObjectCommand({ Bucket, Key: bucketPath, Body: Buffer.from(buffer) }))
   prepared.push({ record, bucketPath })
 }

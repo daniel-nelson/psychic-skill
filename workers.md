@@ -93,15 +93,15 @@ await IntercomSyncService.syncUser(user)
 `backgroundWith({ delay, priority }, method, ...args)` is the per-call form. `delay` queues the job to run at least that far in the future, supporting `seconds`, `minutes`, `hours`, and `days`; `priority` overrides `backgroundJobConfig` for that job. Both are optional, and either may be used alone.
 
 ```typescript
-export default class ImageProcessingService extends ApplicationBackgroundedService {
-  public static async processUpload(uploadId: string) {
+export default class PlacePhotoProcessingService extends ApplicationBackgroundedService {
+  public static async processUpload(placePhoto: PlacePhoto) {
     // Wait for S3 upload to propagate before processing
-    await this.backgroundWith({ delay: { seconds: 15 } }, '_processUpload', uploadId)
+    await this.backgroundWith({ delay: { seconds: 15 } }, '_processUpload', placePhoto.id)
   }
 
-  public static async _processUpload(uploadId: string) {
-    const upload = await Upload.find(uploadId)
-    if (!upload) return
+  public static async _processUpload(placePhotoId: string) {
+    const placePhoto = await PlacePhoto.find(placePhotoId)
+    if (!placePhoto) return
     // ...process the image
   }
 }
@@ -196,18 +196,16 @@ The same race applies to **services** that take a `txn` parameter and call `back
 ```typescript
 // WRONG — bgjob races the transaction commit
 await ApplicationModel.transaction(async txn => {
-  const photo = await Photo.txn(txn).create({ ... })
-  await PhotoProcessingService.processOne(photo.id)
-  // ↑ Redis sees the job NOW; Postgres won't see `photo` until commit
+  const placePhoto = await PlacePhoto.txn(txn).create({ ... })
+  await PlacePhotoProcessingService.processOne(placePhoto)
+  // ↑ Redis sees the job NOW; Postgres won't see `placePhoto` until commit
 })
 
 // RIGHT — enqueue after commit
-let photoId: string
-await ApplicationModel.transaction(async txn => {
-  const photo = await Photo.txn(txn).create({ ... })
-  photoId = photo.id
-})
-await PhotoProcessingService.processOne(photoId)
+const placePhoto = await ApplicationModel.transaction(async txn =>
+  PlacePhoto.txn(txn).create({ ... })
+)
+await PlacePhotoProcessingService.processOne(placePhoto)
 
 // ALSO RIGHT — let the model's @AfterCreateCommit hook do the enqueue
 // (don't ALSO do it manually inside the txn)
@@ -315,7 +313,7 @@ The idiomatic pattern is a **two-level fan-out** using `pluckEach` and priority 
 
 1. A kickoff job uses `pluckEach` to pluck IDs in batches (default batch size is 1000).
 2. For each batch, it enqueues an **expander job** (priority `last`) with just that batch of IDs.
-3. Each expander job iterates its batch and enqueues an **individual worker job** (priority `not_urgent`) per ID.
+3. Each expander job loads its batch and enqueues an **individual worker job** (priority `not_urgent`) per record.
 4. Each individual worker job loads the record and does the real work.
 
 Keep both tiers of the fan-out below `default`. A bulk run's individual jobs vastly outnumber ordinary application work, and if they run at `default` priority they compete directly with it — routine, more-important-than-bulk jobs queue up behind however many thousand photos are left to reprocess. Bulk work belongs entirely under `not_urgent`/`last` so it only fills otherwise-idle worker slots.
@@ -323,10 +321,10 @@ Keep both tiers of the fan-out below `default`. A bulk run's individual jobs vas
 Because expanders run at `last` priority, they only claim worker slots when no `not_urgent`-priority individual jobs are pending. With 10 workers, that means at most ~10 batches are expanded at a time (producing ~10,000 individual jobs in flight), and the individual jobs are drained before more batches are expanded. The queue depth stays bounded regardless of the total record count. Expander jobs are also infrequent relative to individual jobs — one per 1000 IDs — so sharing the `last` tier with a [check-in/heartbeat job](#priority-levels) doesn't starve it outright; it just interleaves.
 
 ```typescript
-// services/ReprocessAllPhotosService.ts
-import PhotoProcessingService from './PhotoProcessingService.js'
+// services/ReprocessAllPlacePhotosService.ts
+import PlacePhotoProcessingService from './PlacePhotoProcessingService.js'
 
-export default class ReprocessAllPhotosService extends ApplicationBackgroundedService {
+export default class ReprocessAllPlacePhotosService extends ApplicationBackgroundedService {
   public static override get backgroundJobConfig() {
     return { priority: 'last' as const }
   }
@@ -338,7 +336,7 @@ export default class ReprocessAllPhotosService extends ApplicationBackgroundedSe
 
   public static async _reprocessAll() {
     let batch: string[] = []
-    await Photo.pluckEach('id', async (id: string) => {
+    await PlacePhoto.pluckEach('id', async (id: string) => {
       batch.push(id)
       if (batch.length >= 1000) {
         await this.background('_expandBatch', batch)
@@ -350,28 +348,28 @@ export default class ReprocessAllPhotosService extends ApplicationBackgroundedSe
 
   // Step 2: expander — fans the batch into individual worker jobs
   public static async _expandBatch(ids: string[]) {
-    for (const id of ids) {
-      await PhotoProcessingService.processOne(id)
-    }
+    await PlacePhoto.where({ id: ids }).findEach(async placePhoto => {
+      await PlacePhotoProcessingService.processOne(placePhoto)
+    })
   }
 }
 ```
 
 ```typescript
-// services/PhotoProcessingService.ts
-export default class PhotoProcessingService extends ApplicationBackgroundedService {
+// services/PlacePhotoProcessingService.ts
+export default class PlacePhotoProcessingService extends ApplicationBackgroundedService {
   public static override get backgroundJobConfig() {
     return { priority: 'not_urgent' as const }
   }
 
   // Step 3: individual worker — loads the record and does the actual work
-  public static async processOne(id: string) {
-    await this.background('_processOne', id)
+  public static async processOne(placePhoto: PlacePhoto) {
+    await this.background('_processOne', placePhoto.id)
   }
 
-  public static async _processOne(id: string) {
-    const photo = await Photo.find(id)
-    if (!photo) return
+  public static async _processOne(placePhotoId: string) {
+    const placePhoto = await PlacePhoto.find(placePhotoId)
+    if (!placePhoto) return
     // ...do the real work
   }
 }

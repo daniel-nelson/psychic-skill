@@ -702,8 +702,8 @@ Code that imports `{ cleaningFee }` gets the spy. For a default export, spy on `
 
 ```typescript
 // Default: Jobs execute immediately in specs (testInvocation = 'automatic')
-await EmailService.background('sendWelcome', user.id)
-// Method runs synchronously
+await GuestMailerService.sendWelcome(guest)
+// The backgrounded method runs synchronously
 
 // Manual mode for fine-grained control
 import { WorkerTestUtils } from '@rvoh/psychic-workers'
@@ -711,9 +711,9 @@ import { WorkerTestUtils } from '@rvoh/psychic-workers'
 const workersApp = PsychicAppWorkers.getOrFail()
 workersApp.set('testInvocation', 'manual')
 
-await EmailService.background('sendWelcome', user.id)  // Queued
-await WorkerTestUtils.work()                            // Process queue
-await WorkerTestUtils.clean()                           // Clear queues
+await GuestMailerService.sendWelcome(guest)  // Queued
+await WorkerTestUtils.work()                 // Process queue
+await WorkerTestUtils.clean()                // Clear queues
 ```
 
 ### A job that throws fails the enqueuing request in specs, but not in prod
