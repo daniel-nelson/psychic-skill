@@ -4,13 +4,13 @@
 
 ### Added
 
-- **`models.md`** — "Dirty Tracking" says save's after hooks run once the snapshot has been refreshed, so there `willSaveChangeToAttribute` is `false` and `dirtyAttributes()` is empty, while `savedChangeToAttribute(column)` and `changes()` (`{ was, now }` per column) report the last save. A `Commit` hook inside a transaction runs at commit and sees the instance as it is then, and after a create every column, set or not, counts as changed, so a hook meant to run only when a column really changed is gated with `ifChanged`, which is checked at the save itself.
+- **`models.md`** — "Dirty Tracking" says save's after hooks run once the snapshot has been refreshed, so there `willSaveChangeToAttribute` is `false` and `dirtyAttributes()` is empty, while `savedChangeToAttribute(column)` and `changes()` report the last save. To run an after hook only when a column changed, gate it with `ifChanged`, which is checked at the save itself and on a create counts only the columns that were assigned.
 
 ### Changed
 
 - **`SKILL.md`** — ecosystem baseline: `@rvoh/dream` 2.34.x, `@rvoh/psychic` 3.15.3, `@rvoh/psychic-workers` 2.8.x.
-- **`models.md`** — "Dirty Tracking" teaches the API on a `Place`: `isDirty` is a getter, `willSaveChangeToAttribute(column)` tests a pending change, `dirtyAttributes()` returns the pending values and `changedAttributes()` the original ones. A validation or before-save hook tests `this.willSaveChangeToAttribute(column)` and reads the new value from the property itself, never from `changedAttributes()`. On an unpersisted instance every column is pending, set or not, and every `changedAttributes()` value is `undefined`. For an `@deco.Encrypted()` property, both `dirtyAttributes()` and `changedAttributes()` report the persisted `encrypted<Name>` key.
-- **`migrations.md`** — the array-column note says an in-place mutation such as `.push()` goes undetected even if the mutated array is then reassigned, because the instance's snapshot from its last load or save holds the same array object; assign a new array to trigger an update.
+- **`models.md`** — "Dirty Tracking" teaches the API on a `Place`: `isDirty` is a getter, `willSaveChangeToAttribute(column)` tests a pending change, `dirtyAttributes()` returns the pending values and `changedAttributes()` the original ones. In a validation or `Before*` hook, `willSaveChangeToAttribute` tells whether this save changes a column, the property holds the value being saved, `changedAttributes()` the value before the change, and `changes()` both as `{ was, now }`; a `Before*` hook that should run only when a column changes is gated with `ifChanging`, which on a create counts only the columns that were assigned. For an `@deco.Encrypted()` property, both `dirtyAttributes()` and `changedAttributes()` report the persisted `encrypted<Name>` key.
+- **`migrations.md`** — the array-column note says never to mutate an array column in place (`.push()`, `.splice()`, index assignment): the instance's snapshot from its last load or save holds the same array object, so the mutation changes the snapshot too and the save writes nothing, even if the mutated array or a copy of it is then assigned. Build the new array from the old one instead.
 
 ## 0.102.0 — 2026-10-01
 
