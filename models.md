@@ -583,13 +583,13 @@ export default class SeedDefaultRooms {
 
 ```typescript
 @deco.AfterCreateCommit()
-public async sendWelcomeEmail(this: User) {
-  await EmailService.background('sendWelcome', this.id)
+public async sendWelcomeEmail(this: Guest) {
+  await GuestMailerService.sendWelcome(this)
 }
 
 @deco.AfterUpdateCommit({ ifChanged: ['status'] })
 public async notifyStatusChange(this: Place) {
-  await NotificationService.background('statusChanged', this.id)
+  await NotificationService.placeStatusChanged(this)
 }
 
 @deco.AfterSaveCommit()
@@ -600,6 +600,8 @@ public removeFromSearchIndex(this: Place) { ... }
 ```
 
 **Gating on an encrypted property.** When the gated property is `@deco.Encrypted`, list the persisted column name `encrypted<Name>` in `ifChanged` (e.g. `ifChanged: ['encryptedPhone']`), not the plaintext virtual (`phone`). `ifChanged` is typed over the real persisted columns (`DreamColumnNames`); setting the virtual marks the underlying `encrypted<Name>` column dirty, which is what change detection sees.
+
+**A commit hook that throws rejects its writer after the write has committed.** The `create`, `update` or `destroy` — or the enclosing `ApplicationModel.transaction(...)` — rejects, skipping the code after it and any later commit hooks, and nothing rolls back. A failed `background(...)` in a `Booking` `@deco.AfterUpdateCommit` leaves the booking confirmed with nothing enqueued. For work that must not be lost, see [workers.md](workers.md#work-that-must-not-be-lost-after-a-commit).
 
 ### Hook order around a `dependent: 'destroy'` cascade
 
@@ -1222,7 +1224,7 @@ for (const place of created) {
 const prepared: Array<{ record: Record; bucketPath: string }> = []
 for (const record of records) {
   const buffer = await (await fetch(record.photoUrl)).arrayBuffer()
-  const bucketPath = PlacePhotoMediaService.objectKey(host.id, record)
+  const bucketPath = PlacePhotoMediaService.objectKey(host, record)
   await s3.send(new PutObjectCommand({ Bucket, Key: bucketPath, Body: Buffer.from(buffer) }))
   prepared.push({ record, bucketPath })
 }

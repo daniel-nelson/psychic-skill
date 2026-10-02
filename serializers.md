@@ -110,7 +110,15 @@ Computed/virtual field with a callback:
   flatten: true,
   openapi: { lat: { type: 'number' }, lng: { type: 'number' } },
 })
+
+// Nested object: return an exported ObjectSerializer's builder; `$serializer` derives the schema
+.customAttribute('availabilitySummary',
+  () => PlaceAvailabilitySummaryViewSerializer(passthrough.availabilitySummary),
+  { openapi: { $serializer: PlaceAvailabilitySummaryViewSerializer } }
+)
 ```
+
+Return the builder, not its `.render()` output or a raw object. Dream renders a returned builder with the outer render's passthrough and casing, which a hand-called `.render()` drops; a raw object goes out as-is, extra keys included.
 
 Note: a `customAttribute` whose function body reads an association is invisible to `preloadFor` — see [preloadFor Integration](#preloadfor-integration). This includes a fallback expression like `() => current?.title ?? fallback.title`: reach for [layered `delegatedAttribute`s](#layering-two-delegatedattributes-onto-the-same-output-key) instead, so both associations get preloaded automatically.
 
@@ -462,6 +470,8 @@ this.ok(place)
 ```
 
 `optional: true` keeps actions that leave it unassigned from failing response validation. Export the nested ObjectSerializer so it registers as a named OpenAPI component.
+
+To keep the shape off the model when rendering a single `Place`, hand it in with `this.serializerPassthrough({ availabilitySummary })` and render it with a [`customAttribute` returning its serializer](#customattributename-fn-options). Passthrough is one value for the whole render, so a collection takes the declared property instead. Every action rendering `PlaceSerializer` must then supply it, or the field renders `null` and fails response validation.
 
 ## STI Serializers
 

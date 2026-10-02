@@ -93,15 +93,15 @@ await IntercomSyncService.syncUser(user)
 `backgroundWith({ delay, priority }, method, ...args)` is the per-call form. `delay` queues the job to run at least that far in the future, supporting `seconds`, `minutes`, `hours`, and `days`; `priority` overrides `backgroundJobConfig` for that job. Both are optional, and either may be used alone.
 
 ```typescript
-export default class ImageProcessingService extends ApplicationBackgroundedService {
-  public static async processUpload(uploadId: string) {
+export default class PlacePhotoProcessingService extends ApplicationBackgroundedService {
+  public static async processUpload(placePhoto: PlacePhoto) {
     // Wait for S3 upload to propagate before processing
-    await this.backgroundWith({ delay: { seconds: 15 } }, '_processUpload', uploadId)
+    await this.backgroundWith({ delay: { seconds: 15 } }, '_processUpload', placePhoto.id)
   }
 
-  public static async _processUpload(uploadId: string) {
-    const upload = await Upload.find(uploadId)
-    if (!upload) return
+  public static async _processUpload(placePhotoId: string) {
+    const placePhoto = await PlacePhoto.find(placePhotoId)
+    if (!placePhoto) return
     // ...process the image
   }
 }
@@ -196,24 +196,75 @@ The same race applies to **services** that take a `txn` parameter and call `back
 ```typescript
 // WRONG — bgjob races the transaction commit
 await ApplicationModel.transaction(async txn => {
-  const photo = await Photo.txn(txn).create({ ... })
-  await PhotoProcessingService.processOne(photo.id)
-  // ↑ Redis sees the job NOW; Postgres won't see `photo` until commit
+  const placePhoto = await PlacePhoto.txn(txn).create({ ... })
+  await PlacePhotoProcessingService.processOne(placePhoto)
+  // ↑ Redis sees the job NOW; Postgres won't see `placePhoto` until commit
 })
 
 // RIGHT — enqueue after commit
-let photoId: string
-await ApplicationModel.transaction(async txn => {
-  const photo = await Photo.txn(txn).create({ ... })
-  photoId = photo.id
-})
-await PhotoProcessingService.processOne(photoId)
+const placePhoto = await ApplicationModel.transaction(async txn =>
+  PlacePhoto.txn(txn).create({ ... })
+)
+await PlacePhotoProcessingService.processOne(placePhoto)
 
 // ALSO RIGHT — let the model's @AfterCreateCommit hook do the enqueue
 // (don't ALSO do it manually inside the txn)
 ```
 
 **Red flag:** if a service takes a `txn` parameter AND its method body contains `background(`, it is almost always a bug.
+
+### Work that must not be lost after a commit
+
+A commit hook's enqueue can fail after its write commits ([models.md](models.md#after-commit-hooks-run-after-transaction-commits)), and a deploy or crash can land between a commit and the job meant to follow it. When losing that work costs something real, such as the charge for a confirmed booking, let two timestamps hold it: the confirming write sets `chargeInitiatedAt`, the job stamps `chargeCompletedAt` after the gateway call, and a booking with the first and not the second is owed whatever became of its job. The commit hook is the fast path; a sweep that re-enqueues every owed booking is the guarantee.
+
+```typescript
+await Booking.where({ id: booking.id, status: 'pending' })
+  .update({ status: 'confirmed', chargeInitiatedAt: DateTime.now() }, { lock: true })
+
+// models/Booking.ts
+@deco.AfterUpdateCommit({ ifChanged: ['chargeInitiatedAt'] })
+public async chargeGuest(this: Booking) {
+  if (this.chargeInitiatedAt) await BookingChargeService.charge(this)
+}
+
+// services/BookingChargeService.ts
+// the gateway keeps an idempotency key for 24 hours; stay inside that
+const keyWindowStart = () => DateTime.now().minus({ hours: 20 })
+
+export default class BookingChargeService extends ApplicationBackgroundedService {
+  public static async charge(booking: Booking) {
+    await this.background('_charge', booking.id)
+  }
+
+  public static async _charge(bookingId: string) {
+    const booking = await Booking.findBy({
+      id: bookingId,
+      chargeInitiatedAt: range(keyWindowStart()),
+      chargeCompletedAt: null,
+    })
+    if (!booking) return
+    await PaymentGateway.charge(booking, { idempotencyKey: `booking-charge-${booking.id}` })
+    await booking.update({ chargeCompletedAt: DateTime.now() })
+  }
+
+  // called by ScheduledJobs.everyMinute, registered with schedule('* * * * *', 'everyMinute')
+  public static async chargeOwed() {
+    await this.background('_chargeOwed')
+  }
+
+  public static async _chargeOwed() {
+    await Booking.where({
+      // leave the last two minutes to the commit hook's fast path
+      chargeInitiatedAt: range(keyWindowStart(), DateTime.now().minus({ minutes: 2 })),
+      chargeCompletedAt: null,
+    }).findEach(async booking => {
+      await this.charge(booking)
+    })
+  }
+}
+```
+
+`_charge`'s lookup only skips work no longer owed: overlapping runs both pass it, and a charge can succeed before `chargeCompletedAt` is saved, so the key is what makes a repeat harmless. It does so only while the gateway keeps the key, commonly 24 hours; past that a repeat is a new charge, so the job and the sweep both stop at 20 hours. Report anything owed beyond that for a person to reconcile against the gateway, from its own scheduled task with a cutoff an hour past the window, so it never reports a booking a job may still charge. A write that ends the obligation, such as a cancellation, clears `chargeInitiatedAt` in the same write, so neither the job nor the sweep picks the booking up. When adding the columns to a table that already holds charged bookings, any `chargeInitiatedAt` you backfill needs `chargeCompletedAt` beside it, so only new confirmations read as owed.
 
 ## Never Rescue Exceptions Inside Backgrounded Services
 
@@ -266,7 +317,7 @@ The idiomatic pattern is a **two-level fan-out** using `pluckEach` and priority 
 
 1. A kickoff job uses `pluckEach` to pluck IDs in batches (default batch size is 1000).
 2. For each batch, it enqueues an **expander job** (priority `last`) with just that batch of IDs.
-3. Each expander job iterates its batch and enqueues an **individual worker job** (priority `not_urgent`) per ID.
+3. Each expander job loads its batch and enqueues an **individual worker job** (priority `not_urgent`) per record.
 4. Each individual worker job loads the record and does the real work.
 
 Keep both tiers of the fan-out below `default`. A bulk run's individual jobs vastly outnumber ordinary application work, and if they run at `default` priority they compete directly with it — routine, more-important-than-bulk jobs queue up behind however many thousand photos are left to reprocess. Bulk work belongs entirely under `not_urgent`/`last` so it only fills otherwise-idle worker slots.
@@ -274,10 +325,10 @@ Keep both tiers of the fan-out below `default`. A bulk run's individual jobs vas
 Because expanders run at `last` priority, they only claim worker slots when no `not_urgent`-priority individual jobs are pending. With 10 workers, that means at most ~10 batches are expanded at a time (producing ~10,000 individual jobs in flight), and the individual jobs are drained before more batches are expanded. The queue depth stays bounded regardless of the total record count. Expander jobs are also infrequent relative to individual jobs — one per 1000 IDs — so sharing the `last` tier with a [check-in/heartbeat job](#priority-levels) doesn't starve it outright; it just interleaves.
 
 ```typescript
-// services/ReprocessAllPhotosService.ts
-import PhotoProcessingService from './PhotoProcessingService.js'
+// services/ReprocessAllPlacePhotosService.ts
+import PlacePhotoProcessingService from './PlacePhotoProcessingService.js'
 
-export default class ReprocessAllPhotosService extends ApplicationBackgroundedService {
+export default class ReprocessAllPlacePhotosService extends ApplicationBackgroundedService {
   public static override get backgroundJobConfig() {
     return { priority: 'last' as const }
   }
@@ -289,7 +340,7 @@ export default class ReprocessAllPhotosService extends ApplicationBackgroundedSe
 
   public static async _reprocessAll() {
     let batch: string[] = []
-    await Photo.pluckEach('id', async (id: string) => {
+    await PlacePhoto.pluckEach('id', async (id: string) => {
       batch.push(id)
       if (batch.length >= 1000) {
         await this.background('_expandBatch', batch)
@@ -301,28 +352,28 @@ export default class ReprocessAllPhotosService extends ApplicationBackgroundedSe
 
   // Step 2: expander — fans the batch into individual worker jobs
   public static async _expandBatch(ids: string[]) {
-    for (const id of ids) {
-      await PhotoProcessingService.processOne(id)
-    }
+    await PlacePhoto.where({ id: ids }).findEach(async placePhoto => {
+      await PlacePhotoProcessingService.processOne(placePhoto)
+    })
   }
 }
 ```
 
 ```typescript
-// services/PhotoProcessingService.ts
-export default class PhotoProcessingService extends ApplicationBackgroundedService {
+// services/PlacePhotoProcessingService.ts
+export default class PlacePhotoProcessingService extends ApplicationBackgroundedService {
   public static override get backgroundJobConfig() {
     return { priority: 'not_urgent' as const }
   }
 
   // Step 3: individual worker — loads the record and does the actual work
-  public static async processOne(id: string) {
-    await this.background('_processOne', id)
+  public static async processOne(placePhoto: PlacePhoto) {
+    await this.background('_processOne', placePhoto.id)
   }
 
-  public static async _processOne(id: string) {
-    const photo = await Photo.find(id)
-    if (!photo) return
+  public static async _processOne(placePhotoId: string) {
+    const placePhoto = await PlacePhoto.find(placePhotoId)
+    if (!placePhoto) return
     // ...do the real work
   }
 }
@@ -376,11 +427,11 @@ export default class ScheduledJobs extends ApplicationScheduledService {
   }
 
   public static async processHour() {
-    await HourProcessor.process(DateTime.now())
+    await HourProcessor.process(DateTime.now())   // enqueues and returns
   }
 
   public static async dailyReport() {
-    await ReportService.generateDaily()
+    await ReportService.generateDaily()           // enqueues and returns
   }
 }
 ```
@@ -405,7 +456,7 @@ The seed process must reach the jobs Redis; with `enableOfflineQueue: false` an 
 
 ### Scheduled services are thin orchestrators, not workers
 
-A scheduled method should do almost nothing itself: select what needs to happen now and **fan out to backgrounded services** that do the real work. Heavy lifting inside a scheduled method is a design smell. The goal is to keep the number of permanently-registered schedulers in the BullMQ "Delayed" queue to a small fixed set — typically just `hourly`, `daily`, and `weekly` — each of which kicks off whatever backgrounded jobs that cadence requires. Three clean schedulers fanning out to dedicated services is the target shape; a sprawling list of per-task schedulers is not.
+A scheduled method **only enqueues its work and returns**: it calls entry points on backgrounded services that do nothing but `background(...)`, and every query, selection and write runs in those jobs. Work done inside the scheduled call ties the failure of one scheduled job to the failure of all: one throw skips everything after it in that run. The goal is to keep the number of permanently-registered schedulers in the BullMQ "Delayed" queue to a small fixed set — typically just `hourly`, `daily`, and `weekly` — each of which kicks off whatever backgrounded jobs that cadence requires. Three clean schedulers fanning out to dedicated services is the target shape; a sprawling list of per-task schedulers is not.
 
 ### A class is either scheduled OR backgrounded — never both
 
@@ -450,7 +501,7 @@ export default class ReconcileService extends ApplicationBackgroundedService {
 ```typescript
 // WRONG — registers exactly ONE scheduler (for FORM_CONFIGS[last]); the rest silently never run
 for (const config of FORM_CONFIGS) {
-  await ReconcileService.schedule('0 13 * * *', 'reconcileForm', config.key)
+  await ScheduledJobs.schedule('0 13 * * *', 'reconcileForm', config.key)
 }
 ```
 
@@ -458,15 +509,15 @@ This fails silently: no error, no warning, the worker boots clean, and you only 
 
 ```typescript
 // RIGHT — schedule the fan-out method ONCE; it loops at run time, not at schedule time
-await ReconcileService.schedule('0 13 * * *', 'reconcileAll')
+await ScheduledJobs.schedule('0 13 * * *', 'reconcileAll')
 ```
 
 ### Per-user cadence across time zones: schedule hourly, select by zone, fan out
 
-"Daily" and "weekly" work for users spread across time zones is not a daily/weekly cron. Register the orchestrator on an **hourly** cron and have each run select the users whose *local* end-of-day (or end-of-week) falls in the current hour, then fan out one backgrounded job per selected user. Bake the time zone — and any end-of-week preference — into the query so the database efficiently returns just the relevant user IDs, rather than loading all users and filtering in code.
+"Daily" and "weekly" work for guests spread across time zones is not a daily/weekly cron. Register the orchestrator on an **hourly** cron and have each run enqueue a job that selects the guests whose *local* end-of-day (or end-of-week) falls in the current hour, then fans out one backgrounded job per selected guest. Bake the time zone — and any end-of-week preference — into the query so the database efficiently returns just the relevant guest IDs, rather than loading all guests and filtering in code.
 
 ```typescript
-// Orchestrator — runs every hour; figures out whose local end-of-day this hour is
+// Orchestrator — runs every hour; enqueues the work for this hour and returns
 import EndOfDayService from '@services/EndOfDayService.js'
 
 export default class ScheduledJobs extends ApplicationScheduledService {
@@ -481,25 +532,29 @@ export default class ScheduledJobs extends ApplicationScheduledService {
 ```
 
 ```typescript
-// Worker — selects matching users by time zone, enqueues one job each
+// Worker — selects matching guests by time zone, enqueues one job each
 export default class EndOfDayService extends ApplicationBackgroundedService {
   public static async fanOut(now: DateTime) {
-    // The query filters by timezone so only users whose local hour is end-of-day
+    await this.background('_fanOut', now.hour)
+  }
+
+  public static async _fanOut(utcHour: number) {
+    // The query filters by timezone so only guests whose local hour is end-of-day
     // are returned — selecting IDs only, never hydrating full records.
-    await User.where({ endOfDayHourUtc: now.hour }).pluckEach('id', async (id: string) => {
+    await Guest.where({ endOfDayHourUtc: utcHour }).pluckEach('id', async (id: string) => {
       await this.background('_runEndOfDay', id)
     })
   }
 
   public static async _runEndOfDay(id: string) {
-    const user = await User.find(id)
-    if (!user) return
-    // ...the per-user end-of-day work
+    const guest = await Guest.find(id)
+    if (!guest) return
+    // ...the per-guest end-of-day work
   }
 }
 ```
 
-End-of-week works the same way, with the user's chosen end-of-week day folded into the query alongside the time zone, so the single hourly orchestrator covers every user's preference without a separate scheduler per variant.
+End-of-week works the same way, with the guest's chosen end-of-week day folded into the query alongside the time zone, so the single hourly orchestrator covers every guest's preference without a separate scheduler per variant.
 
 ### Backgrounded methods run inline in tests
 

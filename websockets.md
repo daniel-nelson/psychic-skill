@@ -231,19 +231,19 @@ Common pattern: Background job sends websocket notification:
 
 ```typescript
 export default class NotificationService extends ApplicationBackgroundedService {
-  public static async placeBooked(placeId: string, guestId: string) {
-    await this.background('_placeBooked', placeId, guestId)
+  public static async placeBooked(booking: Booking) {
+    await this.background('_placeBooked', booking.id)
   }
 
-  public static async _placeBooked(placeId: string, guestId: string) {
-    const place = await Place.findOrFail(placeId)
-    const hosts = await place.associationQuery('hosts').all()
+  public static async _placeBooked(bookingId: string) {
+    const booking = await Booking.preload('place', 'hosts').find(bookingId)
+    if (!booking) return
 
     const ws = new Ws(['/notifications/booking'] as const)
-    for (const host of hosts) {
+    for (const host of booking.place.hosts) {
       await ws.emit(host.userId, '/notifications/booking', {
-        placeName: place.name,
-        guestId,
+        placeName: booking.place.name,
+        guestId: booking.guestId,
       })
     }
   }
@@ -252,7 +252,7 @@ export default class NotificationService extends ApplicationBackgroundedService 
 // Triggered from model hook
 @deco.AfterCreateCommit()
 public async notifyBooking(this: Booking) {
-  await NotificationService.placeBooked(this.placeId, this.guestId)
+  await NotificationService.placeBooked(this)
 }
 ```
 
