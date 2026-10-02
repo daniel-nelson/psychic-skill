@@ -217,58 +217,52 @@ await PhotoProcessingService.processOne(photoId)
 
 ### Work that must not be lost after a commit
 
-A commit hook's enqueue can fail after its write commits ([models.md](models.md#after-commit-hooks-run-after-transaction-commits)), and a deploy or crash can land between a commit and the job meant to follow it. When losing that work costs something real, such as the charge for a confirmed booking, let Postgres hold it: the confirming write leaves the charge owed, a scheduled sweep re-enqueues whatever is still owed, and the gateway call carries an idempotency key fixed to the booking. The commit hook stays the fast path; the sweep is the guarantee, at up to one sweep's delay.
+A commit hook's enqueue can fail after its write commits ([models.md](models.md#after-commit-hooks-run-after-transaction-commits)), and a deploy or crash can land between a commit and the job meant to follow it. When losing that work costs something real, such as the charge for a confirmed booking, let two timestamps hold it: the confirming write sets `chargeInitiatedAt`, the job stamps `chargeCompletedAt` after the gateway call, and a booking with the first and not the second is owed whatever became of its job. The commit hook is the fast path; a sweep that re-enqueues every owed booking is the guarantee.
 
 ```typescript
-// Confirmed with chargedAt null is the record that the charge is owed; every write
-// that confirms a booking also sets confirmedAt, which the window below reads.
-// Booking's @deco.AfterUpdateCommit({ ifChanged: ['status'] }) enqueues
-// BookingChargeService.charge when the new status is 'confirmed'.
 await Booking.where({ id: booking.id, status: 'pending' })
-  .update({ status: 'confirmed', confirmedAt: DateTime.now() }, { lock: true })
+  .update({ status: 'confirmed', chargeInitiatedAt: DateTime.now() }, { lock: true })
 
+// models/Booking.ts
+@deco.AfterUpdateCommit({ ifChanged: ['chargeInitiatedAt'] })
+public async chargeGuest(this: Booking) {
+  await BookingChargeService.charge(this)
+}
+
+// services/BookingChargeService.ts
 // the gateway keeps an idempotency key for 24 hours; stay inside that
 const keyWindowStart = () => DateTime.now().minus({ hours: 20 })
 
 export default class BookingChargeService extends ApplicationBackgroundedService {
-  public static async charge(bookingId: string) {
-    await this.background('_charge', bookingId)
+  public static async charge(booking: Booking) {
+    await this.background('_charge', booking.id)
   }
 
   public static async _charge(bookingId: string) {
     const booking = await Booking.findBy({
       id: bookingId,
-      status: 'confirmed',
-      chargedAt: null,
-      confirmedAt: range(keyWindowStart()),
+      chargeInitiatedAt: range(keyWindowStart()),
+      chargeCompletedAt: null,
     })
     if (!booking) return
     await PaymentGateway.charge(booking, { idempotencyKey: `booking-charge-${booking.id}` })
-    await booking.update({ chargedAt: DateTime.now() })
+    await booking.update({ chargeCompletedAt: DateTime.now() })
   }
 
-  // called from the hourly scheduled orchestrator
+  // called by ScheduledJobs.everyMinute, registered with schedule('* * * * *', 'everyMinute')
   public static async chargeOwed() {
-    const owed = Booking.where({ status: 'confirmed', chargedAt: null })
-    // leave fresh confirmations to the commit hook's fast path
-    await owed
-      .where({ confirmedAt: range(keyWindowStart(), DateTime.now().minus({ minutes: 15 })) })
-      .pluckEach('id', async (id: string) => {
-        await this.charge(id)
-      })
-
-    const beyondTheSweep = owed.whereAny([
-      { confirmedAt: range(null, keyWindowStart()) },
-      { confirmedAt: null }, // a confirming write that skipped confirmedAt
-    ])
-    if (await beyondTheSweep.count()) {
-      // report to the app's error-reporting service: reconcile these against the gateway
-    }
+    await Booking.where({
+      // leave the last two minutes to the commit hook's fast path
+      chargeInitiatedAt: range(keyWindowStart(), DateTime.now().minus({ minutes: 2 })),
+      chargeCompletedAt: null,
+    }).findEach(async booking => {
+      await this.charge(booking)
+    })
   }
 }
 ```
 
-`_charge`'s lookup only skips work no longer owed: overlapping runs both pass it, and a charge can succeed before `chargedAt` is saved, so the key is what makes a repeat harmless. It does so only while the gateway keeps the key, commonly 24 hours; past that a repeat is a new charge, so the job and the sweep both stop at 20 hours and leave anything older to a person, who checks the gateway first. A booking that can never be charged is re-enqueued by every sweep until then, so give `_charge` an [app-owned retry budget](#app-owned-retry-budgets) whose exhausted branch, beside the report, moves the booking to a status neither the lookup nor the sweep selects. When adding `chargedAt` to a table that already holds confirmed bookings, backfill it in the same migration for the ones already charged, so only new confirmations read as owed.
+`_charge`'s lookup only skips work no longer owed: overlapping runs both pass it, and a charge can succeed before `chargeCompletedAt` is saved, so the key is what makes a repeat harmless. It does so only while the gateway keeps the key, commonly 24 hours; past that a repeat is a new charge, so the job and the sweep both stop at 20 hours. Report anything owed beyond that for a person to reconcile against the gateway, from its own scheduled task with a cutoff an hour past the window, so it never reports a booking a job may still charge. A charge that can never succeed, such as a declined card, would be re-enqueued every minute until then, so catch that one error type in `_charge` ([narrowly](#never-rescue-exceptions-inside-backgrounded-services)) and clear `chargeInitiatedAt` in the write that records the failure. When adding the columns to a table that already holds charged bookings, any `chargeInitiatedAt` you backfill needs `chargeCompletedAt` beside it, so only new confirmations read as owed.
 
 ## Never Rescue Exceptions Inside Backgrounded Services
 
