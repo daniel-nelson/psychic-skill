@@ -4,7 +4,7 @@
 
 ### Added
 
-- **`models.md`** — "Dirty Tracking" says save's after hooks, `Commit` variants included, run once the snapshot has been refreshed, so there `willSaveChangeToAttribute` is `false` and `dirtyAttributes()` is empty. An after hook tests `this.savedChangeToAttribute(column)`, and `changes()` returns `{ was, now }` for each column the last save changed. After a create that is every column, set or not, so a hook meant to run only when a column really changed is gated with `ifChanged`.
+- **`models.md`** — "Dirty Tracking" says save's after hooks run once the snapshot has been refreshed, so there `willSaveChangeToAttribute` is `false` and `dirtyAttributes()` is empty, while `savedChangeToAttribute(column)` and `changes()` (`{ was, now }` per column) report the last save. A `Commit` hook inside a transaction runs at commit and sees the instance as it is then, and after a create every column, set or not, counts as changed, so a hook meant to run only when a column really changed is gated with `ifChanged`, which is checked at the save itself.
 
 ### Changed
 
