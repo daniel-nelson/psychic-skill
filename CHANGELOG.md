@@ -8,6 +8,7 @@
 
 ### Changed
 
+- **`SKILL.md`** — ecosystem baseline: `@rvoh/dream` 2.34.x, `@rvoh/psychic` 3.15.3, `@rvoh/psychic-workers` 2.8.x.
 - **`models.md`** — "Dirty Tracking" teaches the API on a `Place`: `isDirty` is a getter, `willSaveChangeToAttribute(column)` tests a pending change, `dirtyAttributes()` returns the pending values and `changedAttributes()` the original ones. A validation or before-save hook tests `this.willSaveChangeToAttribute(column)` and reads the new value from the property itself, never from `changedAttributes()`. On an unpersisted instance every column is pending, set or not, and every `changedAttributes()` value is `undefined`. For an `@deco.Encrypted()` property, both `dirtyAttributes()` and `changedAttributes()` report the persisted `encrypted<Name>` key.
 - **`migrations.md`** — the array-column note says an in-place mutation such as `.push()` goes undetected even if the mutated array is then reassigned, because the instance's snapshot from its last load or save holds the same array object; assign a new array to trigger an update.
 
