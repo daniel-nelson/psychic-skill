@@ -224,7 +224,7 @@ await Booking.where({ id: booking.id, status: 'pending' })
 // models/Booking.ts
 @deco.AfterUpdateCommit({ ifChanged: ['chargeInitiatedAt'] })
 public async chargeGuest(this: Booking) {
-  await BookingChargeService.charge(this)
+  if (this.chargeInitiatedAt) await BookingChargeService.charge(this)
 }
 
 // services/BookingChargeService.ts
