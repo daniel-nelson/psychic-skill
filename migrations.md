@@ -256,7 +256,7 @@ await db.schema
 .addColumn('bed_types', sql`bed_types_enum[]`, col => col.notNull().defaultTo('{}'))
 ```
 
-Array columns (enum arrays, `text[]`, `integer[]`, etc.) work seamlessly with Dream — set and read them as regular arrays. **In-place mutations (e.g. `.push()`) are not detected by dirty tracking** because the check compares array identity, not contents. Always reassign the entire array to trigger an update.
+Array columns (enum arrays, `text[]`, `integer[]`, etc.) work seamlessly with Dream — set and read them as regular arrays. **In-place mutations (e.g. `.push()`) are not detected by dirty tracking**, even if you then reassign the mutated array: the instance's snapshot from its last load or save holds the same array object. Always assign a new array to trigger an update.
 
 ```typescript
 await Kitchen.create({ appliances: ['microwave', 'stove'] })
