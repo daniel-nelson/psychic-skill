@@ -249,6 +249,10 @@ export default class BookingChargeService extends ApplicationBackgroundedService
 
   // called by ScheduledJobs.everyMinute, registered with schedule('* * * * *', 'everyMinute')
   public static async chargeOwed() {
+    await this.background('_chargeOwed')
+  }
+
+  public static async _chargeOwed() {
     await Booking.where({
       // leave the last two minutes to the commit hook's fast path
       chargeInitiatedAt: range(keyWindowStart(), DateTime.now().minus({ minutes: 2 })),
@@ -260,7 +264,7 @@ export default class BookingChargeService extends ApplicationBackgroundedService
 }
 ```
 
-`_charge`'s lookup only skips work no longer owed: overlapping runs both pass it, and a charge can succeed before `chargeCompletedAt` is saved, so the key is what makes a repeat harmless. It does so only while the gateway keeps the key, commonly 24 hours; past that a repeat is a new charge, so the job and the sweep both stop at 20 hours. Report anything owed beyond that for a person to reconcile against the gateway, from its own scheduled task with a cutoff an hour past the window, so it never reports a booking a job may still charge. A charge that can never succeed, such as a declined card, would be re-enqueued every minute until then, so catch that one error type in `_charge` ([narrowly](#never-rescue-exceptions-inside-backgrounded-services)) and clear `chargeInitiatedAt` in the write that records the failure. When adding the columns to a table that already holds charged bookings, any `chargeInitiatedAt` you backfill needs `chargeCompletedAt` beside it, so only new confirmations read as owed.
+`_charge`'s lookup only skips work no longer owed: overlapping runs both pass it, and a charge can succeed before `chargeCompletedAt` is saved, so the key is what makes a repeat harmless. It does so only while the gateway keeps the key, commonly 24 hours; past that a repeat is a new charge, so the job and the sweep both stop at 20 hours. Report anything owed beyond that for a person to reconcile against the gateway, from its own scheduled task with a cutoff an hour past the window, so it never reports a booking a job may still charge. A write that ends the obligation, such as a cancellation, clears `chargeInitiatedAt` in the same write, so neither the job nor the sweep picks the booking up. When adding the columns to a table that already holds charged bookings, any `chargeInitiatedAt` you backfill needs `chargeCompletedAt` beside it, so only new confirmations read as owed.
 
 ## Never Rescue Exceptions Inside Backgrounded Services
 
@@ -423,11 +427,11 @@ export default class ScheduledJobs extends ApplicationScheduledService {
   }
 
   public static async processHour() {
-    await HourProcessor.process(DateTime.now())
+    await HourProcessor.process(DateTime.now())   // enqueues and returns
   }
 
   public static async dailyReport() {
-    await ReportService.generateDaily()
+    await ReportService.generateDaily()           // enqueues and returns
   }
 }
 ```
@@ -452,7 +456,7 @@ The seed process must reach the jobs Redis; with `enableOfflineQueue: false` an 
 
 ### Scheduled services are thin orchestrators, not workers
 
-A scheduled method should do almost nothing itself: select what needs to happen now and **fan out to backgrounded services** that do the real work. Heavy lifting inside a scheduled method is a design smell. The goal is to keep the number of permanently-registered schedulers in the BullMQ "Delayed" queue to a small fixed set — typically just `hourly`, `daily`, and `weekly` — each of which kicks off whatever backgrounded jobs that cadence requires. Three clean schedulers fanning out to dedicated services is the target shape; a sprawling list of per-task schedulers is not.
+A scheduled method **only enqueues its work and returns**: it calls entry points on backgrounded services that do nothing but `background(...)`, and every query, selection and write runs in those jobs. Work done inside the scheduled call ties the failure of one scheduled job to the failure of all: one throw skips everything after it in that run. The goal is to keep the number of permanently-registered schedulers in the BullMQ "Delayed" queue to a small fixed set — typically just `hourly`, `daily`, and `weekly` — each of which kicks off whatever backgrounded jobs that cadence requires. Three clean schedulers fanning out to dedicated services is the target shape; a sprawling list of per-task schedulers is not.
 
 ### A class is either scheduled OR backgrounded — never both
 
@@ -497,7 +501,7 @@ export default class ReconcileService extends ApplicationBackgroundedService {
 ```typescript
 // WRONG — registers exactly ONE scheduler (for FORM_CONFIGS[last]); the rest silently never run
 for (const config of FORM_CONFIGS) {
-  await ReconcileService.schedule('0 13 * * *', 'reconcileForm', config.key)
+  await ScheduledJobs.schedule('0 13 * * *', 'reconcileForm', config.key)
 }
 ```
 
@@ -505,15 +509,15 @@ This fails silently: no error, no warning, the worker boots clean, and you only 
 
 ```typescript
 // RIGHT — schedule the fan-out method ONCE; it loops at run time, not at schedule time
-await ReconcileService.schedule('0 13 * * *', 'reconcileAll')
+await ScheduledJobs.schedule('0 13 * * *', 'reconcileAll')
 ```
 
 ### Per-user cadence across time zones: schedule hourly, select by zone, fan out
 
-"Daily" and "weekly" work for users spread across time zones is not a daily/weekly cron. Register the orchestrator on an **hourly** cron and have each run select the users whose *local* end-of-day (or end-of-week) falls in the current hour, then fan out one backgrounded job per selected user. Bake the time zone — and any end-of-week preference — into the query so the database efficiently returns just the relevant user IDs, rather than loading all users and filtering in code.
+"Daily" and "weekly" work for guests spread across time zones is not a daily/weekly cron. Register the orchestrator on an **hourly** cron and have each run enqueue a job that selects the guests whose *local* end-of-day (or end-of-week) falls in the current hour, then fans out one backgrounded job per selected guest. Bake the time zone — and any end-of-week preference — into the query so the database efficiently returns just the relevant guest IDs, rather than loading all guests and filtering in code.
 
 ```typescript
-// Orchestrator — runs every hour; figures out whose local end-of-day this hour is
+// Orchestrator — runs every hour; enqueues the work for this hour and returns
 import EndOfDayService from '@services/EndOfDayService.js'
 
 export default class ScheduledJobs extends ApplicationScheduledService {
@@ -528,25 +532,29 @@ export default class ScheduledJobs extends ApplicationScheduledService {
 ```
 
 ```typescript
-// Worker — selects matching users by time zone, enqueues one job each
+// Worker — selects matching guests by time zone, enqueues one job each
 export default class EndOfDayService extends ApplicationBackgroundedService {
   public static async fanOut(now: DateTime) {
-    // The query filters by timezone so only users whose local hour is end-of-day
+    await this.background('_fanOut', now.hour)
+  }
+
+  public static async _fanOut(utcHour: number) {
+    // The query filters by timezone so only guests whose local hour is end-of-day
     // are returned — selecting IDs only, never hydrating full records.
-    await User.where({ endOfDayHourUtc: now.hour }).pluckEach('id', async (id: string) => {
+    await Guest.where({ endOfDayHourUtc: utcHour }).pluckEach('id', async (id: string) => {
       await this.background('_runEndOfDay', id)
     })
   }
 
   public static async _runEndOfDay(id: string) {
-    const user = await User.find(id)
-    if (!user) return
-    // ...the per-user end-of-day work
+    const guest = await Guest.find(id)
+    if (!guest) return
+    // ...the per-guest end-of-day work
   }
 }
 ```
 
-End-of-week works the same way, with the user's chosen end-of-week day folded into the query alongside the time zone, so the single hourly orchestrator covers every user's preference without a separate scheduler per variant.
+End-of-week works the same way, with the guest's chosen end-of-week day folded into the query alongside the time zone, so the single hourly orchestrator covers every guest's preference without a separate scheduler per variant.
 
 ### Backgrounded methods run inline in tests
 
