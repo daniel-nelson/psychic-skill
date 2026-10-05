@@ -4,7 +4,7 @@
 
 ### Added
 
-- **`models.md`** — "Dirty Tracking" says save's after hooks run once the snapshot has been refreshed, so there `willSaveChangeToAttribute` is `false` and `dirtyAttributes()` is empty, while `savedChangeToAttribute(column)` and `changes()` report the last save. To run an after hook only when a column changed, gate it with `ifChanged`, which is checked at the save itself and on a create counts only the columns that were assigned.
+- **`models.md`** — "Dirty Tracking" says save's after hooks run once the snapshot has been refreshed, so there `willSaveChangeToAttribute` is `false` and `dirtyAttributes()` is empty, while `savedChangeToAttribute(column)` and `changes()` report the last save, which after a create covers every column the insert returned, unassigned `null`s and database defaults included. To run an after hook only when a column changed, gate it with `ifChanged`, which is checked at the save itself and on a create counts only the columns that were assigned.
 
 ### Changed
 
