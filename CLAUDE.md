@@ -50,6 +50,10 @@ A PR that changes skill content without a `VERSION` bump + `CHANGELOG` entry is 
 
 When "Delete stale guidance cleanly" has the skill document a verified-but-unmerged change as current (see below), bump that package's baseline component to match — the baseline may lead the actual published `origin/main` version in that case. The single-baseline mechanism only works if the baseline never falls behind what the skill actually documents; a reader on the published version hitting a method the skill describes with nothing explaining the gap is the failure this guards against.
 
+## Verify framework behavior against the specs
+
+Whenever you check how a Dream/Psychic package behaves — a drop-off learning, a review finding, a skill edit, a worker's claim — read that package's specs for the behavior (`~/work/dream_and_psychic/<pkg>/spec/`, on `origin/main`) as well as the implementation. The specs show the behavior the framework commits to and the use cases each method exists for. A source trace shows only what one code path does today, and it misses intent. Quote the spec that confirms a claim. When no spec covers a behavior, say so instead of presenting a source reading as settled. Every brief for a worker that verifies framework behavior carries this instruction.
+
 ## Delete stale guidance cleanly
 
 When correcting outdated or incorrect skill guidance, remove the stale pattern without adding explanatory prose whose only purpose is to contrast with, justify, or memorialize the removed mistake. The skill should teach the current generated/currently-correct shape directly. Add an explanation only when it helps an agent make a future implementation decision that remains relevant after the old guidance is gone.
