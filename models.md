@@ -1117,48 +1117,47 @@ Open one only when a set of writes must land together or not at all — a `Place
 
 **Every model operation inside a transaction must be explicitly bound via `.txn(txn)`.** This includes creates, updates, destroys, queries, association operations — everything. If you forget `.txn(txn)`, the operation runs outside the transaction and won't roll back on failure.
 
-On a `@deco.Sortable` model the omission is worse than a lost rollback. A sortable write computes its position under a lock on its sort scope, so an unbound `room.destroy()` inside a transaction that is writing its `Place` opens a second transaction on another connection and waits on a lock the enclosing transaction is holding. Only one side is waiting, so Postgres's deadlock detector never sees it: the call hangs until `sortableScopeLockTimeout` expires, then throws `SortableScopeLockWaitTimedOut`. That error advises retrying; a retry cannot help here — add the missing `.txn(txn)`.
+On a `@deco.Sortable` model the omission is worse than a lost rollback. A sortable write computes its position under a lock on its sort scope, so an unbound `room.destroy()` inside a transaction that has already created, moved or destroyed another `Room` of the same `Place` opens a second transaction on another connection and waits on a lock the enclosing transaction is holding. Only one side is waiting, so Postgres's deadlock detector never sees it: the call hangs until `sortableScopeLockTimeout` expires, then throws `SortableScopeLockWaitTimedOut`. That error advises retrying; a retry cannot help here — add the missing `.txn(txn)`.
 
 Binding every write correctly leaves a second cost. A sortable write holds the lock on its sort scope until the transaction commits, and nothing releases them along the way, so a transaction that writes `Room`s across many `Place`s holds one lock per place at once. Advisory locks come from a table the whole Postgres cluster shares, so exhausting it fails other connections' transactions with `out of shared memory` — the symptom lands away from the code that caused it. Keep the transaction to the writes that must land together; a loop whose sortable writes span many `Place` scopes is not one of them, and atomicity across the loop is what narrowing it costs. A re-run after a later iteration fails must skip what already committed. Inside a transaction you did not open, every write still binds to that `txn` — breaking one out is the hang above.
 
 ```typescript
 await ApplicationModel.transaction(async (txn) => {
-  const user = await User.txn(txn).create({ email: 'test@test.com' })
-  const post = await Post.txn(txn).create({ user, title: 'Test' })
-  await user.txn(txn).createAssociation('profile', {})
+  const place = await Place.txn(txn).create({ host, name: 'Honey Hollow' })
+  await place.txn(txn).createAssociation('localizedTexts', { locale: 'es-ES', title: 'Honey Hollow' })
 
   // Queries also need .txn(txn) to see uncommitted data
-  const found = await User.txn(txn).findBy({ email: 'test@test.com' })
+  const found = await Place.txn(txn).findBy({ name: 'Honey Hollow' })
 })
 ```
 
-**`instance.txn(txn).update(attrs)` mutates that same in-memory instance** — it assigns the attributes to the instance before saving, exactly like non-txn `instance.update()`. So the caller's reference is current after the call and can be handed onward (to a service, a serializer) without re-querying. The catch: only *that* instance is updated. If a helper loaded a *different* instance of the same row (e.g. `Place.txn(txn).findBy(...)`) and updated it, the caller's original instance is now stale; `await original.reload()` before reading from it.
+**`instance.txn(txn).update(attrs)` mutates that same in-memory instance** — it assigns the attributes to the instance before saving, exactly like non-txn `instance.update()`. So the caller's reference is current after the call and can be handed onward (to a service, a serializer) without re-querying. The catch: only *that* instance is updated. If a helper loaded a *different* instance of the same row (e.g. `Place.txn(txn).findBy(...)`) and updated it, the caller's original instance is now stale; `await original.txn(txn).reload()` before reading from it — an unbound `reload()` cannot see the transaction's uncommitted write.
 
 ### Optional transaction participation with `.txn(null)`
 
 `.txn()` accepts `null` as well as a `DreamTransaction`. When `null` is passed, the operation runs without a transaction — it's a no-op. This lets methods that _optionally_ participate in a transaction use a single code path instead of branching:
 
 ```typescript
-async function doWork(user: User, txn: DreamTransaction<ApplicationModel> | null = null) {
+async function doWork(place: Place, txn: DreamTransaction<ApplicationModel> | null = null) {
   // No if/else needed — .txn(null) is a no-op
-  await user.txn(txn).update({ status: 'done' })
-  await user.txn(txn).createAssociation('posts', { title: 'New' })
+  await place.txn(txn).update({ name: 'Honey Hollow' })
+  await place.txn(txn).createAssociation('localizedTexts', { locale: 'es-ES', title: 'Honey Hollow' })
 }
 
 // Call with a transaction
 await ApplicationModel.transaction(async txn => {
-  await doWork(user, txn)
+  await doWork(place, txn)
 })
 
 // Call without — works the same, just no transaction wrapping
-await doWork(user)
+await doWork(place)
 ```
 
 `Model.txn(null)` works the same way.
 
 **Restrictions inside transactions:** Methods that rely on unique-constraint violations to function (`createOrFindBy`, `createOrUpdateBy`) cannot be used inside a transaction. Use their transaction-safe counterparts (`findOrCreateBy`, `updateOrCreateBy`) instead. See the [find-or-create methods](#find-or-create-and-upsert-methods) table for details.
 
-**Background jobs and transactions:** When queuing background work from a Dream lifecycle hook, always use the `Commit` variant of the hook (e.g., `@deco.AfterCreateCommit` instead of `@deco.AfterCreate`). This applies to backgrounded services, model instance backgrounding, and indirect helper methods that enqueue jobs. Regular hooks run inside the transaction, so the worker may execute before the transaction commits and either miss a newly-created row or read stale persisted data after an update. This also applies to imperative `background()` calls from services with a `txn` parameter — see [workers.md](workers.md) for both forms.
+**Background jobs and transactions:** When queuing background work from a Dream lifecycle hook, always use the `Commit` variant of the hook (e.g., `@deco.AfterCreateCommit` instead of `@deco.AfterCreate`). This applies to backgrounded services, model instance backgrounding, and indirect helper methods that enqueue jobs. Regular hooks run before an enclosing transaction commits, so the worker may execute before the commit and either miss a newly-created row or read stale persisted data after an update. This also applies to imperative `background()` calls from services with a `txn` parameter — see [workers.md](workers.md) for both forms.
 
 **What goes inside `ApplicationModel.transaction(...)` is database writes only.** HTTP fetches, S3 / object-storage uploads, sending email, calling third-party APIs, file I/O, sleeps, and any other non-DB work belong outside the transaction.
 
@@ -1211,7 +1210,7 @@ If the I/O phase fails partway, nothing is in the database and the caller can sa
 
 ## Replica Safety (`@ReplicaSafe`)
 
-`@ReplicaSafe()` is a class decorator that opts a model into reading from a read replica when one is configured (see [deploying.md — Read Replicas](deploying.md#read-replicas) for the connection config). Without it, every query against that model always hits the primary:
+`@ReplicaSafe()` is a class decorator that opts a model into reading from a read replica when one is configured (see [deploying.md — Read Replicas](deploying.md#read-replicas) for the connection config). Without it, the model's queries read the primary unless a call asks for `.connection('replica')` (below):
 
 ```typescript
 @ReplicaSafe()
@@ -1232,7 +1231,7 @@ await Room.innerJoin('bookings').all()   // primary — Booking isn't ReplicaSaf
 await Room.all()                          // replica — Room alone is ReplicaSafe
 ```
 
-`preload` (and `preloadFor`) is different: it runs the base query and each preloaded association as **separate** queries, so each one is routed independently by its own model's `@ReplicaSafe()` status — a `@ReplicaSafe()` base model still reaches the replica even when a preloaded association isn't.
+`preload` (and `preloadFor`) is different: it runs the base query and each preloaded association as **separate** queries, so a `@ReplicaSafe()` base model still reaches the replica even when a preloaded association isn't.
 
 **Override per call with `.connection('primary' | 'replica')`.** Use this when a specific call needs different routing than the model's default — e.g., a `@ReplicaSafe()` model read immediately after a write in the same action, where replica lag could return stale data:
 
@@ -1269,16 +1268,16 @@ const opensAt = ClockTime.fromISO('09:30:00')
 const callWindowStart = ClockTimeTz.fromISO('14:00:00-05:00')
 ```
 
-Each Dream date/time class maps to exactly one Postgres column type, and `pnpm psy sync` rewrites `src/types/db.ts` so the matching `DreamColumn<Model, '...'>` resolves to the right class automatically (the same mechanism that makes a `timestamp` column resolve to `DateTime`):
+Each Postgres date/time column type maps to one Dream class, and `pnpm psy sync` regenerates the column types `DreamColumn<Model, '...'>` reads, so it resolves to the right class automatically:
 
 | Postgres column type | Dream class |
 |---|---|
-| `timestamp` | `DateTime` |
+| `timestamp`, `timestamptz` | `DateTime` |
 | `date` | `CalendarDate` |
 | `time` (TIME WITHOUT TIME ZONE) | `ClockTime` |
 | `timetz` (TIME WITH TIME ZONE) | `ClockTimeTz` |
 
-A `ClockTimeTz` parsed from SQL is interpreted as UTC. These four classes are what `castParam` / `extractParams` return for date/time params and columns, and what Dream hydrates from the database — so any code touching those values already holds them; there is never a JS `Date` to reach for in the first place.
+A `ClockTimeTz` comes back from the database converted to UTC: the `callWindowStart` above, saved and reloaded, reads 19:00 UTC. These four classes are what `castParam` / `extractParams` return for date/time params and columns, and what Dream hydrates from the database — so any code touching those values already holds them; there is never a JS `Date` to reach for in the first place.
 
 These classes carry **microsecond precision** — unusual for a TypeScript framework, and worth knowing: the fractional second is six digits (first three milliseconds, next three microseconds). Microseconds are preserved when a value is supplied via the API (`fromISO`, etc.) or hydrated from the database. `.now()` is backed by JavaScript `Date` and is therefore millisecond-only *at the moment of creation*; if you need sub-millisecond values, set them explicitly via `plus` / `set` after construction.
 
@@ -1293,7 +1292,7 @@ Every parser on every one of these classes — `fromISO`, `fromSQL`, `fromFormat
 | `ClockTime` | `InvalidClockTime` |
 | `ClockTimeTz` | `InvalidClockTimeTz` |
 
-A calendar-clean-but-impossible string (`'2026-02-31'`) throws just like `'garbage'` does. To validate an untrusted date string (an LLM-emitted value, a query param), just parse it and catch the specific error:
+A calendar-clean-but-impossible string (`'2026-02-31'`) throws just like `'garbage'` does. To validate an untrusted date string (an LLM-emitted value), just parse it and catch the specific error:
 
 ```typescript
 import { DateTime } from '@rvoh/dream'
