@@ -2,21 +2,7 @@
 
 ## Base Model
 
-Every project has an `ApplicationModel` that extends Dream:
-
-```typescript
-import Dream from '@rvoh/dream'
-import { DB } from '@src/types/db.js'
-import schema from '@src/types/dream.js'
-import { connectionTypeConfig, globalTypeConfig } from '@src/types/dream.globals.js'
-
-export default class ApplicationModel extends Dream {
-  declare public DB: DB
-  public override get schema() { return schema }
-  public override get connectionTypeConfig() { return connectionTypeConfig }
-  public override get globalTypeConfig() { return globalTypeConfig }
-}
-```
+Every model inherits from `ApplicationModel` (`src/app/models/ApplicationModel.ts`), the app's Dream subclass that create-psychic generates.
 
 ## Model Organization & Namespacing
 
@@ -82,7 +68,7 @@ public updatedAt: DreamColumn<User, 'updatedAt'>
 
 **Decimal columns return JavaScript `number`, not `string` or a `Decimal` wrapper.** Dream's type-sync converts PostgreSQL `numeric`/`decimal` columns to TS `number`, so `DreamColumn<Place, 'latitude'>` resolves to `number | null` (or `number` if NOT NULL). No `Number(value)` coercion is needed when reading.
 
-Use the serializer `precision` option (`.attribute('latitude', { precision: 7 })`, also supported on `.delegatedAttribute`) to control how many decimal places appear in the rendered response. This handles the typical floating-point quirk where `1.1 + 2.2` becomes `3.3000000000000003` — a value that rounds cleanly to `3.30` at the precision the schema actually cares about. The OpenAPI shape and the rendered output stay consistent because precision is declared once at the serializer.
+Use the serializer `precision` option (`.attribute('latitude', { precision: 7 })`, also supported on `.delegatedAttribute`) to round the rendered number to that many decimal places: at `precision: 2`, `1.1 + 2.2` (`3.3000000000000003`) renders as `3.3`. It changes only the rendered value; the OpenAPI shape is unchanged.
 
 ## Decorator Setup
 
@@ -99,7 +85,7 @@ const deco = new Decorators<typeof MyModel>()
 // const deco = new Decorators<typeof MyModel>()
 ```
 
-STI children and `@SoftDelete`-decorated models follow the same rule for the field-level `Decorators` import — `STI` and `SoftDelete` are class-level decorators imported directly from `@rvoh/dream` and are unaffected by this rule.
+`@SoftDelete` models follow the same rule; a generated STI child omits the commented block. `STI` and `SoftDelete` are class-level decorators imported directly from `@rvoh/dream` and are unaffected by this rule.
 
 ## Associations - Full Reference
 
@@ -114,10 +100,9 @@ public userId: DreamColumn<Post, 'userId'>
 
 // Optional (nullable FK).
 // The `optional` flag on a BelongsTo is the canonical declaration of nullability
-// for that association. It is auto-inferred by serializer `rendersOne` and
-// `delegatedAttribute`, and by `extractParams` / OpenAPI request-body shape. Don't
-// restate `optional: true` in serializers — that's a DRY violation, and changing
-// it in the serializer is almost always a mistake.
+// for that association. Serializer `rendersOne` and `delegatedAttribute` infer it,
+// so don't restate `optional: true` in serializers — that's a DRY violation, and
+// changing it in the serializer is almost always a mistake.
 @deco.BelongsTo('User', { optional: true })
 public approver: User | null
 public approverId: DreamColumn<Post, 'approverId'>
@@ -161,11 +146,12 @@ public placeId: DreamColumn<Booking, 'placeId'>
 
 - **You may not conditionally load it.** A trailing constraint on a non-optional `BelongsTo` in `preload` / `load` / `leftJoinPreload` / `leftJoinLoad` is a **compile error** — the constraint could filter the parent out and null a field the spec declares non-nullable. (`innerJoin` / `leftJoin` are exempt; they don't hydrate a value.) See [querying.md — Conditions on associations in the chain](querying.md).
 - **It registers a `requiredBelongsTo` validation for you.** Saving without the parent fails Dream validation before Postgres sees it, and `.errors` is keyed by the *association* name (`{ place: ['requiredBelongsTo'] }`), not the foreign key column. Never declare `@deco.Validates('requiredBelongsTo')` yourself.
-- **Accessing it when null throws `MissingRequiredBelongsToAssociation`.** When an *internal* mechanism nulls a required parent — a default scope (e.g. soft-delete) filtered it out, an `and`/`on` baked into the association definition excluded it, or the parent row was hard-deleted leaving a dangling FK — the getter throws this error instead of returning a null the types say is impossible.
+- **Accessing it when null throws `MissingRequiredBelongsToAssociation`.** When an *internal* mechanism nulls a required parent — a default scope (e.g. soft-delete) filtered it out, the row's STI `type` is not the child the association targets, or the parent row was hard-deleted leaving a dangling FK — the getter throws this error instead of returning a null the types say is impossible.
 
 The runtime error is a modeling bug, so the fix is a model change, not a looser spec:
 
-- add `dependent: 'destroy'` to the inverse `HasOne` / `HasMany` so the parent can't be orphaned, or
+- add `dependent: 'destroy'` to the inverse `HasOne` / `HasMany` so no child outlives its parent,
+- add `withoutDefaultScopes: ['dream:SoftDelete']` to the `BelongsTo` when the child must still reach a soft-deleted parent (a past `Booking` whose `Place` was delisted), or
 - mark the `BelongsTo` `optional: true` if absence is legitimate — which makes the OpenAPI field nullable and re-allows conditional loading.
 
 #### Anchor polymorphism to a stable model
@@ -310,11 +296,11 @@ public host: Host
 
 `host` is now one association name on `Booking`, usable with `preload`, `associationQuery`, `association`, or a serializer, replacing a per-hop preload of `room` and `place` and the `booking.room?.place?.host` walk. A chain over an optional `BelongsTo` is nullable — type it `Host | null`. Condition and shaping clauses work on `through` associations too (`and`, `andNot`, `andAny`, `selfAnd`, `selfAndNot`, `order`, `distinct`), at any position in a chain — on the association you load directly, on an intermediate that a further through reaches across, and whether the hop's source is a concrete association or itself another `through`. Each hop's clauses shape the join of that hop's own target model (the model its property is typed as), referencing the target's columns, never an intermediate join table's; for `selfAnd`/`selfAndNot`, the "self" columns come from the model the clause is declared on. Multiple hops' `order`s compose rather than override — each is appended to the ORDER BY in join order. Two limits: a hop whose `and` uses `DreamConst.required` cannot be bridged across (see [DreamConst in Association Conditions](#dreamconst-in-association-conditions)), and a `distinct`-carrying through association loads with `preload` or `innerJoin` but not `leftJoinPreload` (Postgres rejects `leftJoinPreload`'s hydration `ORDER BY` alongside the association's `DISTINCT ON`).
 
-**`source` defaults to the association's own name, matched by name (not by target model).** In each hop above, `source` is omitted because the next model's association is also named `host`; Dream looks up an association literally named after the property. This is what disambiguates an intermediate that has two associations of the *same* target model (e.g. a `Room` with both `host` and `substituteHost`, both `BelongsTo('Host')`) — the name match picks the right one. Pass `source: '...'` only when the intermediate's association name differs from the name you want on this model (as in the `through: 'bookings', source: 'guest'` example above).
+**`source` defaults to the association's own name, matched by name (not by target model).** In each hop above, `source` is omitted because the next model's association is also named `host`; Dream looks up an association with the property's name, then with its singular (`guests` finds `guest`). This is what disambiguates an intermediate that has two associations of the *same* target model (e.g. a `Room` with both `host` and `substituteHost`, both `BelongsTo('Host')`) — the name match picks the right one. `source: '...'` is required when the intermediate has an association under neither name (as in `recentGuests` below, whose intermediate association is `guest`).
 
 #### Every hop applies its own default scopes, including soft delete
 
-A `through` chain joins each intermediate under that model's default scopes, so a soft-deleted intermediate makes the chain resolve `null` (`HasOne`) or `[]` (`HasMany`) with no error — as if the row never existed. `through` cannot take `withoutDefaultScopes`; to traverse a hidden intermediate, name the scope at the root of the query — `removeDefaultScope` lifts it on every hop (see [Removing Default Scopes](#removing-default-scopes)).
+A `through` chain joins each intermediate under that model's default scopes, so a soft-deleted intermediate makes the chain resolve `null` (`HasOne`) or `[]` (`HasMany`) with no error — as if the row never existed. A hop skips the scopes its own association lists in `withoutDefaultScopes` (`through` itself takes none), so `through: 'allBookings', source: 'guest'` on `Place` reaches the guests of soft-deleted bookings. `removeDefaultScope` at the root of a query lifts the scope on every hop (see [Removing Default Scopes](#removing-default-scopes)).
 
 #### Where a hop belongs: compose across models, or stack on the origin
 
@@ -355,7 +341,7 @@ public profile: Profile
 })
 public currentLocalizedText: LocalizedText
 
-// With required condition — query will fail if the passthrough value is not provided
+// With required condition — every query must supply the value with `{ and: { locale } }`
 @deco.HasOne('LocalizedText', {
   polymorphic: true,
   on: 'localizableId',
@@ -437,22 +423,6 @@ This is distinct from `selfAnd`: `on` / `primaryKeyOverride` change **which colu
 
 The `and` option on HasMany and HasOne supports two special `DreamConst` values instead of fixed values:
 
-```typescript
-import { DreamConst } from '@rvoh/dream'
-
-// passthrough — value is supplied at query time via passthrough context, optional
-@deco.HasOne('LocalizedText', {
-  and: { locale: DreamConst.passthrough },
-})
-public currentLocalizedText: LocalizedText
-
-// required — like passthrough, but the query will raise an error if the value is not provided
-@deco.HasOne('LocalizedText', {
-  and: { locale: DreamConst.required },
-})
-public requiredLocalizedText: LocalizedText
-```
-
 - **`DreamConst.passthrough`** — the value is provided at query time via `.passthrough({ column: value })`. Throws `MissingRequiredPassthroughForAssociationAndClause` if the value is `undefined`.
 - **`DreamConst.required`** — the value must be provided via `{ and: { column: value } }` conditions whenever the association is used in any query — `load`, `preload`, `innerJoin`, `leftJoin`, `associationQuery`, `association`, etc. Throws `MissingRequiredAssociationAndClause` if the value is not provided. The value can only be supplied for the association actually named in the query, so an association carrying `DreamConst.required` cannot serve as an intermediate hop of a `through` chain — bridging across it always throws.
 
@@ -461,6 +431,8 @@ Both are required — the difference is *how* the value is supplied. Use `passth
 **Neither can be combined with `dependent: 'destroy'`.**
 
 ```typescript
+import { DreamConst } from '@rvoh/dream'
+
 // passthrough — value supplied via .passthrough() on the query
 @deco.HasOne('LocalizedText', {
   polymorphic: true, on: 'localizableId',
@@ -482,7 +454,7 @@ public preference: Preference
 
 // The value must be provided in any query that touches this association:
 await user.load('preference', { and: { category: 'notifications' } }).execute()
-await user.associationQuery('preference').where({ category: 'notifications' }).first()
+await user.associationQuery('preference', { and: { category: 'notifications' } }).first()
 await User.preload('preference', { and: { category: 'notifications' } }).all()
 await User.innerJoin('preference', { and: { category: 'notifications' } }).all()
 ```
