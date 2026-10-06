@@ -1137,6 +1137,7 @@ Psychic automatically converts certain errors to HTTP responses:
 | `castParam` fails | 400 | Invalid parameter type/value |
 | `extractParams` fails | 400 | Invalid model attributes |
 | Model validation fails | 400 | `isInvalid` with errors |
+| The database rejects a save | 400 | Not-null, check, overflow or type mismatch (`DataIncompatibleWithDatabaseField`) |
 | `findOrFail` no match | 404 | Record not found |
 | `firstOrFail` no match | 404 | Record not found |
 | `save` / `update` that writes changes to a loaded record | 404 | Row deleted after it was loaded (`CannotSaveMissingDream`) |
@@ -1147,11 +1148,11 @@ To deliberately surface field-level validation errors to the end user, return a 
 
 ```ts
 const place = Place.new(this.extractParams(Place, ['name', 'style', 'sleeps']))
-if (place.isInvalid) this.badRequest({ errors: place.errors })   // place.errors → { name: ['must be present'], ... }
+if (place.isInvalid) this.badRequest({ errors: place.errors })   // place.errors → { name: ['presence'], ... }
 await place.save()
 ```
 
-Without the explicit check, an invalid `save()` / `create()` still returns 400, but with no body — the framework logs the errors rather than sending them. Conveying the error shape to the client is therefore an explicit, deliberate act.
+Without the explicit check, an invalid `save()` / `create()` still returns 400, but with no body; the errors are logged only under `NODE_DEBUG=psychic`. Conveying the error shape to the client is therefore an explicit, deliberate act.
 
 ### Two rationalizations for a catch-all, and why neither holds
 
@@ -1189,7 +1190,7 @@ try {
 this.noContent()
 ```
 
-**A delete guard must accept both literals.** Postgres raises `'RESTRICT_VIOLATION'` under `.onDelete('restrict')` and `'FOREIGN_KEY_VIOLATION'` under `no action`. Since `restrict` is the recommended foreign key action (see [soft delete](soft-delete.md)), a guard written for `'FOREIGN_KEY_VIOLATION'` alone never fires and the endpoint 500s — and only a spec that creates the referencing `Place` first reaches the branch. `'UNIQUE_VIOLATION'` on create is the same pattern.
+**A delete guard must accept both literals.** A delete blocked by `.onDelete('restrict')` arrives as `'RESTRICT_VIOLATION'` or `'FOREIGN_KEY_VIOLATION'` depending on the Postgres version, and `no action` raises `'FOREIGN_KEY_VIOLATION'`. Since `restrict` is the recommended foreign key action (see [soft delete](soft-delete.md)), a guard written for one literal can miss and 500 — and only a spec that creates the referencing `Place` first reaches the branch. `'UNIQUE_VIOLATION'` on create is the same pattern.
 
 ## Rate Limiting
 
@@ -1199,21 +1200,21 @@ Only fall back to a Koa-compatible middleware when you need fine-grained per-rou
 
 ## Logging
 
-Use `PsychicApp.log` and `PsychicApp.logWithLevel` for all application logging. They route through Dream's configured logger (Winston by default) so output respects the log level, the configured transports, and any structured-log format the app sets.
+Use `PsychicApp.log` and `PsychicApp.logWithLevel` for all application logging. They write through the logger `conf/app.ts` sets with `psy.set('logger', ...)` (Winston in the scaffold), so output respects its level and transports.
 
 ```typescript
 import { PsychicApp } from '@rvoh/psychic'
 
-PsychicApp.log('order placed', { orderId: order.id, totalCents })
-PsychicApp.logWithLevel('warn', 'inventory low', { sku, remaining })
-PsychicApp.logWithLevel('error', 'payment provider error', { orderId: order.id, err })
+PsychicApp.log('booking confirmed', { bookingId: booking.id, nights })
+PsychicApp.logWithLevel('warn', 'place nearly booked out', { placeId: place.id, openNights })
+PsychicApp.logWithLevel('error', 'payment provider error', { bookingId: booking.id, err })
 ```
 
-Both are variadic — pass a message followed by any structured metadata. `logWithLevel` accepts `'debug' | 'info' | 'warn' | 'error'` (Dream's log levels).
+Both are variadic and join their arguments into one message string — an object is rendered with `util.inspect`, not passed to the logger as structured fields. `logWithLevel` accepts `'debug' | 'info' | 'warn' | 'error'` (Dream's log levels).
 
 ### Request logging
 
-`create-psychic` scaffolds a request logger in `conf/app.ts` mounted via the `server:init:after-middleware` hook. The default emits one structured line per request through `PsychicApp.log` under the hood:
+`create-psychic` scaffolds a request logger (`conf/system/requestLogger.ts`) in `conf/app.ts`, mounted via the `server:init:after-middleware` hook. It writes one structured JSON line per request through its own Winston instance — the `transports` and `format` passed below, not the app logger:
 
 ```typescript
 import requestLogger from '@conf/system/requestLogger.js'
@@ -1243,12 +1244,12 @@ psy.on('server:init:after-middleware', psychicServer => {
 Three knobs to know:
 
 - **`headerBlocklist`** — request headers redacted from the log line. Scaffold ships `authorization`, `cookie`, plus a handful of low-signal browser-fingerprint headers.
-- **`bodyBlocklist`** — request body keys redacted from the log line. Scaffold ships `password`, `token`, `authentication`, `authorization`, `secret`. **Extend this when you add new sensitive fields** (`api_key`, `ssn`, `creditCard`, etc.) — otherwise they land in production logs.
+- **`bodyBlocklist`** — top-level request body keys dropped from the log line. Scaffold ships `password`, `token`, `authentication`, `authorization`, `secret`. **Extend this when you add new sensitive fields** (`api_key`, `ssn`, `creditCard`, etc.) — otherwise they land in production logs.
 - **`ignoredRoutes`** — request paths to skip entirely. Scaffold skips `/health_check`.
 
 ### Reacting to unhandled errors
 
-Genuine server errors (anything Psychic doesn't render as a 4xx) fire the `server:error` hook. This is the right place to ship to Sentry, Datadog, structured alerting, or whatever your error pipeline is:
+Genuine server errors fire the `server:error` hook: anything thrown that Psychic doesn't map to a status, and `this.internalServerError()`. A controller's other 5xx helpers (`this.serviceUnavailable()`, `this.badGateway()`, …) render their status without it. This is the right place to ship to Sentry, Datadog, structured alerting, or whatever your error pipeline is:
 
 ```typescript
 psy.on('server:error', (err, ctx) => {
@@ -1256,7 +1257,6 @@ psy.on('server:error', (err, ctx) => {
     err,
     method: ctx.method,
     path: ctx.path,
-    requestId: ctx.state.requestId,
   })
   // ...ship to Sentry / Datadog / etc.
 
@@ -1265,11 +1265,11 @@ psy.on('server:error', (err, ctx) => {
 })
 ```
 
-The handler signature is `(err: Error, ctx: Koa.Context) => void | Promise<void>`. The scaffold registers a default that sets `ctx.status = 500` if a response hasn't been sent and re-throws in development/test so the failure surfaces loudly.
+The handler signature is `(err: Error, ctx: Koa.Context) => void | Promise<void>`. The scaffold registers a default that sets `ctx.status = 500` when no response has been sent, and re-throws in development/test when one has, so a late failure surfaces loudly.
 
-`server:error` is the surface for every **shapeable** 5xx error — one the boundary catches while the response can still be formed. Psychic mounts an error boundary as its outermost middleware, so everything inside it — the body parser, CORS origin callbacks, custom `psy.use(...)` middleware, anything mounted via `server:init:after-routes` (e.g. Bull Board), and controller actions — escalates its uncaught genuine errors to this one hook. A 4xx-shaped error (a body-parser 400, an `HttpError` thrown from middleware) never reaches it: that renders as its own status. So don't filter by status inside the hook — it only ever sees 5xx-class errors.
+`server:error` is the surface for every **shapeable** genuine server error — one the boundary catches while the response can still be formed. Psychic mounts an error boundary as its outermost middleware, so everything inside it — the body parser, CORS origin callbacks, custom `psy.use(...)` middleware, anything mounted via `server:init:after-routes` (e.g. Bull Board), and controller actions — escalates its uncaught genuine errors to this one hook. A 4xx-shaped error (a body-parser 400, an `HttpError` thrown from middleware) never reaches it: that renders as its own status. So don't filter by status inside the hook — it only ever sees 5xx-class errors.
 
-One registration does **not**, however, give you every 5xx error. A residual class bypasses `server:error` and surfaces only on Koa's app-level `'error'` event: an error thrown **after headers were already sent**, a response-stream failure, and errors the router re-throws to Koa. Psychic registers its own `koaApp.on('error')` listener that **logs** this class through the configured logger but does not run your `server:error` hooks for it. If your error pipeline (Sentry, Datadog, alerting) — not just your logs — must capture those post-response failures too, register your own app-level `'error'` listener; reach `koaApp` from a `server:init` hook:
+One registration does **not**, however, give you every 5xx error. A residual class bypasses `server:error` and surfaces only on Koa's app-level `'error'` event: an error a middleware throws **after headers were already sent**, a response-stream failure, and errors the router re-throws to Koa. Psychic registers its own `koaApp.on('error')` listener that **logs** this class through the configured logger but does not run your `server:error` hooks for it. If your error pipeline (Sentry, Datadog, alerting) — not just your logs — must capture those post-response failures too, register your own app-level `'error'` listener; reach `koaApp` from a `server:init` hook:
 
 ```typescript
 psy.on('server:init:after-middleware', psychicServer => {
@@ -1281,7 +1281,7 @@ psy.on('server:init:after-middleware', psychicServer => {
 
 This won't double-report the shapeable errors — those are handled inside the boundary and never reach this event.
 
-One integration caveat, independent of Psychic: an error-tracking SDK configured with `defaultIntegrations: false` (common, to keep the captured payload lean) does **not** auto-attach HTTP request context. The `server:error` hook receives `ctx`, so pull the fields you want — `ctx.method`, `ctx.path`, `ctx.state.requestId`, the authenticated principal — and attach them to the event yourself, exactly as the example above logs them. Nothing upstream will populate them for you when the default integrations are off.
+One integration caveat, independent of Psychic: an error-tracking SDK configured with `defaultIntegrations: false` (common, to keep the captured payload lean) does **not** auto-attach HTTP request context. The `server:error` hook receives `ctx`, so pull the fields you want — `ctx.method`, `ctx.path`, the authenticated principal — and attach them to the event yourself, exactly as the example above logs them. Nothing upstream will populate them for you when the default integrations are off.
 
 ## Session & Cookie Management
 
@@ -1294,16 +1294,12 @@ this.endSession()
 
 // Cookies
 this.getCookie<string>('theme')
-this.setCookie('theme', 'dark', { expires: new Date('2025-12-31') })
+this.setCookie('theme', 'dark', { maxAge: { days: 365 } })
 ```
 
-`startSession` creates no server-side session record — the encrypted cookie itself is the entire credential. `endSession` only clears the cookie on the client; a cookie already captured elsewhere stays valid until it expires regardless of "logout." There is no per-session or per-user revocation — the only framework lever to invalidate outstanding sessions is rotating the cookie encryption key (see [Cookie Encryption](#cookie-encryption) below), which logs out every user, not just one. Design around this: if you need to revoke a single compromised session or a single user's sessions without logging everyone out, track that state yourself (e.g. a `sessionsInvalidatedAt` column on the user, checked against a timestamp embedded in the session payload) rather than assuming `endSession` accomplishes it server-side. The default cookie `maxAge` is 31 days. `startSession` takes no options and always uses the app's default `maxAge` — for a shorter-lived session, lower the default: `psy.set('cookie', { maxAge: { hours: 12 } })` (this changes the default for every cookie the app sets, not just sessions).
+`startSession` creates no server-side session record — the encrypted cookie, whose payload is `{ id, modelKey }`, is the entire credential. `endSession` only clears the cookie on the client, and `maxAge` only tells the browser when to discard its copy: a cookie value captured elsewhere stays valid for as long as its encryption key is `current` or `legacy`. There is no per-session or per-user revocation — the only framework lever is replacing the cookie encryption key without keeping the old one as `legacy` (see [Cookie Encryption](#cookie-encryption) below), which invalidates every user's session, not just one. If you need to revoke a single compromised session or a single user's sessions, track that state yourself rather than assuming `endSession` accomplishes it server-side. `startSession` takes no options and uses the app's default `maxAge`, which the scaffold sets to 14 days in `conf/app.ts` (31 days when unset) — for a shorter-lived session, lower it there: `psy.set('cookie', { maxAge: { hours: 12 } })` (this changes the default for every cookie the app sets, not just sessions).
 
-Session cookies set by Psychic default to `SameSite=Strict` — the browser won't send them on any cross-origin request (including link-click navigations from another site), which blocks classical CSRF without needing a CSRF token. Override only when a legitimate cross-site link-follow flow needs to preserve auth (rare for JSON APIs):
-
-```typescript
-psy.set('cookie', { sameSite: 'lax' })
-```
+Cookies Psychic sets default to `SameSite=Strict` — the browser never sends them on a cross-site request (including a link-click navigation from another site), which blocks classical CSRF without a CSRF token. A client on another origin of the same site (`app.bearbnb.com` → `api.bearbnb.com`) still sends them. `startSession` always uses Strict; `this.setCookie`'s options override it for a single cookie.
 
 ### Cookie Encryption
 
@@ -1350,7 +1346,7 @@ pnpm psy g:encryption-key --algorithm aes-128-gcm
 
 ```typescript
 // Programmatic equivalent — useful in specs, fixtures, or one-off scripts.
-import { Encrypt } from '@rvoh/dream'
+import { Encrypt } from '@rvoh/dream/utils'
 
 const key = Encrypt.generateKey('aes-256-gcm')
 ```
@@ -1359,73 +1355,50 @@ Never hand-type encryption keys. Use one of these helpers and feed the result th
 
 ### Decrypting Cookies Outside a Controller
 
-Koa middleware that runs outside Psychic's controller layer (e.g., protecting a bull-board dashboard) cannot use `this.getCookie()`. To decrypt a Psychic-encrypted cookie in plain middleware, use `Encrypt` from Dream directly:
+Koa middleware that runs outside Psychic's controller layer (e.g., protecting a bull-board dashboard) cannot use `this.getCookie()`. To read the session cookie in plain middleware, decrypt it with `Encrypt` from Dream and the keys `getCookie()` uses:
 
 ```typescript
-import { PsychicApp } from '@rvoh/psychic'
-import { Encrypt } from '@rvoh/dream'
 import { DecryptionError, DecryptionRotationError } from '@rvoh/dream/errors'
+import { Encrypt } from '@rvoh/dream/utils'
+import { PsychicApp } from '@rvoh/psychic'
+import type Koa from 'koa'
 
-const encrypted = ctx.cookies.get('cookie_name')
-if (encrypted) {
-  let decrypted: { userId: string } | null
+// the session cookie's { id, modelKey }, or null for a logged-out request
+export default function readSessionCookie(ctx: Koa.Context): { id: string; modelKey: string } | null {
+  const psychicApp = PsychicApp.getOrFail()
+  const encrypted = ctx.cookies.get(psychicApp.sessionCookieName)
+  if (!encrypted) return null
+
+  // the keys conf/app.ts configures; `legacy` is set only while a key rotation is under way
+  const { current, legacy } = psychicApp.encryption!.cookies
+  let payload: string | null
   try {
-    // Three-arg (rotation) form: current key, with legacy fallback.
-    decrypted = Encrypt.decrypt<{ userId: string }>(
-      encrypted,
-      { algorithm: 'aes-256-gcm', key: AppEnv.string('APP_ENCRYPTION_KEY') },
-      { algorithm: 'aes-256-gcm', key: AppEnv.string('APP_LEGACY_ENCRYPTION_KEY') },
-    )
+    payload = Encrypt.decrypt<string>(encrypted, current, legacy)
   } catch (err) {
-    if (err instanceof DecryptionRotationError) {
-      // Both the current AND legacy keys failed. Do NOT swallow this as an
-      // auth failure: the default posture is to rethrow so a misconfigured
-      // rotation (wrong legacy key, legacy dropped too early) fails the
-      // FIRST request — caught by smoke tests / health checks at deploy
-      // time, not discovered later in a log nobody is tailing while every
-      // user is being logged out. Only once a rotation has been proven
-      // stable in production for a prolonged window might you deliberately
-      // downgrade this to log-at-error + unauthenticated (so legitimately
-      // expired ciphertext during a long rotation isn't a hard failure).
-      // That downgrade is a conscious, reversible decision — never the
-      // starting point.
-      throw err
-    }
-    if (err instanceof DecryptionError) {
-      // Wrong/tampered/stale-key ciphertext. Expected at low volume
-      // (old cookies, forgery attempts); worth a warn for incident
-      // correlation. A sustained spike is an attack or a key problem.
-      PsychicApp.logWithLevel('warn', 'cookie decryption failed', { reason: err.message })
-      return // treat this request as unauthenticated
-    }
-    // DecryptionParseError: the key was correct and the ciphertext intact
-    // (cipher + auth tag validated), but the decrypted plaintext was not
-    // valid JSON. Encrypt.decrypt always JSON.parses, so this is a
-    // format/contract mismatch, not tampering and not a wrong key — e.g.
-    // a non-JSON value passed into Encrypt.encrypt on our side, or (with a
-    // shared key from another service) their payload not matching the
-    // JSON-wrapped shape Encrypt expects. Never an auth outcome; let it
-    // propagate to the error handler (500) so the mismatch is visible.
-    throw err
+    // no configured key opens it: DecryptionError, or DecryptionRotationError when `legacy` is set
+    if (!(err instanceof DecryptionError || err instanceof DecryptionRotationError)) throw err
+    // log the error's name, not the error: its cause can quote the start of the cookie
+    PsychicApp.logWithLevel(legacy ? 'error' : 'warn', `session cookie could not be decrypted: ${err.constructor.name}`)
+    return null
   }
-  // ...use decrypted (already the parsed object, not a JSON string)
+
+  // startSession stores the JSON string of { id, modelKey }
+  return payload ? (JSON.parse(payload) as { id: string; modelKey: string }) : null
 }
 ```
 
-The `catch` exists to convert an untrusted-input failure into an auth decision **and emit the security signal** — not to swallow it. The original finding (R-019) was that silent-null *"conflates an attacker attempting forgery with this value never being set, and obscures bugs in app code — loses operationally important signal for incident logs."* A bare `catch { return unauthenticated }` reintroduces exactly that defect: it hides both forgery attempts and a broken key rotation.
-
-`DecryptionRotationError` is reachable only from the three-argument (current + legacy) form, and its safe default is to **rethrow**, not log-and-continue. A logged-and-swallowed rotation error still ships a broken rotation to production; a thrown one fails the first request at deploy time, which is exactly when a wrong legacy key or a prematurely-dropped legacy key must be caught. Downgrading it to log-at-error + unauthenticated is a deliberate, reversible posture you adopt *only after* a rotation has run cleanly in production for a prolonged window (so that genuinely expired ciphertext mid-rotation isn't a hard failure) — it is never the starting configuration. `DecryptionError` (single-key / no-rotation path) is the normal stale-or-forged-cookie case: log at `warn` and treat as unauthenticated. Never blanket-catch (see Critical Rule 13).
+A cookie no configured key opens is a logged-out request, never a 500: anyone can send a forged one and a browser may still hold one from a retired key, so a 500 would let any visitor raise server errors and show a logged-out user an error instead of a sign-in prompt. Catch exactly the two errors that mean no key opens the value (`DecryptionRotationError` does not extend `DecryptionError`), log the error's name, answer as unauthenticated (`null` here, a 401 where the route needs a user), and rethrow anything else. The same catch belongs around `this.getCookie()`, which decrypts with these keys and throws these errors, and in the app's `resolveCurrentUser` for a bearer token. A rotation mistake — a wrong legacy key, or a key replaced without keeping the old one as `legacy` — shows up only in this log, not as failed requests. That is why it logs at `error` while a legacy key is configured; alert on a jump in it after any key deploy.
 
 `Encrypt.decrypt` throws on failure rather than silently returning null, and the three errors export from `@rvoh/dream/errors` (not the `@rvoh/dream` root):
 
-- `decrypt` returns the **already-`JSON.parse`d** value, not a string. Don't `JSON.parse` the result again.
+- `decrypt` returns what was encrypted, `JSON.parse`d once. `this.setCookie` encrypts a string, so a Psychic cookie decrypts to a string — for the session cookie, the JSON string of `{ id, modelKey }`.
 - `null` / `undefined` ciphertext returns `null` (no throw). A missing key throws `MissingEncryptionKey`.
 - **`DecryptionError`** — cipher op / auth-tag / payload-shape was invalid: the ciphertext was tampered with, corrupted, or encrypted with a different key. This is the untrusted-input signal — the legitimate "treat as unauthenticated" case for user-controlled ciphertext like a session cookie.
 - **`DecryptionParseError`** — the cipher and auth tag validated (correct key, untampered ciphertext) but `JSON.parse` of the decrypted plaintext threw. `Encrypt.decrypt` always `JSON.parse`s the plaintext — it cannot return a raw string — so this is strictly a **format/contract mismatch**, not tampering and not a wrong key. With ciphertext you produced via `Encrypt.encrypt`, it means a non-JSON value was encrypted (your bug). With a shared key from another service, it usually means that service's payload doesn't match the JSON-wrapped shape `Encrypt` expects (their encoder, or the cross-service contract). Either way it is **never** an auth failure: let it propagate to the error handler as a 500 so the mismatch surfaces; swallowing it as "auth failure" hides the defect.
 - **Three-argument form** `decrypt(ciphertext, currentOpts, legacyOpts)` tries the current key, and on `DecryptionError` only falls back to the legacy key. If both fail with `DecryptionError`, it throws **`DecryptionRotationError`** carrying `.currentKeyError` and `.legacyKeyError`. A `DecryptionParseError` from the current key is **not** retried against the legacy key and **not** wrapped — the cipher already matched (right key, intact ciphertext), so a non-JSON plaintext is a format/contract mismatch rather than a key problem, and it propagates as `DecryptionParseError` directly.
 - The `@Encrypted` model decorator propagates these errors up to the app's error handler — there's no try/catch inside the decorator. Keys *and* ciphertext for an encrypted column are both system-controlled, so any decryption error there is a corrupted column or a broken rotation, not untrusted input: it should fail loudly, never be caught and nulled.
 
-The asymmetry is deliberate. **User-controlled ciphertext** (a session cookie, a token from a header) is the only place where catching is ever correct, and even there only `DecryptionError` (the single-key stale/forged case) is caught-and-converted to unauthenticated with a `warn` log. `DecryptionRotationError` defaults to rethrow — a broken rotation is a configuration defect that must fail loudly at deploy, not a per-request auth outcome; only downgrade it to log-and-unauthenticated as a conscious, reversible decision after the rotation has proven stable in production. **System-controlled ciphertext** (`@Encrypted` columns, internal share tokens) propagates untouched in every case. And `DecryptionParseError` is always a format/contract mismatch (your encoder or a cross-service one), never an auth outcome. If you do adopt the log-and-continue downgrade for a prolonged rotation, treat a rising rate of `DecryptionRotationError` as a rotation-misconfiguration alarm wired into monitoring — but prefer the throw, which needs no one watching a dashboard.
+**User-controlled ciphertext** (a session cookie, a token from a header) is the only place where catching is correct, and only for the two errors that mean no configured key opens it. **System-controlled ciphertext** (`@Encrypted` columns, internal share tokens) propagates untouched, and `DecryptionParseError` is always a format/contract mismatch (your encoder or a cross-service one), never an auth outcome.
 
 ### Setting Cookies for External Services (Bypassing Encryption)
 
@@ -1464,16 +1437,16 @@ psy.on('server:init:after-middleware', psychicServer => {
 
 ```typescript
 // Create through association (automatically sets FK)
-let model = await this.currentCity.createAssociation('rooms', {
-  ...this.extractParams(Room, ['name', 'sleeps']),
+let place = await this.currentCity.createAssociation('places', {
+  ...this.extractParams(Place, ['name', 'style', 'sleeps']),
   additionalField: value,
 })
 
 // Load for serialization if persisted
-if (model.isPersisted) {
-  model = await model.loadFor('admin').execute()
+if (place.isPersisted) {
+  place = await place.loadFor('admin').execute()
 }
-this.created(model)
+this.created(place)
 ```
 
 ## Generator Gotcha: Duplicate Route Namespaces
