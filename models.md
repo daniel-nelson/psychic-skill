@@ -891,36 +891,36 @@ A `{ skipHooks: true }` query update — `Booking.where(…).update(attrs, { ski
 
 ```typescript
 // Create in one call
-const user = await User.create({ email: 'charlie@peanuts.com', name: 'Charlie Brown' })
+const guest = await Guest.create({ email: 'baloo@bearbnb.com', name: 'Baloo' })
 
 // Instantiate, assign, and save
-const user = User.new({ email: 'charlie@peanuts.com' })
-user.name = 'Charlie Brown'
-await user.save()
+const guest = Guest.new({ email: 'baloo@bearbnb.com' })
+guest.name = 'Baloo'
+await guest.save()
 
 // Update in one call
-await user.update({ name: 'New Name' })
+await guest.update({ name: 'New Name' })
 
 // Assign and save — equivalent to update
-user.name = 'New Name'
-await user.save()
+guest.name = 'New Name'
+await guest.save()
 
 // Assign and update — also valid (update persists any prior assignments too)
-user.name = 'New Name'
-await user.update({ email: 'gary@farside.com' })
+guest.name = 'New Name'
+await guest.update({ email: 'paddington@bearbnb.com' })
 
 // Skip lifecycle hooks — useful for bulk imports and historical data backfills
 // where the new-record side effects shouldn't fire
-await User.create({ email: 'imported@example.com' }, { skipHooks: true })
-await user.update({ name: 'Updated' }, { skipHooks: true })
+await Guest.create({ email: 'imported@example.com' }, { skipHooks: true })
+await guest.update({ name: 'Updated' }, { skipHooks: true })
 ```
 
 `save()` and `update()` trigger the same lifecycle hooks and are largely interchangeable:
 - `save()` persists all dirty attributes but does not accept attributes itself
 - `update()` accepts attributes, applies them, and persists — it also persists any attributes previously assigned via `=`
-- On an unpersisted instance (`User.new()`), both `save()` and `update({})` will create the record
+- On an unpersisted instance (`Guest.new()`), both `save()` and `update({})` will create the record
 
-Query-level updates run instance hooks by default: `User.where(...).update(attrs)`
+Query-level updates run instance hooks by default: `Guest.where(...).update(attrs)`
 iterates the matched records and calls instance `.update()` on each, so the cost is one
 `UPDATE` per matched row. `{ skipHooks: true }` collapses that to one SQL statement, at the
 price of the callback lifecycle — pay it only when the hooks carry no business logic that
@@ -935,7 +935,7 @@ When you hold a model instance and are creating or updating a record with an ass
 ```typescript
 // create / update
 await Booking.create({ place, guest })          // not { placeId: place.id, guestId: guest.id }
-await review.update({ booking })                 // not { bookingId: booking.id }
+await booking.update({ guest })                  // not { guestId: guest.id }
 
 // filtering
 await Booking.where({ place }).all()             // not { placeId: place.id }
@@ -949,23 +949,22 @@ await LocalizedText.where({ localizable: host }).first()      // not { localizab
 await Booking.where({ place: places }).all()                  // place_id IN (...)
 ```
 
-The instance form works the same **regardless of the association's shape** — polymorphic or not, and whether the model you pass is a plain model or an STI child. Dream derives the foreign key from the instance's primary key and, for a polymorphic association, the type discriminator from the instance's `referenceTypeString` (which resolves an STI child such as a `Bathroom` to its base, `'Room'`). One form covers every case, so the call site never has to know which case it is in.
+The instance form works the same **regardless of the association's shape** — polymorphic or not, and whether the model you pass is a plain model or an STI child. Dream reads the foreign-key value off the instance and, for a polymorphic association, the type discriminator from the instance's `referenceTypeString` (which resolves an STI child such as a `Bathroom` to its base, `'Room'`). One form covers every case, so the call site never has to know which case it is in.
 
 **Filtering accepts an array of instances**, not just a single one — `where({ place: places })`, and likewise in `whereNot`/`whereAny` and the `and`/`andNot`/`andAny` of a join on-clause. A non-polymorphic key expands to a foreign-key `IN`; a polymorphic key groups the instances by type, turns each group into an id-`IN` plus type-match pair, and ORs the groups, so an id collision across types can never match the wrong row. This is query-only: `create`, `update`, and `findOrCreateBy` still take a single instance, because a list of parents is meaningless there.
 
 Four reasons this is the rule, not a preference:
 
 1. **Polymorphic filters are wrong without it.** `where({ localizableId: host.id })` constrains the id alone — it never sets `localizable_type`. With integer/serial primary keys a `Host` and a `Place` can share id `1`, so that query matches localized texts belonging to *both*. `where({ localizable: host })` adds `localizable_type = 'Host'` for you. (UUID keys hide the collision, but the id-only form is still incomplete.)
-2. **STI type strings resolve correctly.** Creating or filtering through an STI child records/matches the base type (`'Room'`). A hand-written `localizableType: 'Bathroom'` matches nothing, because the association is declared on the `Room` base — and nothing at the call site warns you.
+2. **STI type strings resolve correctly.** Creating or filtering through an STI child records/matches the base type (`'Room'`). A hand-written `localizableType: 'Bathroom'` matches nothing — and nothing at the call site warns you.
 3. **Holding the instance means you loaded it.** The authorized way to obtain a record is to load it, usually through an association chain from `currentUser` that proves the current user may touch it. Passing the instance keeps that step in the code path; hand-assigning a raw id from a request param skips it.
 4. **Factories create an orphan from an id.** Generated factories guard on the association (`host: attrs.host ?? (await createHost())`) with `...attrs` spread after, so `createHostPlace({ hostId: host.id })` creates a second Host and then overwrites `hostId` with the one passed — a stray row and an extra insert per call, silently.
 
 In a **controller this is effectively absolute** (see [controllers.md — `extractParams`](controllers.md#extractparams)): an id or type that arrives in a param is untrusted, verifying it means loading the record through an authorized association chain, and once you have done that you hold the instance — so you use it. There is no path where you legitimately hold a verified id but not the instance.
 
-**When the id form is correct** — all cases where you genuinely do not hold a single instance, never "you hold it but prefer the id":
+**When the id form is correct** — only where you genuinely do not hold the instances, never "you hold them but prefer the id":
 
 - An **array of ids** (bulk filter): `Booking.where({ placeId: placeIds })` where `placeIds` came from a prior query. (Use the plain array — `where({ col: [...] })` — not `ops.in([...])`.)
-- A **cross-type polymorphic batch load**, where two types cannot be expressed in one `where` and you fall back to `whereAny` with explicit `localizableType`/`localizableId` groups (see [serializers.md](serializers.md)).
 - **Background-job arguments**, which must serialize to Redis and therefore pass IDs, not instances — this is the deliberate opposite rule for the worker boundary ([workers.md](workers.md)), where the implementation method re-hydrates the model from the id.
 
 Only `BelongsTo` associations are assignable through `create` / `update` params — the write path is the model holding the foreign key, so a `HasOne`/`HasMany` (including `through`) is neither in the param type nor accepted at runtime.
@@ -1012,23 +1011,23 @@ await Guest.pluckEach('email', async (email) => {
 
 ## Find-or-Create and Upsert Methods
 
-Dream provides four methods for atomically finding or creating/updating records. Each takes a set of lookup attributes and an options object. None of these methods can be chained with other query methods.
+Dream provides four methods for finding or creating/updating records. Each takes a set of lookup attributes and an options object. None of these methods can be chained with other query methods.
 
 ### findOrCreateBy
 
 Finds a record matching the given attributes, or creates one if none exists. Safe to use in transactions.
 
 ```typescript
-const user = await User.findOrCreateBy(
-  { email: 'how@yadoin' },
-  { createWith: { name: 'Chalupa Joe' } }
+const guest = await Guest.findOrCreateBy(
+  { email: 'baloo@bearbnb.com' },
+  { createWith: { name: 'Baloo' } }
 )
 
 // With a transaction
 await ApplicationModel.transaction(async txn => {
-  const user = await User.txn(txn).findOrCreateBy(
-    { email: 'how@yadoin' },
-    { createWith: { name: 'Chalupa Joe' } }
+  const guest = await Guest.txn(txn).findOrCreateBy(
+    { email: 'baloo@bearbnb.com' },
+    { createWith: { name: 'Baloo' } }
   )
 })
 ```
@@ -1041,9 +1040,9 @@ Like `findOrCreateBy`, but attempts to create first. Relies on a **unique constr
 
 ```typescript
 // Requires a unique index on the lookup column(s)
-const user = await User.createOrFindBy(
-  { email: 'how@yadoin' },
-  { createWith: { name: 'Chalupa Joe' } }
+const guest = await Guest.createOrFindBy(
+  { email: 'baloo@bearbnb.com' },
+  { createWith: { name: 'Baloo' } }
 )
 ```
 
@@ -1062,15 +1061,15 @@ const booking = await Booking.createOrFindBy(
 Finds a record and updates it, or creates one if none exists. Functionally equivalent to an upsert, but runs as two queries. Safe to use in transactions. There is a race condition risk between the find and create steps — if concurrent requests could match the same lookup attributes, prefer `createOrUpdateBy`.
 
 ```typescript
-const user = await User.updateOrCreateBy(
-  { email: 'how@yadoin' },
+const guest = await Guest.updateOrCreateBy(
+  { email: 'baloo@bearbnb.com' },
   { with: { name: 'New Name' } }
 )
 
 // With a transaction
 await ApplicationModel.transaction(async txn => {
-  const user = await User.txn(txn).updateOrCreateBy(
-    { email: 'how@yadoin' },
+  const guest = await Guest.txn(txn).updateOrCreateBy(
+    { email: 'baloo@bearbnb.com' },
     { with: { name: 'New Name' } }
   )
 })
@@ -1082,8 +1081,8 @@ Like `updateOrCreateBy`, but attempts to create first. Relies on a **unique cons
 
 ```typescript
 // Requires a unique index on the lookup column(s)
-const user = await User.createOrUpdateBy(
-  { email: 'how@yadoin' },
+const guest = await Guest.createOrUpdateBy(
+  { email: 'baloo@bearbnb.com' },
   { with: { name: 'New Name' } }
 )
 ```
@@ -1093,8 +1092,8 @@ const user = await User.createOrUpdateBy(
 All four methods run lifecycle hooks by default. Pass `skipHooks: true` to bypass them:
 
 ```typescript
-const user = await User.updateOrCreateBy(
-  { email: 'how@yadoin' },
+const guest = await Guest.updateOrCreateBy(
+  { email: 'baloo@bearbnb.com' },
   { with: { name: 'New Name' }, skipHooks: true }
 )
 ```
