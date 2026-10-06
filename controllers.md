@@ -82,7 +82,7 @@ controllers/
 
 5. **Generate every surface; reparent the namespace base once when it loosens auth.** Always scaffold with the generators — they wire the inheritance chain and base controllers. The generator defaults each new namespace base to the client `AuthedController`, so an *authed* surface needs nothing extra:
    - `pnpm psy g:resource v1/host/places Place` → chains `V1/Host/PlacesController` → `V1/Host/BaseController` → `V1/BaseController` → `AuthedController`. No reparenting.
-   - `pnpm psy g:resource admin/cities SupportedCity` → extends `Admin/AuthedController` (the generator special-cases `Admin` / `Internal`, each authenticating its own user type). No reparenting.
+   - `pnpm psy g:resource admin/cities City` → extends `Admin/AuthedController` (the generator special-cases `Admin` / `Internal`, each authenticating its own user type). No reparenting.
 
    A surface that *loosens* auth is reparented once, at its **top-level** namespace base (the nested version base inherits it — see #6):
    - `pnpm psy g:resource api/v1/reservations Booking` (a partner channel-manager syncing reservations) → reparent `Api/BaseController` to `UnauthedController` and verify the API key in a `@BeforeAction` there. One API, one key scheme, so it lives on the shared base.
@@ -168,17 +168,21 @@ pnpm psy check:controller-hierarchy
 
 ### Routing Controllers When Directory Names Don't Map to URLs
 
-Controller directory names reflect the auth architecture, not URL structure. When the directory name shouldn't appear in the URL (e.g., `Visitor/` is the auth context, but `/v1/visitor/places` isn't a natural public URL), use an explicit `controller` reference instead of a namespace:
+Controller directory names reflect the auth architecture, not URL structure. When the directory name shouldn't appear in the URL (e.g., `Visitor/` is the auth context, but `/visitor/v1/places` isn't a natural public URL), use an explicit `controller` reference instead of a namespace:
 
 ```typescript
-// BAD — "visitor" leaks into the URL: /v1/visitor/places
+// BAD — "visitor" leaks into the URL: /visitor/v1/places
 r.namespace('visitor', r => {
-  r.resources('places', { only: ['index', 'show'] })
+  r.namespace('v1', r => {
+    r.resources('places', { only: ['index', 'show'] })
+  })
 })
 
 // GOOD — clean URL: /v1/places, controller explicitly specified
 import VisitorV1PlacesController from '@controllers/Visitor/V1/PlacesController.js'
-r.resources('places', { only: ['index', 'show'], controller: VisitorV1PlacesController })
+r.namespace('v1', r => {
+  r.resources('places', { only: ['index', 'show'], controller: VisitorV1PlacesController })
+})
 ```
 
 The controller directory structure (`Visitor/V1/`) still enforces the auth inheritance chain, but the URL stays clean.
@@ -271,6 +275,9 @@ export default class ApplicationController extends PsychicController {
 ### Client AuthedController
 
 ```typescript
+import ApplicationController from '@controllers/ApplicationController.js'
+import resolveCurrentUser from '@controllers/helpers/resolveCurrentUser.js'
+import User from '@models/User.js'
 import { BeforeAction } from '@rvoh/psychic'
 
 export default class AuthedController extends ApplicationController {
@@ -278,27 +285,18 @@ export default class AuthedController extends ApplicationController {
 
   @BeforeAction()
   protected async authenticate() {
-    const token = (this.header('authorization') ?? '').split(' ').at(-1)!
-    // Encrypt.decrypt returns the already-parsed value — do not JSON.parse again.
-    const decrypted = Encrypt.decrypt<{ userId: string }>(token, {
-      algorithm: 'aes-256-gcm',
-      key: AppEnv.string('APP_ENCRYPTION_KEY'),
-    })
-    const userId = decrypted?.userId
-    if (!userId) return this.unauthorized()
-
-    const user = await User.find(userId)
+    const user = await resolveCurrentUser(this)
     if (!user) return this.unauthorized()
     this.currentUser = user
   }
 }
 ```
 
+The token scheme lives in `resolveCurrentUser(controller)` (`controllers/helpers/resolveCurrentUser.ts`), shared with `MaybeAuthedController`. Have it return `null` for a token it can't decrypt, so a forged or stale token is logged out rather than a 500 — see [Decrypting Cookies Outside a Controller](#decrypting-cookies-outside-a-controller) for the catch and what to log.
+
 ### MaybeAuthedController
 
-Attempts authentication but does NOT 401 on failure. Sets `currentUser` to null if no token or invalid token. Use for public endpoints that behave differently when logged in (e.g., showing favorite indicators on public browse pages).
-
-Both `AuthedController` and `MaybeAuthedController` delegate to a shared `resolveCurrentUser(controller)` helper in `controllers/helpers/resolveCurrentUser.ts`. The only difference is what happens when the result is null (401 vs. silent null).
+Calls the same `resolveCurrentUser(this)` and assigns its result, `null` included, instead of responding 401. Use for public endpoints that behave differently when logged in (e.g., showing favorite indicators on public browse pages).
 
 ### Surface-Specific Auth (Admin, Internal)
 
