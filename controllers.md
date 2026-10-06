@@ -905,19 +905,19 @@ A query's `.passthrough()` is a separate channel: it scopes associations declare
     'X-Custom': { required: false },
   },
 
-  // Custom responses (additional error descriptions)
+  // Extra responses. Psychic already documents 400, 401, 403, 404, 409 and 500;
+  // naming one of those here replaces its default entry.
   responses: {
-    400: { description: 'Bad request' },
-    404: { description: 'Not found' },
+    429: { description: 'Too many booking requests' },
   },
 })
 ```
 
 ### `requestBody` shorthand — what each option is for
 
-**Always declare `requestBody: { params: [...] }` on a model-derived create/update.** List the model columns the action accepts, mirroring the `extractParams` allowlist — the documented request shape stays visible at the call site instead of being inferred. Reach for the other options below to layer onto that `params` list.
+**Always declare `requestBody: { params: [...] }` on a model-derived create/update.** With no `params`, Psychic renders no request body at all, so the body is neither documented nor validated. List the model columns the action accepts, mirroring the `extractParams` allowlist, and layer the other options below onto that list.
 
-**`params` / `including` must be literal arrays — never compute them from the model.** Write the column names out (or share one hand-written `const paramSafeColumns: DreamParamSafeColumnNames<Place>[] = ['name', 'style']` between `extractParams` and `@OpenAPI`, as the generator does). **Never backfill them from the model's own `paramSafeColumns` or from `Model.columns()`** inside the decorator. Those give the model's *entire* writable surface — and for a model that declares no `paramSafeColumns`, that's every column on the table, names and types. Dumping that into the request body re-creates the implicit include-all default this convention exists to kill (the documented shape silently widens every time the model gains a column), advertises fields the action's `extractParams` allowlist doesn't actually accept (so the spec promises inputs that get dropped), and exposes the full column surface in the public OpenAPI shape. The `params` list is a deliberate, per-action allowlist; generating it from the model defeats the entire point.
+**`params` / `including` must be literal arrays — never compute them from the model.** Write the column names out (or share one hand-written `const paramSafeColumns: DreamParamSafeColumnNames<Place>[] = ['name', 'style']` between `extractParams` and `@OpenAPI`, as the generator does). **Never backfill them from the model's own `paramSafeColumns` or from `Model.columns()`** inside the decorator: the documented shape then widens every time the model gains a column, advertises fields the action's `extractParams` allowlist drops, and publishes the model's column set in the OpenAPI document — the leak Psychic's no-`params`, no-body default exists to prevent. The `params` list is a deliberate, per-action allowlist.
 
 **Derive before hand-writing.** If any body field is a Dream model column, use `params` / `including` / `combining` / `OpenAPI.forDream(...)` so types, nullability, and enum constraints come from the model. This still applies when the action cannot use `extractParams` directly, such as an STI create action that reads a `type` discriminator with `castParam` and then dispatches through an exhaustive `switch`. The runtime extraction can be custom; the OpenAPI request body should still be model-derived.
 
@@ -989,7 +989,7 @@ public async update() {
 
 #### Nested model-driven shapes — multi-resource creation
 
-When a request body bundles multiple Dream models — typically a parent plus a one-shot array of children — use the `for: Model` sentinel inside `combining` (or `combining.<key>.items` for arrays). It produces an inline object schema derived from the model's `paramSafeColumns`. Use `OpenAPI.forDream(Model, opts)` as the typed wrapper: `params` / `including` / `required` are constrained at compile time to that model's column names, so a misspelled column raises a TS error instead of silently dropping out of the OpenAPI shape.
+When a request body bundles multiple Dream models — typically a parent plus a one-shot array of children — use the `for: Model` sentinel inside `combining` (or `combining.<key>.items` for arrays). It produces an inline object schema of the columns its `params` and `including` name, each typed from the model; with neither, it renders an empty object. Use `OpenAPI.forDream(Model, opts)` as the typed wrapper: `params` / `including` / `required` are constrained at compile time to that model's column names, so a misspelled column raises a TS error instead of silently dropping out of the OpenAPI shape.
 
 The nested `for:` sentinel is **request-only**; response shapes are modeled as a serializer and declared with `@OpenAPI(SerializerFn)`, not hand-written — see [Custom Response Envelopes](#custom-response-envelopes).
 
@@ -1112,7 +1112,7 @@ When an endpoint returns an unexpected 400 (or a spec fails with a 500 thrown by
 
 The `validate` option accepts `requestBody`, `responseBody`, `headers`, `query`, and `all` booleans. Setting `all: false` disables every validation segment, which is useful because:
 - For **400s on requests**, it reveals whether the failure was in OpenAPI request validation (problem stops) or in controller logic (problem persists).
-- For **500s in specs caused by response validation**, it lets the full response body reach the spec so you can inspect what actually came back — much more useful than the opaque validation error message.
+- For **500s in specs caused by response validation**, it lets the full response body reach the spec so you can inspect what actually came back — much more useful than the opaque validation error message. Comment out `fastJsonStringify: true` too: it serializes through the response schema, coercing the very mismatch you're hunting (`null` renders as `""` or `0`).
 
 ### Workflow
 
@@ -1123,8 +1123,8 @@ The `validate` option accepts `requestBody`, `responseBody`, `headers`, `query`,
      console.dir(this.params, { depth: null })
      ```
      Check whether the shape matches what the endpoint expects. If a feature spec was the trigger and the payload looks correct, consider writing a controller spec — faster and more isolated than feature specs — and iterate from there.
-   - **If the failure persists:** the problem is in controller logic (likely a `castParam` / `extractParams` failure, a DB constraint violation, or unhandled application error). Add logs around those calls to isolate.
-3. **Remove the `validate` line** from the decorator once the problem is identified. Leaving it disabled defeats the protection OpenAPI validation provides.
+   - **If the failure persists:** OpenAPI validation wasn't the cause. A persistent 400 is a `castParam` / `extractParams` rejection, a model validation failing on save, or a not-null, check-constraint, overflow or type-mismatch error from the database on save; a persistent 500 is an unhandled error, a unique-constraint violation among them. Add logs around those calls to isolate.
+3. **Remove the `validate` line** (and restore `fastJsonStringify`) once the problem is identified. Leaving it disabled defeats the protection OpenAPI validation provides.
 
 `NODE_DEBUG=psychic` also surfaces validation info, but `validate: { all: false }` is usually more useful because it lets the real response body through for direct inspection.
 
