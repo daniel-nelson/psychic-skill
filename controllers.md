@@ -495,12 +495,12 @@ public async index() {
     .preloadFor('summary')
 
   const search = this.castParam('search', 'string', { allowNull: true })
-  const style = this.castParam('style', 'string', { allowNull: true })
+  const style = this.castParam('style', 'string', { enum: PlaceStylesEnumValues, allowNull: true })
   const minSleeps = this.castParam('minSleeps', 'integer', { allowNull: true })
 
   if (search) {
     query = query.whereAny([
-      { name: ops.like(`${search}%`) },
+      { name: ops.like(`${ops.like.escape(search)}%`) },
     ])
   }
   if (style) query = query.where({ style })
@@ -570,13 +570,13 @@ psy.set('json', {
 })
 ```
 
-See the [@koa/bodyparser README](https://github.com/koajs/bodyparser) for the full option surface. Tune to the largest legitimate payload your endpoints accept; DoS protection against oversized payloads belongs at the edge (see [Rate Limiting](#rate-limiting) below), not at the body-parser layer.
+See the [@koa/bodyparser README](https://github.com/koajs/bodyparser) for the full option surface. These limits are the app's own defense against oversized-payload memory DoS, whether or not an edge layer also caps bodies — set each to the largest legitimate payload your endpoints accept, and no higher.
 
 ### castParam Types
 
 ```typescript
 // Ids — cast to the column's primary-key type, never 'string'. Match your app's
-// configured primaryKeyType: uuid4/uuid7 → 'uuid', bigserial/bigint → 'bigint',
+// configured primaryKeyType: uuid4/uuid7 → 'uuid', bigint → 'bigint',
 // integer → 'integer'.
 this.castParam('id', 'uuid')
 this.castParam('id', 'bigint')
@@ -604,7 +604,7 @@ When restricting to a subset of a database enum, use `Extract` to maintain compi
 ```typescript
 import { RoomTypesEnum, RoomTypesEnumValues } from '@src/types/db.js'
 
-// Subset — Extract ensures a compile error if the source enum changes
+// Subset — Extract makes a renamed or removed member a compile error
 const BOOKABLE_ROOM_TYPES: Extract<RoomTypesEnum, 'Bedroom' | 'Den' | 'LivingRoom'>[] =
   ['Bedroom', 'Den', 'LivingRoom']
 
@@ -613,7 +613,7 @@ this.castParam('roomType', 'string', { enum: BOOKABLE_ROOM_TYPES })
 
 ### Bounding length and range
 
-Beyond `enum`/`allowNull`/`match`, `castParam` (and `extractParams`) enforce size bounds: `minLength`/`maxLength` on a `'string'`, and `minimum`/`maximum` on a `'number'`/`'integer'`/`'bigint'`. All four are inclusive and checked *after* type coercion; a violation throws `ParamValidationError`, which Psychic renders as a `400`. Bound untrusted request input at the boundary rather than validating it later in a model or service:
+Beyond `enum`/`allowNull`/`match`, `castParam` enforces size bounds: `minLength`/`maxLength` on a `'string'`, and `minimum`/`maximum` on a `'number'`/`'integer'`/`'bigint'`. All four are inclusive and checked *after* type coercion; a violation throws `ParamValidationError`, which Psychic renders as a `400`. `extractParams` takes no bound options, so `castParam` each field that needs one. Bound untrusted request input at the boundary rather than validating it later in a model or service:
 
 ```typescript
 this.castParam('title', 'string', { minLength: 1, maxLength: 200 })
@@ -625,7 +625,7 @@ For array casts (`'string[]'`, `'integer[]'`, …) the bounds apply **element-wi
 
 ### String params are trimmed automatically
 
-Psychic strips leading and trailing whitespace from string params before validation and casting. Both `castParam` and `extractParams` resolve strings through the same `Params.cast` path, so `'  Cozy Cabin  '` arrives as `'Cozy Cabin'`. This applies to scalar `'string'` params, `enum` strings, Virtual string params, and the elements of string and enum arrays (`'string[]'`, array enum columns). Don't re-trim in a controller, a model setter, or a hook — it's already done.
+Psychic strips leading and trailing whitespace from string params before validation and casting. Both `castParam` and `extractParams` resolve strings through the same `Params.cast` path, so `'  Cozy Cabin  '` arrives as `'Cozy Cabin'`. This applies to scalar `'string'` params, `enum` strings, Virtual string params, and the elements of string and enum arrays (`'string[]'`, array enum columns). Don't re-trim a value you read through `castParam` or `extractParams` — it's already done.
 
 ### An absent key and an explicit `null` differ
 
@@ -687,13 +687,13 @@ Reach for this cap when a column must never be bulk-assignable no matter what an
 
 ```typescript
 // Canonical allowlist for the model — caps extractParams.
-public get paramSafeColumns(): DreamColumnNames<CoachingSession>[] {
-  return ['rated', 'meetingIntent', 'topic']
+public get paramSafeColumns(): DreamColumnNames<Place>[] {
+  return ['name', 'style', 'sleeps']
 }
 
 // Block specific columns (in addition to the always-excluded set above)
-public get paramUnsafeColumns(): DreamColumnNames<Friend>[] {
-  return ['bff']
+public get paramUnsafeColumns(): DreamColumnNames<Host>[] {
+  return ['payoutAccountId']
 }
 ```
 
@@ -701,15 +701,15 @@ Since foreign keys are excluded, find the resource explicitly and pass it as an 
 
 ```typescript
 const place = await Place.findOrFail(this.castParam('placeId', 'uuid'))
-const favoritePlace = await this.currentUser.createAssociation('favoritePlaces', {
-  ...this.extractParams(FavoritePlace, ['rating', 'note']),
+const booking = await this.currentGuest.createAssociation('bookings', {
+  ...this.extractParams(Booking, ['startsOn', 'endsOn']),
   place,
 })
 ```
 
 The FK exclusion is intentional. Advertise the FK in the spec with `requestBody: { including: ['placeId'] }` (for typed spec helpers and client SDKs), but extraction still strips it — always pull the FK with `castParam`, or look up the parent and pass it as an association (as above).
 
-Passing the loaded parent rather than the raw id is the general rule, not a controller quirk: [pass the association instance, not the foreign key](models.md#passing-associations-use-the-instance-not-the-foreign-key). It reads best here because the two steps are the same motion — a param id is untrusted, verifying it means loading the record (ideally through an association chain from `currentUser` that proves the current user may touch it), and the load hands you the instance to pass. Scope that lookup to the current user where you can (`this.currentUser.associationQuery('places').findOrFail(...)`) rather than a bare `Place.findOrFail(...)`, so the verification and the authorization are one query.
+Passing the loaded parent rather than the raw id is the general rule, not a controller quirk: [pass the association instance, not the foreign key](models.md#passing-associations-use-the-instance-not-the-foreign-key). It reads best here because the two steps are the same motion — a param id is untrusted, verifying it means loading the record (ideally through an association chain from `currentUser` that proves the current user may touch it), and the load hands you the instance to pass. Scope that lookup to the current user where you can (`this.currentHost.associationQuery('places').findOrFail(...)`) rather than a bare `Place.findOrFail(...)`, so the verification and the authorization are one query.
 
 #### Generator output
 
@@ -751,7 +751,7 @@ export default class PlacesController extends AuthedController {
 }
 ```
 
-The const is typed `DreamParamSafeColumnNames<Model>[]`, which gives autocomplete of valid columns and a compile error on anything not param-safe right at the assignment. It is emitted only when the controller has a `create` and/or `update` action and the model is known (index/show/destroy-only controllers don't get it), and when no columns survive the param-safe filter it is still emitted, typed and empty: `const paramSafeColumns: DreamParamSafeColumnNames<Place>[] = []`. The real scaffold emits the action bodies commented-out as hints; they're shown uncommented here for readability. Admin and non-admin scaffolds emit the same shape.
+The const is typed `DreamParamSafeColumnNames<Model>[]`, which gives autocomplete of valid columns and a compile error on any [always-excluded](#always-excluded-columns) column right at the assignment. It is emitted only when the controller has a `create` and/or `update` action and the model is known (index/show/destroy-only controllers don't get it), and when no columns survive the param-safe filter it is still emitted, typed and empty: `const paramSafeColumns: DreamParamSafeColumnNames<Place>[] = []`. The real scaffold emits the action bodies commented out, as hints; the bodies here are simplified. Admin and non-admin scaffolds emit the same shape.
 
 **Single edit point:** narrowing `paramSafeColumns` updates both the runtime `extractParams` allowlist *and* the documented `@OpenAPI` request body in one place — the documented request shape and the runtime extraction can't silently diverge. Note this is `requestBody`, not the response: `create`'s 201 still returns the full serializer and `update` is 204 (no body) — the allowlist constrains *input*. The `requestBody: { params }` here is the generator pre-wiring the request body for scaffolded CRUD; the [`requestBody.including`](#always-excluded-columns) escape hatch ("re-add what extraction excluded") still applies on top of it unchanged.
 
@@ -767,11 +767,12 @@ this.noContent()           // 204
 // Redirects
 this.redirect(path)        // 302
 this.movedPermanently(path) // 301
-// A same-origin relative path (starting with a single `/`) always works. An
-// absolute-URL target is checked against `redirectAllowedHosts` — an empty
-// allowlist by default — and throws a 500 (not a silent no-op) if the host
-// isn't listed. Allowlist matching is host-only: case-insensitive and both
-// port- and scheme-insensitive. Add external redirect targets explicitly:
+// A same-origin relative path (a single leading `/`) works. An absolute-URL
+// target is checked against `redirectAllowedHosts` — an empty allowlist by
+// default — and throws a 500 (not a silent no-op) if the host isn't listed.
+// Matching is host-only and case- and port-insensitive, and only `http:` and
+// `https:` URLs qualify — any other scheme is refused. Add external redirect
+// targets explicitly:
 //   psy.set('redirectAllowedHosts', ['oauth.example.com'])
 
 // Client errors
@@ -783,14 +784,14 @@ this.conflict()            // 409
 this.unprocessableContent() // 422
 
 // Server errors
-this.serverError()         // 500
+this.internalServerError() // 500
 ```
 
 ### Error markers: distinguishing two same-status causes
 
 When one endpoint can return the same status for two different reasons, the message you pass to a response helper becomes a runtime discriminator the frontend can switch on.
 
-**Layer 1 — the marker (untyped, zero-config).** `this.forbidden(msg)` / `this.unauthorized(msg)` (and the rest) throw an `HttpError` whose argument is JSON-stringified as the response body. So `this.forbidden('not_your_place')` produces the body `"not_your_place"`. The default `Forbidden` / `Unauthorized` / etc. response components are description-only — no `content`, no schema — so the marker never appears in the generated spec or client. It is a runtime-only discriminator: two same-status causes on one endpoint, with no schema change and no regen. The frontend switches on it as an untyped string:
+**Layer 1 — the marker (untyped, zero-config).** `this.forbidden(msg)` / `this.unauthorized(msg)` (and every other error helper except `internalServerError`) throw an `HttpError` whose argument is JSON-stringified as the response body. So `this.forbidden('not_your_place')` produces the body `"not_your_place"`. The default `Forbidden` / `Unauthorized` / etc. response components are description-only — no `content`, no schema — so the marker never appears in the generated spec or client. It is a runtime-only discriminator: two same-status causes on one endpoint, with no schema change and no regen. The frontend switches on it as an untyped string:
 
 ```typescript
 // BearBnB: a Host editing a Place they don't own
@@ -862,14 +863,9 @@ Pass context data to serializers (e.g., locale, current user):
 public configureSerializers() {
   this.serializerPassthrough({ locale: this.locale })
 }
-
-// In controller - query with passthrough
-const places = await Place
-  .passthrough({ locale: this.locale })
-  .preloadFor('forGuests')
-  .all()
-this.ok(places)
 ```
+
+A query's `.passthrough()` is a separate channel: it scopes associations declared with `DreamConst.passthrough`, such as `currentLocalizedText`, and never reaches a serializer ([i18n.md](i18n.md#querying-with-locale-passthrough)).
 
 ## @OpenAPI Decorator Options
 
