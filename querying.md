@@ -153,7 +153,7 @@ app.set('paginationPageSize', 25)
 app.set('paginationMaxPageSize', 200)
 ```
 
-Lower `paginationMaxPageSize` if an endpoint's per-row cost (large payloads, expensive preloads) warrants a stricter cap than the app-wide default.
+`paginationMaxPageSize` is app-wide, so lowering it caps every paginated query; to cap one expensive endpoint more tightly, clamp the `pageSize` you pass there.
 
 Query-level write methods also exist and are easy to miss:
 
@@ -194,8 +194,9 @@ skip, but says nothing about a bulk write to an unrelated column on the same mod
 do apply, the fix is not to skip them: keep the default per-record update, or narrow the query.
 
 Of the query-level writers, only the no-`lock` `update(attrs, { skipHooks: true })` and `delete()`
-bypass the model entirely; `destroy`, `reallyDestroy`, and `undestroy` instantiate each record even
-under `skipHooks`, so default scopes and the `dependent: 'destroy'` cascade still apply. (With
+bypass the model entirely — one statement, still filtered by the query's `where` and default scopes,
+with no hooks and no `dependent: 'destroy'` cascade. `destroy`, `reallyDestroy`, and `undestroy`
+instantiate each record even under `skipHooks`, so the cascade still applies. (With
 `lock: true`, `skipHooks` also stays on the per-instance path — hooks skipped, custom setters still
 run; see [locking.md](locking.md).)
 
@@ -251,7 +252,7 @@ Query-side overlap validation is not race-safe by itself. Prevent double booking
 
 ### Array column containment and equality
 
-A bare array in `where()` (`where({ status: [...] })` → `IN`) means the same thing for every column, array-typed or not — Dream never special-cases it into containment or array equality. "The column contains this array" is ambiguous on its own (does order matter? duplicates?), so rather than guess, Dream leaves a bare array meaning `IN` everywhere and requires `ops` to say which array comparison you actually want:
+A bare array in `where()` (`where({ status: [...] })`) means `IN`, which only works against a scalar column — against an array column it raises `malformed array literal` at the database. Use `ops` to say which array comparison you want:
 
 | What you want | How you write it | SQL |
 | --- | --- | --- |
@@ -399,9 +400,6 @@ const hosts = await Host.innerJoin('places', 'rooms', {
 // preload with conditions
 const users = await User.preload('posts', { and: { published: true } }, 'comments').all()
 
-// load with shorthand conditions (plain object = and)
-user = await user.load('posts', { body: null }).load('pets').execute()
-
 // andAny follows the same semantics as whereAny: each object is OR'd,
 // multiple keys within one object are AND'd
 const users = await User.preload('posts', {
@@ -440,15 +438,15 @@ Still allowed, because these can legitimately be empty/absent (so a constraint c
 
 `optional` on the model's `BelongsTo` declaration is the single source of truth. If a parent can legitimately be absent, declare it `optional: true` — the OpenAPI field becomes nullable and the constraint is allowed again. The runtime counterpart is `MissingRequiredBelongsToAssociation`; see [models.md — required BelongsTo contract](models.md).
 
-### Where clauses on joined/preloaded associations
+### Where clauses on joined associations
 
-After joining or preloading an association, you can reference its columns in `where` clauses using `'associationName.column'` syntax:
+After joining an association (`innerJoin`, `leftJoin`, `leftJoinPreload`), reference its columns in `where` clauses as `'associationName.column'`. `preload` loads in a separate query, so its columns are not in scope:
 
 ```typescript
-const posts = await user
-  .associationQuery('posts')
-  .preload('comments')
-  .whereAny([{ body: null }, { 'comments.body': null }])
+const places = await host
+  .associationQuery('places')
+  .leftJoinPreload('rooms')
+  .whereAny([{ style: 'cabin' }, { 'rooms.type': 'Bedroom' }])
   .all()
 ```
 
@@ -495,13 +493,13 @@ Negation also matches rows whose column is NULL — see [models.md — Query Ope
 `load` and `leftJoinLoad` follow the same chaining pattern on instances:
 
 ```typescript
-// Chain: load posts, then comments on each post
-let user = await User.firstOrFail()
-user = await user.load('posts', 'comments').execute()
-user.posts[0].comments // loaded
+// Chain: load bookings, then the guest on each booking
+let place = await Place.firstOrFail()
+place = await place.load('bookings', 'guest').execute()
+place.bookings[0].guest // loaded
 
-// Parallel loads with conditions
-user = await user.load('posts', { body: null }).load('pets').execute()
+// Parallel loads, one with a condition
+place = await place.load('rooms', { and: { type: 'Bedroom' } }).load('host').execute()
 ```
 
 ### Serializer-driven loading (preferred)
@@ -566,9 +564,7 @@ function applyFilters(query: Query<Place, any>, params: FilterParams): Query<Pla
 }
 ```
 
-**What you lose at the cast site:** Joined column name validation — `where({ 'placePhotos.id': null })` won't be type-checked to confirm the join exists. `leftJoin` itself still validates the association name.
-
-**What you keep:** Full type safety on the model type, incompatibility guards on all other calls, and unchanged runtime behavior.
+**What each costs:** The `typeof query` cast keeps full checking — the joined-column `where` is chained before the cast, so it is validated against the join. A `Query<Place, any>` helper gives up `where` checking entirely: column names and values, base or joined, compile unchecked. Association names and the incompatibility guards stay checked in both, and runtime behavior is unchanged.
 
 ## What To Reach For First
 
@@ -583,7 +579,7 @@ Use this order when reasoning about a query:
 
 ## Distinct rows: `.distinct(...)`
 
-`SELECT DISTINCT` is native to Dream — no Kysely eject. `.distinct(column)` distincts on that column; `.distinct()` or `.distinct(true)` distincts on the primary key; `.distinct(false)` clears a distinct applied earlier in the chain.
+`DISTINCT ON` is native to Dream — no Kysely eject. `.distinct(column)` keeps one row per value of that column; `.distinct()` or `.distinct(true)` uses the primary key, which dedupes the rows a join fans out; `.distinct(false)` clears a distinct applied earlier in the chain.
 
 ```typescript
 await Host.query().distinct('familyName').pluck('familyName')  // unique family names
