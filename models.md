@@ -461,7 +461,7 @@ await User.innerJoin('preference', { and: { category: 'notifications' } }).all()
 
 ## Hooks - Full Reference
 
-### Before Hooks (run in same transaction, before DB write)
+### Before Hooks (run before the DB write)
 
 ```typescript
 @deco.BeforeCreate()
@@ -503,7 +503,7 @@ public async normalizeAddress(this: Place) {
 
 Use after hooks for side effects that require the row to already exist, such as creating associated records or delegating to a service. If that side effect writes other records, pass the provided `txn` through; if it must run after commit, use a `Commit` hook variant.
 
-### After Hooks (run in same transaction, after DB write)
+### After Hooks (run after the DB write)
 
 ```typescript
 import { Dream, DreamTransaction } from '@rvoh/dream'
@@ -511,13 +511,13 @@ import { Dream, DreamTransaction } from '@rvoh/dream'
 @deco.AfterCreate()
 public async createDefaults(this: Host, txn: DreamTransaction<Dream> | null) {
   // Inline for simple cases
-  await this.createAssociation('profile', {}, { txn })
+  await this.txn(txn).createAssociation('profile', {})
 }
 
 @deco.AfterCreate()
 public async seedRooms(this: Place, txn: DreamTransaction<Dream> | null) {
   // Delegate to a service for non-trivial logic; pass txn so all writes are atomic
-  await SeedDefaultRooms.seed(this, txn)
+  await SeedDefaultRooms.call(this, txn)
 }
 
 @deco.AfterUpdate({ ifChanged: ['status'] })
@@ -543,7 +543,7 @@ export default class SeedDefaultRooms {
 }
 ```
 
-**`txn` is `null` unless the caller explicitly started a transaction.** Dream does NOT automatically wrap `Model.create()` in a transaction. The `txn` parameter is only non-null when the caller wraps the create in `ApplicationModel.transaction(async txn => await Model.txn(txn).create(...))`. Hooks should still accept and propagate `txn` so that *if* the create happens inside a transaction, the side effects are atomic with it.
+**A create or update hook's `txn` is `null` unless the write runs inside a transaction** — one the caller started, or the per-batch transaction of a `{ lock: true }` query update. Dream opens no transaction around `Model.create()` or an instance `update()` for its hooks. The `txn` parameter is only non-null when the caller wraps the create in `ApplicationModel.transaction(async txn => await Model.txn(txn).create(...))`. Hooks should still accept and propagate `txn` so that *if* the create happens inside a transaction, the side effects are atomic with it.
 
 `Model.txn(null).create(...)` is a no-op variant — the same service can be called from a hook (with `txn` possibly null) or from a controller (with `null`).
 
@@ -588,19 +588,17 @@ A destroy runs the record's own `beforeDestroy` hooks **first**, then the `depen
 public name: DreamColumn<Place, 'name'>
 
 @deco.Validates('length', { min: 4, max: 64 })
-public email: DreamColumn<User, 'email'>
-
 @deco.Validates('contains', '@')
-public email: DreamColumn<User, 'email'>
+public email: DreamColumn<Guest, 'email'>
 
-@deco.Validates('numericality', { min: 0, max: 100 })
-public volume: DreamColumn<User, 'volume'>
+@deco.Validates('numericality', { min: 1, max: 16 })
+public sleeps: DreamColumn<Place, 'sleeps'>
 
 // Custom validation method
 @deco.Validate()
-public validateWeightConsistency(this: Sandbag) {
-  if (this.weight && this.weightKgs) {
-    this.addError('weight', 'cannot include both weight and weightKgs')
+public validateStayDates(this: Booking) {
+  if (this.startsOn && this.endsOn && this.endsOn.valueOf() <= this.startsOn.valueOf()) {
+    this.addError('endsOn', 'must be after startsOn')
   }
 }
 ```
@@ -609,9 +607,9 @@ The presence of a non-optional `BelongsTo` is validated for you — see [A requi
 
 Checking validity:
 ```typescript
-const user = User.new({ email: 'bad' })
-if (user.isInvalid) {
-  console.log(user.errors) // { email: ['must contain @'] }
+const guest = Guest.new({ email: 'bearmail.com' })
+if (guest.isInvalid) {
+  console.log(guest.errors.email) // ['contains']
 }
 ```
 
@@ -682,7 +680,7 @@ An empty result after a targeted removal may be the correct answer — the row m
 The `schema` exported from `api/src/types/dream.ts` (`src/types/dream.ts` for api-only applications) contains the default scopes for any model:
 
 ```typescript
-import schema from '@src/types/dream.js'
+import { schema } from '@src/types/dream.js'
 
 // schema[dreamModelInstance.table].scopes.default
 // Returns an array of strings, e.g. ['dream:STI', 'dream:SoftDelete']
@@ -711,7 +709,7 @@ ops.ilike('%PATTERN%')     // PostgreSQL ILIKE — operator forces case-insensit
 ops.match('^[A-Z]')        // Regex
 ops.match('^[A-Z]', { caseInsensitive: true })
 
-// Fuzzy search (requires pg_trgm extension + GIN index)
+// Fuzzy search (requires the pg_trgm extension; a GIN index keeps it fast)
 ops.similarity('search term')
 ops.wordSimilarity('search term')
 ops.similarity('term', { score: 0.2 })
@@ -781,7 +779,7 @@ public phone: DreamColumn<User, 'encryptedPhone'>
 // The raw encrypted column (`encryptedPhone`) has a setter that throws if you try
 // to assign it directly — write through the plaintext property (`phone`) instead.
 // That guard is itself a custom setter, so it only fires on the setter path
-// (`create`/`update`/`assignAttribute(s)`/`this.phone = ...`). `setAttribute(s)`
+// (`create`/`update`/`assignAttribute(s)`/`this.encryptedPhone = ...`). `setAttribute(s)`
 // bypasses custom setters entirely (see "Which writes run the setter" below) and
 // will write an unencrypted value straight into `encryptedPhone` with no error —
 // never use `setAttributes`/`updateAttributes` to touch an `@deco.Encrypted` column.
@@ -830,7 +828,7 @@ public set pounds(pounds: DreamColumn<Place, 'grams'>) {
   this.setAttribute('grams', pounds === null ? null : pounds * GRAMS_PER_POUND)
 }
 
-// All Virtual types: 'boolean', 'date-time', 'date', 'integer', 'null', 'number',
+// Virtual shorthand types: 'boolean', 'date-time', 'date', 'integer', 'null', 'number',
 // 'string', 'decimal', 'json', and array variants: 'boolean[]', 'date-time[]',
 // 'date[]', 'decimal[]', 'integer[]', 'number[]', 'string[]'
 // Use arrays for nullable: ['string', 'null']
@@ -852,7 +850,7 @@ public set pounds(pounds: DreamColumn<Place, 'grams'>) {
 // @deco.Virtual(['number', 'null']) produces and accepts a `number | null` shape
 // in any serializer that exposes the attribute via .attribute('pounds') or
 // .delegatedAttribute('foo', 'pounds'), and in requestBody.params when `pounds`
-// is part of the accepted params. Don't pass an explicit `openapi:` to those
+// is part of the accepted params. Don't pass an `openapi:` type to those
 // serializer methods when surfacing a virtual — it overrides the auto-inferred
 // shape and creates a place for the spec to drift when the virtual's declared
 // type changes.
@@ -881,9 +879,9 @@ This is distinct from `@deco.Virtual`: a virtual backs a property that is not a 
 **Which writes run the setter.** Dream splits attribute assignment into two paths:
 
 - `create()`, `update()`, `assignAttribute` / `assignAttributes`, and a plain `this.email = …` **run** your custom setter (`assignAttribute` is literally `this[attr] = value`).
-- `setAttribute` / `setAttributes` (plural) **bypass** custom setters and write the bag raw — use these when you deliberately want the untransformed value, and inside the setter body itself.
+- `setAttribute` / `setAttributes` (plural) **bypass** custom setters and write the bag raw — use these when you deliberately want the untransformed value, and `setAttribute` inside the setter body itself. `setAttributes` still runs the setter of a non-column key or a `json`/`jsonb` column.
 
-So input arriving through `create` / `update` / extracted params is transformed, while internal hydration (loading a row from the DB) writes raw and is never double-transformed.
+So input arriving through `create` / `update` / extracted params is transformed, while internal hydration (loading a row from the DB) writes raw and is never double-transformed, `json`/`jsonb` columns aside.
 
 A `{ skipHooks: true }` query update — `Booking.where(…).update(attrs, { skipHooks: true })` — never instantiates a model, so no setter runs at all: the attribute names go into the `UPDATE` as given and the transform is silently skipped. Naming an `@deco.Encrypted` column's backing column here throws unless the value is `null`. To update an encrypted column, use a path that instantiates the model — a plain query update, or `{ lock: true }` (with or without `skipHooks`) — and write through the encrypted property. The instance form, `instance.update(attrs, { skipHooks: true })`, is unaffected — it assigns through `assignAttributes`, so custom setters still run; `skipHooks` there means hooks, not setters.
 
