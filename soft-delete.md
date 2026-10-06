@@ -150,9 +150,9 @@ await Place.removeDefaultScope('dream:SoftDelete')
   .reallyDestroy()
 ```
 
-`destroy()` and `reallyDestroy()` accept `{ lock: true }`, which makes the destroy a guarded
-(compare-and-set) removal. That is a concurrency concern rather than a soft-delete one — see
-[locking.md](locking.md).
+The query forms of `destroy()` and `reallyDestroy()` accept `{ lock: true }`, which makes the
+destroy a guarded (compare-and-set) removal. That is a concurrency concern rather than a
+soft-delete one — see [locking.md](locking.md).
 
 ## Cascading
 
