@@ -17,24 +17,24 @@ Background work should be used to offload costly, process-intensive, or failure-
 Services are the preferred way to background work. The pattern is:
 
 1. A **public entry method** receives rich objects (e.g., model instances), extracts serializable identifiers, and calls `this.background(...)`.
-2. A **private implementation method** (prefixed with `_`) receives only serializable arguments (strings, numbers), looks up any needed models, and does the work.
+2. An **implementation method** (prefixed with `_`) receives only serializable arguments (strings, numbers), looks up any needed models, and does the work.
 
-This two-method pattern lets the service encapsulate its implementation and expose an expressive API — callers just write `await IntercomSyncService.syncUser(user)` without knowing or caring that the work is backgrounded, how arguments are serialized, or what the worker does internally. As a secondary benefit, it also handles the constraint that background job arguments must be serializable to Redis (model instances and complex objects cannot pass through the queue).
+This two-method pattern lets the service encapsulate its implementation and expose an expressive API — callers just write `await IntercomSyncService.syncHost(host)` without knowing or caring that the work is backgrounded, how arguments are serialized, or what the worker does internally. As a secondary benefit, it also handles the constraint that background job arguments must be serializable to Redis (model instances and complex objects cannot pass through the queue).
 
 ```typescript
 import ApplicationBackgroundedService from './ApplicationBackgroundedService.js'
 
 export default class IntercomSyncService extends ApplicationBackgroundedService {
   // Public entry point — called from application code
-  public static async syncUser(user: User) {
-    await this.background('_syncUser', user.id)
+  public static async syncHost(host: Host) {
+    await this.background('_syncHost', host.id)
   }
 
-  // Private implementation — called by the worker
-  public static async _syncUser(id: string) {
-    const user = await User.find(id)
-    if (!user) return
-    // ...sync user to intercom
+  // Implementation — called by the worker
+  public static async _syncHost(id: string) {
+    const host = await Host.find(id)
+    if (!host) return
+    // ...sync host to intercom
   }
 
   // Optional: configure priority and/or workstream
@@ -44,7 +44,7 @@ export default class IntercomSyncService extends ApplicationBackgroundedService 
 }
 
 // Usage from application code (e.g., a controller or model hook):
-await IntercomSyncService.syncUser(user)
+await IntercomSyncService.syncHost(host)
 ```
 
 **`backgroundJobConfig` sets the class's defaults; only `priority` can be overridden per call.** `backgroundWith(opts, method, ...args)` takes `{ delay, priority }`, and `opts.priority` replaces the getter's priority for that one job, whether or not the service carries a `workstream` (see [Priority Levels](#priority-levels)).
@@ -123,18 +123,18 @@ If the timing itself is what matters rather than the collapsing, reach for a sch
 
 ```typescript
 export default class IntercomSyncService extends ApplicationBackgroundedService {
-  public static async syncUser(user: User) {
+  public static async syncHost(host: Host) {
     await this.backgroundWith(
-      { delay: { minutes: 2, jobId: `intercom-sync-user-${user.id}` } },
-      '_syncUser',
-      user.id
+      { delay: { minutes: 2, jobId: `intercom-sync-host-${host.id}` } },
+      '_syncHost',
+      host.id
     )
   }
 
-  public static async _syncUser(id: string) {
-    const user = await User.find(id)
-    if (!user) return
-    // ...sync user to intercom
+  public static async _syncHost(id: string) {
+    const host = await Host.find(id)
+    if (!host) return
+    // ...sync host to intercom
   }
 }
 ```
@@ -146,7 +146,7 @@ Models extending `ApplicationBackgroundedModel` can background both static and i
 **Use this only when the model itself needs to background its own methods.** For most use cases, prefer a backgrounded service instead.
 
 ```typescript
-export default class User extends ApplicationBackgroundedModel {
+export default class Host extends ApplicationBackgroundedModel {
   // Static method
   public static async processAll(batchSize: number) {
     // ...
@@ -154,26 +154,26 @@ export default class User extends ApplicationBackgroundedModel {
 
   // Instance method
   public async sendNotification(message: string) {
-    // Runs on a specific user instance
+    // Runs on a specific host instance
   }
 
   public static override get backgroundJobConfig() {
-    return { workstream: 'user-processing', priority: 'default' }
+    return { workstream: 'host-processing', priority: 'default' as const }
   }
 }
 
 // Static method backgrounding
-await User.background('processAll', 100)
+await Host.background('processAll', 100)
 
 // Instance method backgrounding — Psychic stores the primary key
 // and re-fetches the model when the worker picks up the job
-const user = await User.findOrFail(id)
-await user.background('sendNotification', 'Hello!')
+const host = await Host.findOrFail(id)
+await host.background('sendNotification', 'Hello!')
 ```
 
 ## Critical Pattern: Use AfterCommit Hooks
 
-**ALWAYS use after-commit lifecycle hooks (`@deco.AfterCreateCommit`, `@deco.AfterUpdateCommit`, or `@deco.AfterSaveCommit`) instead of the regular hooks (`@deco.AfterCreate`, `@deco.AfterUpdate`, or `@deco.AfterSave`) when queuing background work from a Dream lifecycle hook.** This applies to any enqueue path: calling a backgrounded service, calling `this.background(...)` on an `ApplicationBackgroundedModel`, or calling another model/service method that queues the job. Regular hooks run inside the transaction, so the worker may pick up the job before the transaction commits — meaning the record either doesn't exist yet after create, or still has stale persisted data after update.
+**ALWAYS use after-commit lifecycle hooks (`@deco.AfterCreateCommit`, `@deco.AfterUpdateCommit`, or `@deco.AfterSaveCommit`) instead of the regular hooks (`@deco.AfterCreate`, `@deco.AfterUpdate`, or `@deco.AfterSave`) when queuing background work from a Dream lifecycle hook.** This applies to any enqueue path: calling a backgrounded service, calling `this.background(...)` on an `ApplicationBackgroundedModel`, or calling another model/service method that queues the job. Regular hooks run before an enclosing transaction commits, so the worker may pick up the job before the commit — meaning the record either doesn't exist yet after create, or still has stale persisted data after update.
 
 ```typescript
 // CORRECT — job runs after the transaction commits, so the worker can find the record
@@ -276,14 +276,14 @@ BullMQ relies on thrown exceptions to detect failure. A caught-and-not-rethrown 
 - No automatic retry
 - The work is silently lost and only discoverable by reading worker logs
 
-Throwing is how a job reports that it did not finish — it is not how the app tells a human. When a justified catch handles its expected error and the method returns normally, the job completes and never reaches BullMQ's `failed` set, so report the event to your error-reporting service — Sentry, for instance — right there in the handling code. Rethrowing to put it somewhere a human looks buys twenty backoff retries of something that already will not succeed: retrying is the queue's job, alerting is the app's.
+Throwing is how a job reports that it did not finish — it is not how the app tells a human. When a justified catch handles its expected error and the method returns normally, the job completes and never reaches BullMQ's `failed` set, so report the event to your error-reporting service — Sentry, for instance — right there in the handling code. Rethrowing to put it somewhere a human looks buys days of backoff retries of something that already will not succeed: retrying is the queue's job, alerting is the app's.
 
 ```typescript
 // WRONG — log-and-continue inside a backgrounded service
-private static async _importAll(records: Record[]) {
-  for (const record of records) {
+public static async _importAll(placeIds: string[]) {
+  for (const placeId of placeIds) {
     try {
-      await this.importOne(record)
+      await this.importOne(placeId)
     } catch (error) {
       console.error('Failed:', error)  // ← BullMQ never sees this; job marks success
     }
@@ -291,16 +291,16 @@ private static async _importAll(records: Record[]) {
 }
 
 // RIGHT — let the first failure propagate, let BullMQ retry the whole job
-private static async _importAll(records: Record[]) {
-  for (const record of records) {
-    await this.importOne(record)
+public static async _importAll(placeIds: string[]) {
+  for (const placeId of placeIds) {
+    await this.importOne(placeId)
   }
 }
 
 // ALSO RIGHT — fan out to per-record jobs, each retried independently by BullMQ
-public static async importAll(records: Record[]) {
-  for (const record of records) {
-    await this.background('_importOne', record.id)
+public static async importAll(places: Place[]) {
+  for (const place of places) {
+    await this.background('_importOne', place.id)
   }
 }
 ```
@@ -322,7 +322,7 @@ The idiomatic pattern is a **two-level fan-out** using `pluckEach` and priority 
 
 Keep both tiers of the fan-out below `default`. A bulk run's individual jobs vastly outnumber ordinary application work, and if they run at `default` priority they compete directly with it — routine, more-important-than-bulk jobs queue up behind however many thousand photos are left to reprocess. Bulk work belongs entirely under `not_urgent`/`last` so it only fills otherwise-idle worker slots.
 
-Because expanders run at `last` priority, they only claim worker slots when no `not_urgent`-priority individual jobs are pending. With 10 workers, that means at most ~10 batches are expanded at a time (producing ~10,000 individual jobs in flight), and the individual jobs are drained before more batches are expanded. The queue depth stays bounded regardless of the total record count. Expander jobs are also infrequent relative to individual jobs — one per 1000 IDs — so sharing the `last` tier with a [check-in/heartbeat job](#priority-levels) doesn't starve it outright; it just interleaves.
+Because expanders run at `last` priority, they only claim worker slots when no `not_urgent`-priority individual jobs are pending. With 10 worker slots (`workerCount × concurrency`), that means at most ~10 batches are expanded at a time (producing ~10,000 individual jobs in flight), and the individual jobs are drained before more batches are expanded. The individual-job backlog stays bounded regardless of the total record count.
 
 ```typescript
 // services/ReprocessAllPlacePhotosService.ts
@@ -384,7 +384,7 @@ Key points:
 - **`pluckEach` selects only the `id` column** — no hydration, minimal memory.
 - **Priorities create natural backpressure.** Expanders (`last`) yield to individual jobs (`not_urgent`), so the in-flight count of individual jobs never exceeds roughly `worker_count * concurrency * batch_size`. Priority orders worker slots; it does not throttle a running job's request rate. To bound pressure on an external service, put those jobs on a named workstream with a [`rateLimit`](#rate-limiting).
 - **The expander and individual-worker services must route to the same queue.** Priority is only meaningful within a single BullMQ queue: jobs in different queues have separate worker pools and never compete for the same slots, so putting expanders and individual jobs on different queues silently defeats the backpressure — each queue just drains independently, and you're back to unbounded fan-out.
-- **To isolate this fan-out to its own queue** (keeping it off the default queue entirely, e.g. so it can't crowd out unrelated default-queue work even at `not_urgent`/`last`), route both the expander and the individual-worker service to the same named `workstream`. The mapped priority is written to BullMQ's top-level `priority` on every job, grouped or not, so the expander/individual backpressure survives the isolation on open-source BullMQ and on Pro alike.
+- **To isolate this fan-out to its own queue** (keeping it off the default queue entirely, so it can't crowd out unrelated `not_urgent`/`last` work there — a [check-in/heartbeat job](#priority-levels) at `last` waits behind every expander enqueued before it, for most of a long run), route both the expander and the individual-worker service to the same named `workstream`. The mapped priority is written to BullMQ's top-level `priority` on every job, grouped or not, so the expander/individual backpressure survives the isolation on open-source BullMQ and on Pro alike.
 - **If the kickoff is interrupted,** only the expanders already enqueued will run, and if the kickoff job itself is retried it will re-pluck from the beginning — so every ID already enqueued in a batch is enqueued again, and `_processOne` redoes that record's work when the record is still there. When repeating a record's work is expensive, stamp a datetime column on the record as each one finishes and filter the kickoff's `pluckEach` query on it, so a re-pluck skips what is already done.
 - **Individual jobs still follow the standard rule of passing IDs, not model instances.** Hydrate inside `_processOne`.
 
@@ -401,7 +401,7 @@ type BackgroundQueuePriority = 'urgent' | 'default' | 'not_urgent' | 'last'
 
 ```typescript
 export default class FileImportService extends ApplicationBackgroundedService {
-  public static get backgroundJobConfig(): BackgroundJobConfig<ApplicationBackgroundedService> {
+  public static override get backgroundJobConfig(): BackgroundJobConfig<ApplicationBackgroundedService> {
     return { priority: 'not_urgent' }
   }
 }
