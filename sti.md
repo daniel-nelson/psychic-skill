@@ -580,7 +580,7 @@ for (const [i, params] of itemsParams.entries()) {
 }
 ```
 
-Wrap the loop in `ApplicationModel.transaction(async txn => { ... })` only when the action genuinely needs atomicity — extra transaction overhead isn't free.
+Wrap the loop in `ApplicationModel.transaction(async txn => { ... })` only when the action genuinely needs atomicity — extra transaction overhead isn't free — and then bind each create to it (`Bedroom.txn(txn).create(...)`), as [every write inside a transaction must be](models.md#transactions).
 
 ## Testing Patterns
 

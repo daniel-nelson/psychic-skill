@@ -539,7 +539,7 @@ if (withoutPhoto)
 ```typescript
 let query = Place.preloadFor('summary')
 
-if (search) query = query.where({ name: ops.like(`${search}%`) })
+if (search) query = query.where({ name: ops.like(`${ops.like.escape(search)}%`) })
 if (withoutPhoto)
   query = query
     .leftJoin('placePhotos')
@@ -629,7 +629,7 @@ Each takes a single group column and runs one query, grouping on the foreign key
 const placeIds = places.map(place => place.id)
 
 // One query, grouped on the FK. Query the associated model directly so its own
-// default scopes still apply — Booking keeps its soft-delete and STI scopes, and
+// default scopes still apply — Booking keeps its soft-delete scope, and
 // the `Place` HasMany's `and: { confirmedAt: null }` filter becomes an explicit where.
 const pendingByPlaceId = await Booking.where({ placeId: placeIds, confirmedAt: null }).countBy('placeId')
 

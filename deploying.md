@@ -15,10 +15,13 @@ A Psychic application runs multiple process roles from a single built image. Eac
 
 ## Health Checks
 
-The API server needs an explicit health check route registered in `api/src/conf/routes.ts`:
+The API server needs an explicit health check route. The scaffold's `api/src/conf/routes.ts` carries one commented out; uncomment it and adjust the path and body to what your infra expects:
 
 ```typescript
-r.get('health_check', HealthCheckController, 'index')
+r.get('health_check', ctx => {
+  ctx.status = 200
+  ctx.body = { ok: true }
+})
 ```
 
 The `@rvoh/psychic-websockets` server answers its own **built-in** health check, configured with `wsApp.set('healthCheck', …)` ([websockets.md](websockets.md#configuration)). Its defaults differ from the API route:
@@ -107,7 +110,7 @@ replica: AppEnv.string('REPLICA_DB_HOST', { optional: true })
   : undefined,
 ```
 
-Configuring `replica` only makes the connection available — it doesn't route any traffic there by itself. A model only reads from the replica when it's decorated `@ReplicaSafe()`, and even then only for `select` queries outside a transaction. See [models.md — Replica Safety](models.md#replica-safety-replicasafe) for the full routing rules (join fallback to primary, `create`/`update`/`destroy` always primary, per-call `.connection(...)` override).
+Configuring `replica` only makes the connection available — it doesn't route any traffic there by itself. A model reads from the replica only when it's decorated `@ReplicaSafe()` or a call asks for `.connection('replica')`, and only for `select` queries outside a transaction. See [models.md — Replica Safety](models.md#replica-safety-replicasafe) for the full routing rules (join fallback to primary, `create`/`update`/`destroy` always primary, per-call `.connection(...)` override).
 
 Omit `replica` (or pass `undefined`) for environments with no replica — every model, `@ReplicaSafe()` or not, then reads from `primary`.
 

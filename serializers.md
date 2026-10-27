@@ -92,7 +92,7 @@ Options:
 .attribute('status', { default: 'pending' })
 ```
 
-**Important**: For `@deco.Virtual()` columns, use plain `.attribute('name')` without the openapi option - the type is inferred from the Virtual decorator.
+**Important**: For `@deco.Virtual()` columns, use plain `.attribute('name')` without an `openapi` type - the type is inferred from the Virtual decorator.
 
 ### .customAttribute(name, fn, options)
 
@@ -225,7 +225,7 @@ Restating `optional: true` in the serializer duplicates the declaration; **chang
 
 Note: `optional` on `rendersOne` is purely an OpenAPI nullability marker — the key is always rendered. `rendersOne` does not support `required: false`. If you need the key absent from the response, reshape the serializer (a custom attribute, or a different serializer variant) rather than reaching for an option that does not exist. `optional: true` has no effect on `NonLoadedAssociation`: if the association was never preloaded or loaded, rendering it still throws regardless of `optional`.
 
-The non-optional → non-nullable mapping is a contract Dream defends on both sides, so you never need to loosen a serializer to "maybe null" to stay safe. A non-optional `BelongsTo` cannot be conditionally loaded (a trailing constraint on it is a compile error in `preload`/`load`/`leftJoinPreload`/`leftJoinLoad`), and a required parent that goes missing at runtime throws `MissingRequiredBelongsToAssociation` rather than serializing as `null`. Both are signals to fix the model — add `dependent: 'destroy'` to the inverse `HasOne`/`HasMany`, or make the `BelongsTo` `optional: true` — not to mark the serializer field nullable. See [models.md — required BelongsTo contract](models.md).
+The non-optional → non-nullable mapping is a contract Dream defends on both sides, so you never need to loosen a serializer to "maybe null" to stay safe. A non-optional `BelongsTo` cannot be conditionally loaded (a trailing constraint on it is a compile error in `preload`/`load`/`leftJoinPreload`/`leftJoinLoad`), and a required parent that goes missing at runtime throws `MissingRequiredBelongsToAssociation` rather than serializing as `null`. Both are signals to fix the model, not to mark the serializer field nullable — see [models.md — required BelongsTo contract](models.md#a-required-belongsto-is-a-two-way-non-nullable-contract) for the fixes.
 
 ### .rendersMany(name, options?)
 
@@ -592,11 +592,7 @@ async function assignCurrentLocalizedText(places: Place[], rooms: Room[], locale
   if (places.length === 0 && rooms.length === 0) return
 
   // Single query across both polymorphic types
-  const texts = await LocalizedText.where({ locale })
-    .whereAny([
-      { localizableType: 'Place', localizableId: places.map(p => p.id) },
-      { localizableType: 'Room', localizableId: rooms.map(r => r.id) },
-    ]).all()
+  const texts = await LocalizedText.where({ locale, localizable: [...places, ...rooms] }).all()
 
   // Index by (type, id) for O(1) lookup
   const byKey = new Map(texts.map(t => [`${t.localizableType}:${t.localizableId}`, t]))

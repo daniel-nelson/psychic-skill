@@ -18,7 +18,6 @@ controllers/
 ├── AuthedController.ts               (client auth — @BeforeAction, 401 if no user)
 ├── MaybeAuthedController.ts          (client auth — currentUser null if absent)
 ├── UnauthedController.ts             (no auth)
-├── StatusController.ts               (health check — extends UnauthedController)
 │
 ├── V1/                               (client API — AUTHED ONLY)
 │   ├── BaseController.ts             (extends AuthedController)
@@ -633,7 +632,7 @@ With `{ allowNull: true }`, `castParam` returns `undefined` for an absent key an
 
 ### extractParams
 
-`extractParams(Model, allowedParams, opts?)` validates an incoming request body against a Dream model's writable params and returns a typed, safe-to-write attributes object. The `allowedParams` array is an explicit positional allowlist, TS-checked at compile time against the model's safe params: real columns, Encrypted columns, and Virtual columns. Encrypted params are accepted as `string` or `string | null` based on the backing encrypted column's nullability, or as the shape `@deco.Encrypted({ openapi })` declares; Virtual params use the type declared in `@deco.Virtual(...)`. The runtime intersects the allowlist with the model's `paramSafeColumns` (when declared) and the always-excluded set described below.
+`extractParams(Model, allowedParams, opts?)` validates an incoming request body against a Dream model's writable params and returns a typed, safe-to-write attributes object. The `allowedParams` array is an explicit positional allowlist, TS-checked at compile time against the model's safe params: real columns, Encrypted columns, and Virtual columns. Encrypted params are accepted as `string` or `string | null` based on the backing encrypted column's nullability, or as the shape `@deco.Encrypted({ openapi })` declares; Virtual params use the type declared in `@deco.Virtual(...)`. `extractParams` enforces those types in TypeScript; at runtime it checks the top-level type only, not an object shape's properties. The runtime intersects the allowlist with the model's `paramSafeColumns` (when declared) and the always-excluded set described below.
 
 The allowlist is required and lives at the call site so that every controller's accepted params are locally visible. Adding a new model param doesn't widen any controller's surface — each controller has to opt in to accept it.
 
@@ -1004,8 +1003,8 @@ import Bedroom from '@models/Room/Bedroom.js'
 import Den from '@models/Room/Den.js'
 import Kitchen from '@models/Room/Kitchen.js'
 import LivingRoom from '@models/Room/LivingRoom.js'
-import { OpenAPI } from '@rvoh/psychic'
-import { RoomTypesEnum } from '@src/types/db.js'
+import { OpenAPI, Params } from '@rvoh/psychic'
+import { RoomTypesEnumValues } from '@src/types/db.js'
 
 @OpenAPI(Place, {
   status: 201,
@@ -1031,17 +1030,17 @@ import { RoomTypesEnum } from '@src/types/db.js'
 })
 public async create() {
   const placeAttrs = this.extractParams(Place, ['name', 'style', 'sleeps'])
-  // Extraction always strips the STI `type` discriminator, so read it per item from the
-  // raw body and dispatch to the child class — see
+  // Extraction always strips the STI `type` discriminator, so cast it per item from the
+  // raw body against the enum and dispatch to the child class — see
   // [STI bulk creation](sti.md#bulk-creation-from-a-request-body-array).
   const roomsAttrs = this.extractParams(Room, ['name', 'sleeps'], { key: 'rooms', array: true })
-  const rawRooms = (this.params as { rooms?: { type?: string }[] }).rooms ?? []
+  const rawRooms = (this.params as { rooms?: object[] }).rooms ?? []
 
   const place = await ApplicationModel.transaction(async txn => {
     const created = await Place.txn(txn).create({ ...placeAttrs, host: this.currentHost })
 
     for (const [i, roomAttrs] of roomsAttrs.entries()) {
-      const roomType = rawRooms[i]?.type as RoomTypesEnum
+      const roomType = Params.cast(rawRooms[i] ?? {}, 'type', 'string', { enum: RoomTypesEnumValues })
       switch (roomType) {
         case 'Bathroom':   await Bathroom.txn(txn).create({ place: created, ...roomAttrs }); break
         case 'Bedroom':    await Bedroom.txn(txn).create({ place: created, ...roomAttrs }); break
@@ -1140,11 +1139,11 @@ Psychic automatically converts certain errors to HTTP responses:
 | The database rejects a save | 400 | Not-null, check, overflow or type mismatch (`DataIncompatibleWithDatabaseField`) |
 | `findOrFail` no match | 404 | Record not found |
 | `firstOrFail` no match | 404 | Record not found |
-| `save` / `update` that writes changes to a loaded record | 404 | Row deleted after it was loaded (`CannotSaveMissingDream`) |
+| `save` / `update` that writes changes to a loaded record | 404 | Row hard-deleted after it was loaded (`CannotSaveMissingDream`) |
 
 All validation-layer errors return 400 by design — this prevents attackers from distinguishing which layer rejected a request. Psychic's automatic conversions return a bare 400 with no body for param, requestBody, and model validation failures, so the response is opaque about which layer rejected.
 
-To deliberately surface field-level validation errors to the end user, return a 400 that carries the error shape — call `this.badRequest({ errors: { ... } })`. The natural source of that shape is a Dream model's `.errors` getter, which is keyed `{ field: ['message'], ... }`:
+To deliberately surface field-level validation errors to the end user, return a 400 that carries the error shape — call `this.badRequest({ errors: { ... } })`. The natural source of that shape is a Dream model's `.errors` getter, which is keyed by field, each entry naming the validation that failed (`presence`, `contains`, …) or the message a custom `addError` supplied:
 
 ```ts
 const place = Place.new(this.extractParams(Place, ['name', 'style', 'sleeps']))

@@ -761,26 +761,20 @@ public phone: DreamColumn<User, 'encryptedPhone'>
 // extractParams enforces that type in TypeScript; at runtime it checks the
 // top-level type only, not an object shape's properties.
 //
-// Column encryption must be configured before the getter/setter will work. This is
-// a Dream-app config in conf/dream.ts (distinct from the cookie encryption config in
-// conf/app.ts — see controllers.md "Cookie Encryption"):
-//   // conf/dream.ts — app is the DreamApp passed to the default export
-//   app.set('encryption', {
-//     columns: {
-//       current: { algorithm: 'aes-256-gcm', key: AppEnv.string('COLUMN_ENCRYPTION_KEY') },
-//     },
-//   })
+// Column encryption is a Dream-app config in conf/dream.ts, distinct from the cookie
+// encryption config in conf/app.ts (see controllers.md "Cookie Encryption"). The
+// scaffold sets `encryption.columns.current` from `COLUMN_ENCRYPTION_KEY`; without it
+// the getter/setter throw.
 // Add an optional `legacy` key beside `current` to rotate keys (current is tried
 // first, then legacy). Before dropping `legacy`, run
 // `await Booking.reencryptEncryptedColumns()` for every model with encrypted
 // properties, from the console or a script, in each environment once all its
 // servers encrypt with the new `current`. Generate keys with
-// `pnpm psy g:encryption-key`. Without this
-// config the getter/setter throw. After adding @deco.Encrypted() and its migration,
-// run `pnpm psy sync` so the `encrypted<Column>` column is in the generated types. The
-// plaintext property (e.g. `phone`) is not assignable in `.create()` / `UpdateableProperties`
-// until sync lists it under the model's `virtualColumns`; until then `tsc` reports
-// `TS2353 ... 'phone' does not exist` even though the model declares the field.
+// `pnpm psy g:encryption-key`. After adding @deco.Encrypted() and its migration,
+// run `pnpm psy sync` so the generated types list the plaintext property (e.g. `phone`)
+// under the model's `virtualColumns`; until then it is not assignable in `.create()` /
+// `UpdateableProperties`, and `tsc` reports `TS2353 ... 'phone' does not exist` even
+// though the model declares the field.
 //
 // The raw encrypted column (`encryptedPhone`) has a setter that throws if you try
 // to assign it directly — write through the plaintext property (`phone`) instead.
