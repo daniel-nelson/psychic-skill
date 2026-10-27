@@ -542,8 +542,8 @@ await expect(page).toUncheck('Send newsletter')    // Uncheck a checkbox
 These assert on the current state of the page:
 
 ```typescript
-await expect(page).toMatchTextContent('Welcome back')      // Page contains text
-await expect(page).toNotMatchTextContent('Error')           // Page does not contain text
+await expect(page).toMatchTextContent('Welcome back')      // Page shows text
+await expect(page).toNotMatchTextContent('Error')           // Page does not show text
 await expect(page).toHaveSelector('.success-banner')        // Page has CSS selector
 await expect(page).toNotHaveSelector('.error-message')      // Page does not have selector
 await expect(page).toHavePath('/dashboard')                 // Current path matches
@@ -555,7 +555,7 @@ await expect(page).toHaveUnchecked('Opt out')               // Checkbox with tex
 
 ### What the text matchers actually read
 
-`toMatchTextContent` / `toNotMatchTextContent` assert on what the page **renders**, not its DOM source. They collect each element's `innerText` (joined with spaces, with `input`/`textarea` values included), so they see CSS `text-transform`, visibility, and other rendered output. Two consequences:
+`toMatchTextContent` / `toNotMatchTextContent` assert on what the page **renders**, not its DOM source. They collect each element's `innerText` and each displayed `input`/`textarea` value, joined with spaces, so they see CSS `text-transform` and skip CSS-hidden content (`display: none`, `visibility: hidden`); `opacity: 0` and offscreen text still match. Two consequences:
 
 **Default to a case-insensitive regex for text content.** A label whose source is `5 out of 5` but is rendered with an `uppercase` class matches as `5 OUT OF 5`. The literal string fails, and hardcoding `'5 OUT OF 5'` couples the spec to cosmetic styling. Match on meaning instead:
 
@@ -570,7 +570,7 @@ Keep this separate from **specificity**. Case-insensitivity does not make a matc
 
 **Split label/value markup matches contiguously.** Because per-element text is joined with spaces, `<dt>Sleeps</dt><dd>4</dd>` lands in the matched string as `Sleeps 4`. So `toMatchTextContent('Sleeps 4')` matches a label/value split with no `page.$eval` workaround.
 
-A more complex layout — a flex container around the `<dt>`/`<dd>` pair, for instance — can break that contiguity, landing extra whitespace between what look like adjacent elements in the source. If a literal contiguous match fails unexpectedly on markup that looks equivalent to the example above, fall back to a whitespace-tolerant regex (`/Sleeps\s+4/`) rather than assuming the assertion itself is broken.
+Contiguity holds between separate elements. A label and value inside one element that a line break separates — a `<br>`, a block child, or a flex item (`<p>Sleeps<br>4</p>`) — land as `Sleeps\n4`; match those with a whitespace-tolerant regex (`/Sleeps\s+4/`).
 
 ### What the selector matchers actually assert
 
@@ -578,14 +578,15 @@ A more complex layout — a flex container around the `<dt>`/`<dd>` pair, for in
 
 `toNotHaveSelector` requires true DOM absence. A present-but-hidden element — one still in the DOM but invisible via CSS — **fails** `toNotHaveSelector`; only an element that's actually unmounted or never rendered passes it.
 
-The rest of the matcher set is presence/interaction-only: `toCheck`, `toClick`/`toClickButton`/`toClickLink`/`toClickSelector`, `toFill`, `toHaveChecked`, `toHaveLink`, `toHavePath`, `toHaveSelector`, `toHaveUnchecked`, `toHaveUrl`, `toNotHaveSelector`, `toSelect`, `toUncheck` — none of these assert visibility directly. `toMatchTextContent`/`toNotMatchTextContent` are the exception: as covered above, they read rendered `innerText`, so they're visibility-sensitive by construction. `toEvaluate` — a generic retry-with-timeout predicate matcher, requiring an `{ pass, actual }`-returning function and a `failureText` option — can express a visibility check directly, but has no established usage pattern in this codebase; the class-assertion workaround below is the more direct tool for the common case.
+The rest of the matcher set is presence/interaction-only: `toCheck`, `toClick`/`toClickButton`/`toClickLink`/`toClickSelector`, `toFill`, `toHaveChecked`, `toHaveLink`, `toHavePath`, `toHaveSelector`, `toHaveUnchecked`, `toHaveUrl`, `toNotHaveSelector`, `toSelect`, `toUncheck` — none of these assert visibility directly. `toMatchTextContent`/`toNotMatchTextContent` are the exception: as covered above, they skip CSS-hidden text.
 
-When a spec genuinely needs to distinguish hidden-but-mounted from truly absent, assert the mechanism that hides the element rather than reaching for a visibility matcher that doesn't exist. If a booking confirmation banner is toggled with an `invisible` CSS class instead of being unmounted, assert the class directly:
+To tell hidden-but-mounted from absent, pair the presence check with a text check scoped to the element. A booking confirmation banner toggled with an `invisible` class (`visibility: hidden`) instead of being unmounted stays in the DOM but shows no text:
 
 ```typescript
-await expect(page).toHaveSelector('.booking-confirmation')                 // still mounted either way
-const classAttr = await page.$eval('.booking-confirmation', el => el.className)
-expect(classAttr).toMatch(/\binvisible\b/)                                 // actually hidden
+await expect(page).toHaveSelector('.booking-confirmation')        // still mounted
+await expect(page).toNotMatchTextContent(/booking confirmed/i, {
+  selector: '.booking-confirmation',
+})                                                                // but not shown
 ```
 
 ### Full Example
@@ -709,25 +710,11 @@ Code that imports `{ cleaningFee }` gets the spy. For a default export, spy on `
 
 ## Background Worker Testing
 
-```typescript
-// Default: Jobs execute immediately in specs (testInvocation = 'automatic')
-await GuestMailerService.sendWelcome(guest)
-// The backgrounded method runs synchronously
-
-// Manual mode for fine-grained control
-import { WorkerTestUtils } from '@rvoh/psychic-workers'
-
-const workersApp = PsychicAppWorkers.getOrFail()
-workersApp.set('testInvocation', 'manual')
-
-await GuestMailerService.sendWelcome(guest)  // Queued
-await WorkerTestUtils.work()                 // Process queue
-await WorkerTestUtils.clean()                // Clear queues
-```
+Under the default `testInvocation: 'automatic'`, a backgrounded method runs before `.background(...)` returns, so a spec asserts on its effects directly. Manual mode and `WorkerTestUtils` (from `@rvoh/psychic-workers/utils`) are in [workers.md](workers.md#testing-workers).
 
 ### A job that throws fails the enqueuing request in specs, but not in prod
 
-Under the default `automatic` invocation, a backgrounded method runs inline and **awaited** inside the call that enqueued it — the framework short-circuits the queue and calls the method directly, with no surrounding try/catch. So if the job throws, the error propagates back through `.background(...)` to the caller. A controller action that backgrounds a job and awaits it therefore returns **500 in specs** when the job throws.
+Under the default `automatic` invocation, a backgrounded method runs inline and **awaited** inside the call that enqueued it — the framework skips the queue and runs the job in place, rethrowing what it throws. So if the job throws, the error propagates back through `.background(...)` to the caller. A controller action that backgrounds a job and awaits it therefore returns an error status — usually 500 — **in specs** when the job throws.
 
 In production the same job runs on a separate BullMQ worker. A throw there is retried per the queue's `defaultJobOptions` (set in `conf/initializers/workers.ts`) and lands in `failed` only once attempts are exhausted — none of it touching the HTTP response that was already returned. The "fire-and-forget" mental model — `await this.background(...)` returns once queued, the job's success or failure is independent of the request — holds in prod but **not** in specs.
 
@@ -740,21 +727,18 @@ Two practical consequences:
 
 ```typescript
 describe('Host creates a Place', () => {
-  let page: Page
-
   beforeEach(async () => {
-    page = await getPage()
     const user = await createUser()
     await createHost({ user })
-    await hostSignIn(page, user)
+    await hostSignIn(user)
   })
 
   it('creates a new place via the form', async () => {
-    await visit(page, '/places/new')
-    await fillIn(page, '#name', 'Cozy Cabin')
-    await select(page, '#style', 'cabin')
-    await fillIn(page, '#sleeps', '4')
-    await clickButton(page, 'Create Place')
+    await visit('/places/new', { baseUrl: AppEnv.string('CLIENT_APP_HOST') })
+    await fillIn('#name', 'Cozy Cabin')
+    await select('#style', 'cabin')
+    await fillIn('#sleeps', '4')
+    await clickButton('Create Place')
 
     await expect(page).toHavePath('/places')
     await expect(page).toMatchTextContent('Cozy Cabin')
@@ -829,7 +813,7 @@ Avoid flat naming like `guest-browses-places.spec.ts` — the directory structur
 The test process and the browser run concurrently, so `page.waitForNetworkIdle({ idleTime: 500 })` is the general-purpose wait before interacting with the page or asserting on the database. When the UI visibly changes after the API call (e.g., navigation to a new path), waiting on that UI change is a cleaner signal:
 
 ```typescript
-await clickButton(page, 'Create Place')
+await clickButton('Create Place')
 await expect(page).toHavePath('/places')        // proves the response completed
 const place = await Place.firstOrFail()          // safe to query now
 ```
@@ -839,7 +823,7 @@ const place = await Place.firstOrFail()          // safe to query now
 When the path doesn't change, wait on the eventual state instead. Poll the database for the actual outcome:
 
 ```typescript
-await clickButton(page, 'Delete')
+await clickButton('Delete')
 await expect
   .poll(async () => await Place.find(place.id))
   .toBeNull()                                   // waits for the delete to land
