@@ -475,9 +475,23 @@ import AppEnv from '#conf/AppEnv.js'
 import { Dream } from '@rvoh/dream'
 import { Encrypt } from '@rvoh/dream/utils'
 import { PsychicServer } from '@rvoh/psychic'
-import { OpenapiSpecRequest } from '@rvoh/psychic-spec-helpers'
+import { OpenapiRequestBody, OpenapiRequestQuery, OpenapiSpecRequest } from '@rvoh/psychic-spec-helpers'
 
 type OpenapiPaths = import('#src/types/openapi/tests.openapi.js').paths
+
+export type SpecRequestType = Awaited<ReturnType<typeof session>>
+
+export type RequestBody<HttpMethod extends 'get' | 'post' | 'patch' | 'delete', Uri> = OpenapiRequestBody<
+  OpenapiPaths,
+  HttpMethod,
+  Uri
+>
+
+export type RequestQuery<HttpMethod extends 'get' | 'post' | 'patch' | 'delete', Uri> = OpenapiRequestQuery<
+  OpenapiPaths,
+  HttpMethod,
+  Uri
+>
 
 function testToken(user: Dream): string {
   // encrypt the object itself: resolveCurrentUser reads userId from what decrypt returns
