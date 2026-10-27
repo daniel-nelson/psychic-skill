@@ -55,7 +55,7 @@ These two are not the whole menu — a status enum, or a genuinely separate mode
 
 ## Column Types
 
-Use `DreamColumn<ModelClass, 'columnName'>` for all database-backed columns. The type is inferred from the database schema via Kysely codegen.
+Use `DreamColumn<ModelClass, 'columnName'>` for all database-backed columns. The type is inferred from the database schema.
 
 ```typescript
 public id: DreamColumn<User, 'id'>
@@ -571,7 +571,7 @@ public invalidateCache(this: Place) { ... }
 public removeFromSearchIndex(this: Place) { ... }
 ```
 
-**Gating on an encrypted property.** When the gated property is `@deco.Encrypted`, list the persisted column name `encrypted<Name>` in `ifChanged` (e.g. `ifChanged: ['encryptedPhone']`), not the plaintext virtual (`phone`). `ifChanged` is typed over the real persisted columns (`DreamColumnNames`); setting the virtual marks the underlying `encrypted<Name>` column dirty, which is what change detection sees.
+**Gating on an encrypted property.** When the gated property is `@deco.Encrypted`, list the persisted column name `encrypted<Name>` in `ifChanged` (e.g. `ifChanged: ['encryptedPhone']`), not the plaintext virtual (`phone`). `ifChanged` is typed over the real persisted columns (`DreamColumnNames`); changing the virtual marks the underlying `encrypted<Name>` column dirty, which is what change detection sees.
 
 **A commit hook that throws rejects its writer after the write has committed.** The `create`, `update` or `destroy` — or the enclosing `ApplicationModel.transaction(...)` — rejects, skipping the code after it and any later commit hooks, and nothing rolls back. A failed `background(...)` in a `Booking` `@deco.AfterUpdateCommit` leaves the booking confirmed with nothing enqueued. For work that must not be lost, see [workers.md](workers.md#work-that-must-not-be-lost-after-a-commit).
 
@@ -756,8 +756,10 @@ public phone: DreamColumn<User, 'encryptedPhone'>
 // DB column is 'encrypted_phone', model property is 'phone'
 // extractParams and model-derived OpenAPI request bodies use the public property
 // name (`phone`), not the encrypted DB column name. The accepted type is string
-// or string | null depending on whether the backing encrypted column is nullable;
-// extractParams enforces that type at runtime and in TypeScript.
+// or string | null depending on whether the backing encrypted column is nullable,
+// unless the decorator declares an `openapi` shape (see `:encrypted` below);
+// extractParams enforces that type in TypeScript; at runtime it checks the
+// top-level type only, not an object shape's properties.
 //
 // Column encryption must be configured before the getter/setter will work. This is
 // a Dream-app config in conf/dream.ts (distinct from the cookie encryption config in
@@ -769,7 +771,11 @@ public phone: DreamColumn<User, 'encryptedPhone'>
 //     },
 //   })
 // Add an optional `legacy` key beside `current` to rotate keys (current is tried
-// first, then legacy). Generate keys with `pnpm psy g:encryption-key`. Without this
+// first, then legacy). Before dropping `legacy`, run
+// `await Booking.reencryptEncryptedColumns()` for every model with encrypted
+// properties, from the console or a script, in each environment once all its
+// servers encrypt with the new `current`. Generate keys with
+// `pnpm psy g:encryption-key`. Without this
 // config the getter/setter throw. After adding @deco.Encrypted() and its migration,
 // run `pnpm psy sync` so the `encrypted<Column>` column is in the generated types. The
 // plaintext property (e.g. `phone`) is not assignable in `.create()` / `UpdateableProperties`
@@ -778,11 +784,11 @@ public phone: DreamColumn<User, 'encryptedPhone'>
 //
 // The raw encrypted column (`encryptedPhone`) has a setter that throws if you try
 // to assign it directly — write through the plaintext property (`phone`) instead.
-// That guard is itself a custom setter, so it only fires on the setter path
-// (`create`/`update`/`assignAttribute(s)`/`this.encryptedPhone = ...`). `setAttribute(s)`
-// bypasses custom setters entirely (see "Which writes run the setter" below) and
-// will write an unencrypted value straight into `encryptedPhone` with no error —
-// never use `setAttributes`/`updateAttributes` to touch an `@deco.Encrypted` column.
+// The writers that bypass custom setters (`setAttribute(s)`, `updateAttributes`; see
+// "Which writes run the setter" below) accept a value for `encryptedPhone` only when
+// it is ciphertext the app's column keys decrypt, or `null`, and otherwise throw
+// `DoNotSetEncryptedFieldsDirectly`. `setAttribute('phone', …)` neither encrypts nor
+// stores the value — assign `phone` or use `setAttributes`.
 //
 // An @deco.Encrypted column is not queryable in a `where` clause. The plaintext
 // property (`phone`) is virtual, not a DB column, so it isn't in the model's
@@ -805,9 +811,12 @@ public phone: DreamColumn<User, 'encryptedPhone'>
 // round-trips objects and arrays as-is, with no model-layer parse/stringify. The
 // generated declaration types the plaintext property from its `text` backing column
 // (`DreamColumn<Place, 'encryptedHouseRules'>`, i.e. `string | null`), so widen it by
-// hand to the structured type (`public houseRules: HouseRules | null`). So the
-// decision is whether the data warrants encryption at all: if it does, `:encrypted`;
-// if not, it stays `jsonb` and keeps its query ergonomics.
+// hand and declare the same shape on the decorator — without `openapi`, Psychic casts
+// the param and documents the property as a string:
+//   @deco.Encrypted({ openapi: { type: ['object', 'null'], properties: { petsAllowed: 'boolean' } } })
+//   public houseRules: HouseRules | null
+// So the decision is whether the data warrants encryption at all: if it does,
+// `:encrypted`; if not, it stays `jsonb` and keeps its query ergonomics.
 
 // Virtual — accepted by create(), update(), and extractParams() but not stored directly in DB.
 // Use getter/setter pairs to transform between the virtual and the actual DB column.
@@ -986,7 +995,7 @@ In a validation or `Before*` hook, `this.willSaveChangeToAttribute('status')` te
 
 Save's after hooks run once the snapshot has been refreshed, so there `willSaveChangeToAttribute` is `false` and `dirtyAttributes()` is empty; `savedChangeToAttribute(column)` and `changes()` report the last save, which after a create covers every column the insert returned, unassigned `null`s and database defaults included. To run an after hook only when a column changed, gate it with `ifChanged`, which is checked at the save itself and on a create counts only the columns that were assigned.
 
-A persisted instance with nothing dirty issues no `UPDATE` on `save()` or `update()` and leaves `updatedAt` unstamped — `update({})`, or an `update()` assigning values equal to the current ones, is a no-op rather than a touch. Re-assigning the same plaintext to an `@deco.Encrypted()` property is always a real write: each assignment re-encrypts to fresh ciphertext. Before-save hooks and validations still run first, so a hook that dirties the record turns it back into a real write. The comparison is against the instance's own snapshot from its last load or save, not against the row currently in the database.
+A persisted instance with nothing dirty issues no `UPDATE` on `save()` or `update()` and leaves `updatedAt` unstamped — `update({})`, or an `update()` assigning values equal to the current ones, is a no-op rather than a touch. Before-save hooks and validations still run first, so a hook that dirties the record turns it back into a real write. The comparison is against the instance's own snapshot from its last load or save, not against the row currently in the database.
 
 For an `@deco.Encrypted()` property, `dirtyAttributes()` and `changedAttributes()` report the persisted `encrypted<Name>` key, not the plaintext virtual property. `getAttribute('<plaintext>')` returns `undefined` — it isn't the decrypting accessor; `getAttribute('encrypted<Name>')` returns ciphertext. Read the decrypted value via the instance property (`instance.<plaintext>`) — see [Encrypted](#special-decorators) above.
 
@@ -1007,7 +1016,7 @@ await Guest.pluckEach('email', async (email) => {
 })
 ```
 
-`findEach` always iterates in ascending primary-key order and discards any `order` applied to the query — it delivers its exactly-once guarantee via keyset pagination (`WHERE id > lastId LIMIT n`), which only holds over a stable, unique key. If records must be visited in a particular order, load them with a regular ordered query instead of reaching for `findEach`.
+`findEach` always iterates in ascending primary-key order and discards any `order` applied to the query — it visits each row `all()` returns exactly once via keyset pagination, which only holds over a stable, unique key. `Place.innerJoin('rooms').findEach(...)` visits each place once per room. If records must be visited in a particular order, load them with a regular ordered query instead of reaching for `findEach`.
 
 ## Find-or-Create and Upsert Methods
 

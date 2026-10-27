@@ -81,10 +81,12 @@ Options:
 // Decimal precision
 .attribute('price', { precision: 2 })
 
-// Explicit OpenAPI type (required for json/jsonb columns and plain getters; on a typed column it is merged over the inferred shape)
-.attribute('status', { openapi: { type: 'string', enum: StatusEnumValues } })
+// Explicit OpenAPI type — required for json/jsonb columns and plain getters
 .attribute('computed', { openapi: 'string' })
 .attribute('data', { openapi: { type: 'object', properties: { key: { type: 'string' } } } })
+
+// Any other column takes its shape from the column; `openapi` adds only a description
+.attribute('style', { openapi: { description: "The place's architectural style" } })
 
 // Default value
 .attribute('status', { default: 'pending' })
@@ -131,17 +133,17 @@ Note: a `customAttribute` whose function body reads an association is invisible 
 Access a property on a loaded association:
 
 ```typescript
-// Gets `place.currentLocalizedText.title`
-.delegatedAttribute('currentLocalizedText', 'title', { openapi: 'string' })
+// Gets `place.currentLocalizedText.title` — a column, so its OpenAPI shape is inferred
+.delegatedAttribute('currentLocalizedText', 'title')
 
 // Gets `booking.guest.name`
-.delegatedAttribute('guest', 'name', { openapi: 'string' })
+.delegatedAttribute('guest', 'name')
 
 // Key always present; null when association is missing (HasOne that isn't always present).
-.delegatedAttribute('currentLocalizedText', 'title', { openapi: 'string', optional: true })
+.delegatedAttribute('currentLocalizedText', 'title', { optional: true })
 
 // Key omitted from response when association/path is missing.
-.delegatedAttribute('currentLocalizedText', 'title', { openapi: 'string', required: false })
+.delegatedAttribute('currentLocalizedText', 'title', { required: false })
 ```
 
 When the delegated-through path may resolve to `undefined`/`null` (a missing `HasOne`, an absent JSON sub-key, etc.), choose between `optional: true` and `required: false` based on what consumers should see. They are not aliases; they govern different layers and can be combined.
@@ -166,8 +168,8 @@ over a global default). The builder folds attributes in declaration order, so
 a later directive overwrites an earlier one — unless it's skipped:
 
 ```typescript
-.delegatedAttribute('fallbackAssociation', 'title', { openapi: 'string' })
-.delegatedAttribute('specificAssociation', 'title', { openapi: 'string', required: false })
+.delegatedAttribute('fallbackAssociation', 'title')
+.delegatedAttribute('specificAssociation', 'title', { required: false })
 ```
 
 - The first (fallback) directive is required, so it always writes `title`.

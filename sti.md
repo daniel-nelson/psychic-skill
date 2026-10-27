@@ -8,7 +8,7 @@ STI stores multiple model types in a single database table, discriminated by a `
 
 ### Step 1: Generate the Parent with `--sti-base-serializer`
 
-Use `g:resource` with the `--sti-base-serializer` flag. This flag generates **base serializers specially designed for STI extension** - they accept a generic `StiChildClass` parameter, and the default serializer includes the `type` attribute with an enum constrained to the child's class name. Move `type` up into each base summary serializer, as [Base Serializer](#base-serializer-generic-for-extension-by-children) shows. This is critical for clients consuming the OpenAPI spec and JSON responses to know which shape they're receiving. Children extend these base serializers and pass their own class.
+Use `g:resource` with the `--sti-base-serializer` flag. This flag generates **base serializers specially designed for STI extension** - they accept a generic `StiChildClass` parameter, and each summary serializer renders the `type` attribute right after `id`, with an enum constrained to the child's class name, which the default serializer inherits. This is critical for clients consuming the OpenAPI spec and JSON responses to know which shape they're receiving. Children extend these base serializers and pass their own class.
 
 ```bash
 pnpm psy g:resource --sti-base-serializer --owning-model=Place \
@@ -19,7 +19,7 @@ pnpm psy g:resource --sti-base-serializer --owning-model=Place \
 ```
 
 **Breaking down the command:**
-- `--sti-base-serializer` - Generates generic base serializers that accept a `StiChildClass` param; the default one includes a `type` attribute with a per-child enum, so clients know which shape they're receiving
+- `--sti-base-serializer` - Generates generic base serializers that accept a `StiChildClass` param; the summary one renders a `type` attribute with a per-child enum, which the default inherits, so clients know which shape they're receiving
 - `--owning-model=Place` - The parent model for authorization in controllers
 - `v1/host/places/{}/rooms` - Route path (`{}` is a placeholder for the parent resource ID param)
 - `Room` - Model name (the STI base class)
@@ -324,7 +324,7 @@ export const RoomBedroomForGuestsSerializer = (
 
 ### Hand-adding a new base-serializer variant (e.g. `forGuests`)
 
-The generator emits a summary + default base-serializer pair for the **default** variant, and *also* emits `Admin`/`AdminSummary` and/or `Internal`/`InternalSummary` variant pairs when those are requested — `g:model` via the `--admin-serializers` / `--internal-serializers` flags, `g:resource` *automatically* when the resource is generated under the `Admin/` or `Internal/` namespace (it infers `forAdmin` / `forInternal` from the controller path). Every generator-emitted variant — including admin and internal — already carries the STI base shape, with the `type` discriminator on its default serializer, and STI children import the matching variant so the chain stays within-variant (admin → admin, internal → internal). **You do not hand-write admin/internal variants.**
+The generator emits a summary + default base-serializer pair for the **default** variant, and *also* emits `Admin`/`AdminSummary` and/or `Internal`/`InternalSummary` variant pairs when those are requested — `g:model` via the `--admin-serializers` / `--internal-serializers` flags, `g:resource` *automatically* when the resource is generated under the `Admin/` or `Internal/` namespace (it infers `forAdmin` / `forInternal` from the controller path). Every generator-emitted variant — including admin and internal — already carries the STI base shape, with the `type` discriminator on its summary serializer, and STI children import the matching variant so the chain stays within-variant (admin → admin, internal → internal). **You do not hand-write admin/internal variants.**
 
 The hand-written case is a *bespoke* variant with no corresponding flag or namespace inference — a `forGuests` flavor is the canonical example (there is no guest-serializer flag). A hand-added variant **must replicate the STI base shape itself**. This is the step that's easy to get wrong: an agent adds `RoomForGuestsSerializer` by copying a plain serializer and silently breaks STI discrimination.
 

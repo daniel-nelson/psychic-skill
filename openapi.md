@@ -97,7 +97,7 @@ psy.set('openapi', {
 
 ### validate
 
-`validate` sets the validation rules applied to every action tied to this spec, unless an `@OpenAPI` decorator overrides them. Accepts `requestBody`, `responseBody`, `headers`, and `query` booleans, plus `all`. Here `all: true` turns every segment on, but `all: false` leaves on any segment set `true` beside it; on the `@OpenAPI` decorator, `all` overrides in either direction.
+`validate` sets the validation rules applied to every action tied to this spec, unless an `@OpenAPI` decorator's `validate` overrides them flag by flag. Accepts `requestBody`, `responseBody`, `headers`, and `query` booleans, plus `all`, which overrides each of them in whichever direction it is set.
 
 ```typescript
 psy.set('openapi', {

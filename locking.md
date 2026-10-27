@@ -158,8 +158,9 @@ delete — see [soft-delete.md](soft-delete.md). `reallyDestroy` takes the same 
   serialization failure instead of a quieter lower count. Both are safe.
 - **An unlocked update racing a hard delete aborts mid-run.** Without `lock`, a matched record
   another transaction hard-deletes between a batch's read and that record's write throws: the records
-  written before it stay committed and no count is returned. Where deleters race the update,
-  `lock: true` holds claimed rows under their locks until they are written.
+  written before it stay committed (unless the query carries `.txn(txn)`) and no count is returned.
+  Where deleters race the update, `lock: true` holds claimed rows under their locks until they are
+  written.
 
 **If you are writing a large set and do not need compare-and-set, do not pass `lock`.** It is slower
 than the plain form by construction.

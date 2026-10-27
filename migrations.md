@@ -204,10 +204,11 @@ export async function down(db: Kysely<any>): Promise<void> {
 }
 ```
 
-`encryptColumn` renames `column` to `encrypted_<column>`, widens it to `text`, and
-encrypts each non-null value. `decryptColumn` performs the inverse; pass
-`columnType` when the decrypted column should be restored to something other than
-`text`. Both helpers run inside the migration transaction and preserve nulls.
+`encryptColumn` renames `column` to the backing column `@deco.Encrypted()` reads
+(`encrypted_phone` for `phone`), widens it to `text`, and encrypts each non-null
+value. `decryptColumn` performs the inverse; pass `columnType` when the decrypted
+column should be restored to something other than `text`. Both helpers run inside
+the migration transaction and preserve nulls.
 
 They encrypt and decrypt through the same `encryption.columns` keys as the
 `@deco.Encrypted()` getter/setter — set in the scaffold's `conf/dream.ts` from
@@ -622,7 +623,6 @@ types:enum[]:room_types:bathroom,bedroom     # Enum array
 User:belongs_to                # user_id FK
 User:belongs_to:optional       # nullable FK
 User@created_by:belongs_to     # created_by_id FK, createdBy assoc (aliased)
-Messaging/Template@template:belongs_to   # template_id FK (namespace stripped)
 phone:encrypted                # encrypted text column → DB column `encrypted_phone`
 ```
 
@@ -638,8 +638,7 @@ A `@alias` suffix on segment-1 of the `belongs_to` shorthand drives three identi
 
 ```bash
 pnpm psy g:model Messaging/MessageRequest \
-  InternalUser@canceled_by:belongs_to:optional \
-  Messaging/Template@template:belongs_to
+  InternalUser@canceled_by:belongs_to:optional
 ```
 
 Generates:
@@ -648,14 +647,8 @@ Generates:
 @deco.BelongsTo('InternalUser', { on: 'canceledById', optional: true })
 public canceledBy: InternalUser | null
 public canceledById: DreamColumn<MessageRequest, 'canceledById'>
-
-@deco.BelongsTo('Messaging/Template', { on: 'templateId' })
-public template: MessagingTemplate
-public templateId: DreamColumn<MessageRequest, 'templateId'>
 ```
 
 **Canonical use case** — the `_by` pattern: `User@created_by`, `User@approved_by`, `InternalUser@canceled_by`. Lets one model carry multiple FKs to the same target without collision (`Messaging/Message@last_inbound:belongs_to`, `Messaging/Message@last_outbound:belongs_to`, etc.).
-
-**Secondary use case** — namespace strip: `Messaging/Template@template:belongs_to` produces `template: MessagingTemplate` rather than `messagingTemplate: MessagingTemplate`. Useful when the namespace is organizational rather than semantic.
 
 Without an `@alias`, the property/column derive from the model's last namespace segment — the plain `Model:belongs_to[:optional]` form. Works in every generator that accepts `belongs_to`: `g:model`, `g:migration`, `g:resource`. `g:sti-child` does not accept `belongs_to` — STI children cannot declare associations (see [sti.md — STI Limitations](sti.md#sti-limitations)); declare the association on the STI parent instead.
