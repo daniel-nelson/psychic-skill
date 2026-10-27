@@ -484,7 +484,7 @@ export default class V1HostPlacesController extends V1HostBaseController {
   serializerKey: 'summary',
   query: {
     search: { required: false, schema: 'string' },
-    style: { required: false, schema: 'string' },
+    style: { required: false, schema: { type: 'string', enum: PlaceStylesEnumValues } },
     minSleeps: { required: false, schema: 'integer' },
   },
 })
