@@ -414,12 +414,13 @@ await db.schema
   .column('host_id')
   .execute()
 
-// Multi-column
+// Multi-column, unique among live rows of a soft-deleted table
 await db.schema
   .createIndex('localized_texts_localizable_for_locale')
   .on('localized_texts')
   .columns(['localizable_type', 'localizable_id', 'locale'])
   .unique()
+  .where(sql<SqlBool>`deleted_at IS NULL`)
   .execute()
 
 // Type column for STI
@@ -534,16 +535,19 @@ await db.schema
   .addColumn('localizable_id', 'uuid', col => col.notNull())
   .addColumn('locale', sql`locales_enum`, col => col.notNull())
   .addColumn('title', 'varchar')
+  .addColumn('markdown', 'text')
   .addColumn('created_at', 'timestamp', col => col.notNull())
   .addColumn('updated_at', 'timestamp', col => col.notNull())
+  .addColumn('deleted_at', 'timestamp')
   .execute()
 
-// Index for polymorphic lookup
+// Polymorphic lookup, one live row per locale
 await db.schema
   .createIndex('localized_texts_localizable_for_locale')
   .on('localized_texts')
   .columns(['localizable_type', 'localizable_id', 'locale'])
   .unique()
+  .where(sql<SqlBool>`deleted_at IS NULL`)
   .execute()
 ```
 
