@@ -323,7 +323,7 @@ result, because a check with an undefined expected result is not verification.
   `grep -o '](\([a-z0-9-]*\.md\)' SKILL.md | sed 's/](//' | sort -u`. The character class must
   include digits or `i18n.md` is missed.
 - **Anchors: 0 broken.** Scope any count you record: `SKILL.md` plus the 17 reference files
-  carry 137 anchored links, and `CHANGELOG.md` adds 4 more that are never maintained. Zero
+  carry 140 anchored links, and `CHANGELOG.md` adds 4 more that are never maintained. Zero
   broken is the claim that must hold. No off-the-shelf command does this correctly. A hand-rolled
   slugifier must (a) strip fenced code before collecting headings, (b) **preserve `_`** — it is a
   `\w` character and GitHub keeps it, so stripping it as emphasis falsely breaks
