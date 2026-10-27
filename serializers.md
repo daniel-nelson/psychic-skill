@@ -19,7 +19,7 @@ import { DreamSerializer, ObjectSerializer } from '@rvoh/dream'
 Serializer files must use **named exports only**. Do not use `export default` for a serializer function.
 
 ```typescript
-import Place from '@models/Place.js'
+import Place from '#models/Place.js'
 import { DreamSerializer } from '@rvoh/dream'
 
 // Summary serializer — used for index/list views. Generators create it with
@@ -481,7 +481,7 @@ To keep the shape off the model when rendering a single `Place`, hand it in with
 For Single Table Inheritance, use generic type parameter:
 
 ```typescript
-import Room from '@models/Room.js'
+import Room from '#models/Room.js'
 import { DreamSerializer } from '@rvoh/dream'
 
 // Base serializer uses generic
@@ -499,8 +499,8 @@ export const RoomSerializer = <T extends Room>(StiChildClass: typeof Room, room:
 STI child serializers pass their class:
 
 ```typescript
-import Bedroom from '@models/Room/Bedroom.js'
-import { RoomSerializer, RoomSummarySerializer } from '@serializers/RoomSerializer.js'
+import Bedroom from '#models/Room/Bedroom.js'
+import { RoomSerializer, RoomSummarySerializer } from '#serializers/RoomSerializer.js'
 
 export const RoomBedroomSummarySerializer = (bedroom: Bedroom) =>
   RoomSummarySerializer(Bedroom, bedroom)

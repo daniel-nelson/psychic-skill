@@ -178,7 +178,7 @@ r.namespace('visitor', r => {
 })
 
 // GOOD — clean URL: /v1/places, controller explicitly specified
-import VisitorV1PlacesController from '@controllers/Visitor/V1/PlacesController.js'
+import VisitorV1PlacesController from '#controllers/Visitor/V1/PlacesController.js'
 r.namespace('v1', r => {
   r.resources('places', { only: ['index', 'show'], controller: VisitorV1PlacesController })
 })
@@ -260,7 +260,7 @@ change so the OpenAPI specs and generated clients update.
 
 ```typescript
 import { PsychicController } from '@rvoh/psychic'
-import psychicTypes from '@src/types/psychic.js'
+import psychicTypes from '#src/types/psychic.js'
 
 export default class ApplicationController extends PsychicController {
   public override get psychicTypes() {
@@ -274,9 +274,9 @@ export default class ApplicationController extends PsychicController {
 ### Client AuthedController
 
 ```typescript
-import ApplicationController from '@controllers/ApplicationController.js'
-import resolveCurrentUser from '@controllers/helpers/resolveCurrentUser.js'
-import User from '@models/User.js'
+import ApplicationController from '#controllers/ApplicationController.js'
+import resolveCurrentUser from '#controllers/helpers/resolveCurrentUser.js'
+import User from '#models/User.js'
 import { BeforeAction } from '@rvoh/psychic'
 
 export default class AuthedController extends ApplicationController {
@@ -379,7 +379,7 @@ export default class V1HostBaseController extends V1BaseController {
 
 ```typescript
 // V1/Host/Places/BaseController.ts — for doubly-nested resources (e.g., /places/:placeId/rooms)
-import V1HostBaseController from '@controllers/V1/Host/BaseController.js'
+import V1HostBaseController from '#controllers/V1/Host/BaseController.js'
 
 export default class V1HostPlacesBaseController extends V1HostBaseController {
   protected currentPlace: Place
@@ -601,7 +601,7 @@ this.castParam('roomType', 'string', { enum: RoomTypesEnumValues, allowNull: tru
 When restricting to a subset of a database enum, use `Extract` to maintain compile-time type safety:
 
 ```typescript
-import { RoomTypesEnum, RoomTypesEnumValues } from '@src/types/db.js'
+import { RoomTypesEnum, RoomTypesEnumValues } from '#src/types/db.js'
 
 // Subset — Extract makes a renamed or removed member a compile error
 const BOOKABLE_ROOM_TYPES: Extract<RoomTypesEnum, 'Bedroom' | 'Den' | 'LivingRoom'>[] =
@@ -717,7 +717,7 @@ Passing the loaded parent rather than the raw id is the general rule, not a cont
 ```typescript
 import { OpenAPI } from '@rvoh/psychic'
 import { DreamParamSafeColumnNames } from '@rvoh/dream/types'
-import Place from '@models/Place.js'
+import Place from '#models/Place.js'
 
 const openApiTags = ['places']
 
@@ -995,16 +995,16 @@ The nested `for:` sentinel is **request-only**; response shapes are modeled as a
 **BearBnB worked example.** A single `POST /host/places` that creates a `Place` and an array of `Room`s atomically:
 
 ```typescript
-import ApplicationModel from '@models/ApplicationModel.js'
-import Place from '@models/Place.js'
-import Room from '@models/Room.js'
-import Bathroom from '@models/Room/Bathroom.js'
-import Bedroom from '@models/Room/Bedroom.js'
-import Den from '@models/Room/Den.js'
-import Kitchen from '@models/Room/Kitchen.js'
-import LivingRoom from '@models/Room/LivingRoom.js'
+import ApplicationModel from '#models/ApplicationModel.js'
+import Place from '#models/Place.js'
+import Room from '#models/Room.js'
+import Bathroom from '#models/Room/Bathroom.js'
+import Bedroom from '#models/Room/Bedroom.js'
+import Den from '#models/Room/Den.js'
+import Kitchen from '#models/Room/Kitchen.js'
+import LivingRoom from '#models/Room/LivingRoom.js'
 import { OpenAPI, Params } from '@rvoh/psychic'
-import { RoomTypesEnumValues } from '@src/types/db.js'
+import { RoomTypesEnumValues } from '#src/types/db.js'
 
 @OpenAPI(Place, {
   status: 201,
@@ -1216,7 +1216,7 @@ Both are variadic and join their arguments into one message string — an object
 `create-psychic` scaffolds a request logger (`conf/system/requestLogger.ts`) in `conf/app.ts`, mounted via the `server:init:after-middleware` hook. It writes one structured JSON line per request through its own Winston instance — the `transports` and `format` passed below, not the app logger:
 
 ```typescript
-import requestLogger from '@conf/system/requestLogger.js'
+import requestLogger from '#conf/system/requestLogger.js'
 import winston from 'winston'
 
 psy.on('server:init:after-middleware', psychicServer => {

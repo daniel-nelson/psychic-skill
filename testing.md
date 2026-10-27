@@ -60,7 +60,7 @@ Factories create real database records with sensible defaults:
 
 ```typescript
 // spec/factories/PlaceFactory.ts
-import Place from '@models/Place.js'
+import Place from '#models/Place.js'
 import { UpdateableProperties } from '@rvoh/dream/types'
 
 let counter = 0
@@ -101,7 +101,7 @@ preferredBedTypes: ['TODO'],
 
 ```typescript
 // spec/factories/HostPlaceFactory.ts
-import HostPlace from '@models/HostPlace.js'
+import HostPlace from '#models/HostPlace.js'
 import createHost from './HostFactory.js'
 import createPlace from './PlaceFactory.js'
 import { UpdateableProperties } from '@rvoh/dream/types'
@@ -121,7 +121,7 @@ export default async function createHostPlace(
 
 ```typescript
 // spec/factories/Room/BedroomFactory.ts
-import Bedroom from '@models/Room/Bedroom.js'
+import Bedroom from '#models/Room/Bedroom.js'
 import createPlace from '../PlaceFactory.js'
 import { UpdateableProperties } from '@rvoh/dream/types'
 
@@ -199,14 +199,14 @@ it('does NOT auto-seed when skipHooks is true', async () => {
 ## Model Specs
 
 ```typescript
-import HostPlace from '@models/HostPlace.js'
-import Place from '@models/Place.js'
+import HostPlace from '#models/HostPlace.js'
+import Place from '#models/Place.js'
 import { CalendarDate } from '@rvoh/dream'
-import createHost from '@spec/factories/HostFactory.js'
-import createHostPlace from '@spec/factories/HostPlaceFactory.js'
-import createPlace from '@spec/factories/PlaceFactory.js'
-import createBedroom from '@spec/factories/Room/BedroomFactory.js'
-import createKitchen from '@spec/factories/Room/KitchenFactory.js'
+import createHost from '#spec/factories/HostFactory.js'
+import createHostPlace from '#spec/factories/HostPlaceFactory.js'
+import createPlace from '#spec/factories/PlaceFactory.js'
+import createBedroom from '#spec/factories/Room/BedroomFactory.js'
+import createKitchen from '#spec/factories/Room/KitchenFactory.js'
 
 describe('Place', () => {
   // Test associations
@@ -302,14 +302,14 @@ describe('Place', () => {
 Controller specs use `OpenapiSpecRequest` for type-safe HTTP testing:
 
 ```typescript
-import Host from '@models/Host.js'
-import Place from '@models/Place.js'
-import User from '@models/User.js'
-import createHost from '@spec/factories/HostFactory.js'
-import createHostPlace from '@spec/factories/HostPlaceFactory.js'
-import createPlace from '@spec/factories/PlaceFactory.js'
-import createUser from '@spec/factories/UserFactory.js'
-import { session, SpecRequestType } from '@spec/unit/helpers/authentication.js'
+import Host from '#models/Host.js'
+import Place from '#models/Place.js'
+import User from '#models/User.js'
+import createHost from '#spec/factories/HostFactory.js'
+import createHostPlace from '#spec/factories/HostPlaceFactory.js'
+import createPlace from '#spec/factories/PlaceFactory.js'
+import createUser from '#spec/factories/UserFactory.js'
+import { session, SpecRequestType } from '#spec/unit/helpers/authentication.js'
 
 describe('V1/Host/PlacesController', () => {
   let request: SpecRequestType
@@ -471,13 +471,13 @@ For helper methods called inside a `.transaction(...)` callback, type the txn pa
 
 ```typescript
 // spec/unit/helpers/authentication.ts
-import AppEnv from '@conf/AppEnv.js'
+import AppEnv from '#conf/AppEnv.js'
 import { Dream } from '@rvoh/dream'
 import { Encrypt } from '@rvoh/dream/utils'
 import { PsychicServer } from '@rvoh/psychic'
 import { OpenapiSpecRequest } from '@rvoh/psychic-spec-helpers'
 
-type OpenapiPaths = import('@src/types/openapi/tests.openapi.js').paths
+type OpenapiPaths = import('#src/types/openapi/tests.openapi.js').paths
 
 function testToken(user: Dream): string {
   // encrypt the object itself: resolveCurrentUser reads userId from what decrypt returns
@@ -592,9 +592,9 @@ await expect(page).toNotMatchTextContent(/booking confirmed/i, {
 ### Full Example
 
 ```typescript
-import City from '@models/City.js'
-import createAdminUser from '@spec/factories/AdminUserFactory.js'
-import adminSignIn from '@spec/features/helpers/adminSignIn.js'
+import City from '#models/City.js'
+import createAdminUser from '#spec/factories/AdminUserFactory.js'
+import adminSignIn from '#spec/features/helpers/adminSignIn.js'
 
 describe('Cities create', () => {
   it('allows an admin to create a new city from the index', async () => {
@@ -701,7 +701,7 @@ The derived getters (`AppEnv.isTest`, `.nodeEnv`, `.serviceRole`) have no setter
 Import the module as a namespace and spy on the export, the same way you spy on a class's static method:
 
 ```typescript
-import * as feesModule from '@services/Booking/fees.js'
+import * as feesModule from '#services/Booking/fees.js'
 
 vi.spyOn(feesModule, 'cleaningFee').mockReturnValue(0)
 ```

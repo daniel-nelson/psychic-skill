@@ -14,9 +14,9 @@ Psychic Websockets provides real-time communication via **Socket.IO** with Redis
 
 ```typescript
 // conf/initializers/websockets.ts
-import AppEnv from '@conf/AppEnv.js'
-import allowedCorsOrigins from '@conf/system/allowedCorsOrigins.js'
-import resolveWebsocketUser from '@conf/system/resolveWebsocketUser.js'
+import AppEnv from '#conf/AppEnv.js'
+import allowedCorsOrigins from '#conf/system/allowedCorsOrigins.js'
+import resolveWebsocketUser from '#conf/system/resolveWebsocketUser.js'
 
 export default (psy: PsychicApp) => {
   // PsychicAppWebsockets initializes in all processes by default. Any process —
@@ -172,8 +172,8 @@ await Ws.register(socket, adminUser.id, 'admin-user')
 ```typescript
 // ws.ts (separate process)
 import { Cable } from '@rvoh/psychic-websockets'
-import AppEnv from '@conf/AppEnv.js'
-import initializePsychicApp from '@conf/system/initializePsychicApp.js'
+import AppEnv from '#conf/AppEnv.js'
+import initializePsychicApp from '#conf/system/initializePsychicApp.js'
 
 let cable: Cable | null = null
 

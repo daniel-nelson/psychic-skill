@@ -43,7 +43,7 @@ export default class BasePlace extends ApplicationModel {
 
 ```typescript
 // app/models/Place.ts — DraftPlace is declared the same way in app/models/Place/Draft.ts
-import BasePlace from '@models/Place/Base.js'
+import BasePlace from '#models/Place/Base.js'
 
 @STI(BasePlace)
 export default class Place extends BasePlace {}
@@ -680,7 +680,7 @@ An empty result after a targeted removal may be the correct answer — the row m
 The `schema` exported from `api/src/types/dream.ts` (`src/types/dream.ts` for api-only applications) contains the default scopes for any model:
 
 ```typescript
-import { schema } from '@src/types/dream.js'
+import { schema } from '#src/types/dream.js'
 
 // schema[dreamModelInstance.table].scopes.default
 // Returns an array of strings, e.g. ['dream:STI', 'dream:SoftDelete']

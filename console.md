@@ -96,8 +96,8 @@ The boilerplate mirrors the canonical `src/conf/repl.ts` (the file `pnpm console
 // Mirrors src/conf/repl.ts boot order. DreamCLI.loadRepl is REPL-specific
 // and intentionally omitted — a script imports what it uses.
 
-import '@conf/loadEnv.js'                                      // (1) side-effect — loads .env / .env.test based on NODE_ENV
-import initializePsychicApp from '@conf/system/initializePsychicApp.js'
+import '#conf/loadEnv.js'                                      // (1) side-effect — loads .env / .env.test based on NODE_ENV
+import initializePsychicApp from '#conf/system/initializePsychicApp.js'
 
 await initializePsychicApp()                                   // (2) boots Dream + Psychic
 

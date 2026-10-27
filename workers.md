@@ -440,7 +440,7 @@ Nothing registers your schedules for you. A service that defines `scheduleAllJob
 
 ```typescript
 // db/seed.ts
-import ScheduledJobs from '@services/ScheduledJobs.js'
+import ScheduledJobs from '#services/ScheduledJobs.js'
 
 export default async function seed() {
   if (AppEnv.isTest) return
@@ -465,7 +465,7 @@ A scheduled method **only enqueues its work and returns**: it calls entry points
 
 ```typescript
 // Orchestrator — extends ApplicationScheduledService (has schedule(), no background())
-import ReconcileService from '@services/ReconcileService.js'
+import ReconcileService from '#services/ReconcileService.js'
 
 export default class ScheduledJobs extends ApplicationScheduledService {
   public static async scheduleAllJobs() {
@@ -516,7 +516,7 @@ await ScheduledJobs.schedule('0 13 * * *', 'reconcileAll')
 
 ```typescript
 // Orchestrator — runs every hour; enqueues the work for this hour and returns
-import EndOfDayService from '@services/EndOfDayService.js'
+import EndOfDayService from '#services/EndOfDayService.js'
 
 export default class ScheduledJobs extends ApplicationScheduledService {
   public static async scheduleAllJobs() {

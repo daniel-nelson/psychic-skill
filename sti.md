@@ -276,7 +276,7 @@ The re-query is necessary because Dream instantiates model classes based on the 
 ### Base Serializer (generic, for extension by children)
 
 ```typescript
-import Room from '@models/Room.js'
+import Room from '#models/Room.js'
 import { DreamSerializer } from '@rvoh/dream'
 
 export const RoomSummarySerializer = <T extends Room>(StiChildClass: typeof Room, room: T) =>
@@ -301,8 +301,8 @@ Key points:
 ### Child Serializer (extends base)
 
 ```typescript
-import Bedroom from '@models/Room/Bedroom.js'
-import { RoomSerializer, RoomSummarySerializer } from '@serializers/RoomSerializer.js'
+import Bedroom from '#models/Room/Bedroom.js'
+import { RoomSerializer, RoomSummarySerializer } from '#serializers/RoomSerializer.js'
 
 // Summary extends base summary
 export const RoomBedroomSummarySerializer = (bedroom: Bedroom) =>
@@ -590,7 +590,7 @@ Each child gets its own factory:
 
 ```typescript
 // spec/factories/Room/BedroomFactory.ts
-import Bedroom from '@models/Room/Bedroom.js'
+import Bedroom from '#models/Room/Bedroom.js'
 import createPlace from '../PlaceFactory.js'
 import { UpdateableProperties } from '@rvoh/dream/types'
 
