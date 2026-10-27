@@ -47,7 +47,7 @@ function initializeWebsockets(wsApp: PsychicAppWebsockets) {
 
   // Socket.IO options — socket.io's own `cors.origin` constrains HTTP long-polling only;
   // native WebSocket upgrades bypass CORS. `allowRequest` runs before every handshake on
-  // every transport, so re-enforce the allowlist there (and add any auth-token check).
+  // every transport, so re-enforce the allowlist there.
   const allowedOrigins = allowedCorsOrigins()
   wsApp.set('socketio', {
     transports: ['websocket', 'polling'],
@@ -66,45 +66,28 @@ function initializeWebsockets(wsApp: PsychicAppWebsockets) {
     body: null,
   })
 
-  // Handle new connections — auth via the boilerplate-scaffolded resolveWebsocketUser
-  // helper. Newly-generated apps reject all WS connections until this is implemented.
-  wsApp.on('ws:start', io => {
-    io.of('/').on('connection', async socket => {
-      const user = await resolveWebsocketUser(socket)
-      if (!user) {
-        socket.disconnect(true)
-        return
-      }
+  // Sign in each socket in ws:connect, where a throw is contained to that socket and
+  // reported to ws:error (below). resolveWebsocketUser is the app's helper.
+  wsApp.on('ws:connect', async socket => {
+    const user = await resolveWebsocketUser(socket)
+    if (!user) {
+      socket.disconnect(true)
+      return
+    }
 
-      await Ws.register(socket, user.id)
+    await Ws.register(socket, user.id)
 
-      const ws = new Ws(['/ops/connection-success'] as const)
-      await ws.emit(user.id, '/ops/connection-success', { message: 'Connected' })
-    })
+    const ws = new Ws(['/ops/connection-success'] as const)
+    await ws.emit(user.id, '/ops/connection-success', { message: 'Connected' })
   })
 }
 ```
 
 ### Auth: `resolveWebsocketUser`
 
-`create-psychic` scaffolds a boilerplate auth helper at `conf/system/resolveWebsocketUser.ts`. Newly-generated apps reject every WebSocket connection until you replace its body with real auth logic — typically pulling a token from `socket.handshake.auth`, decrypting it, and returning the matching `User` (or `null` to reject).
+`resolveWebsocketUser` (`conf/system/resolveWebsocketUser.ts`) reads the token the client sends in `socket.handshake.auth` and returns the matching `User`, or `null` to reject the socket. Have it return `null` for a token it can't decrypt, as `resolveCurrentUser` does for a bearer token ([Decrypting Cookies Outside a Controller](controllers.md#decrypting-cookies-outside-a-controller)).
 
-```typescript
-// conf/system/resolveWebsocketUser.ts
-import type { Socket } from 'socket.io'
-import User from '../../app/models/User.js'
-
-export default async function resolveWebsocketUser(socket: Socket): Promise<User | null> {
-  const token = socket.handshake.auth.token as string | undefined
-  if (!token) return null
-  // ...decrypt the token and look up the user
-  return User.find(/* userId */)
-}
-```
-
-The "fail loudly in dev" ergonomic is intentional — if auth isn't wired up, no socket connects.
-
-**A throwing `ws:connect` hook is contained to the connecting socket.** If an auth hook throws (a DB or Redis blip mid-handshake, say), the framework catches it, logs at error level, and calls `socket.disconnect(true)` — the ws process stays up. So a hook may throw to reject a connection; the cost is that one socket, not process safety, and the hook does not need its own outer try/catch to protect the process. Framework-contained ws failures are also surfaced to the `ws:error` hook (below), which is where you ship them to your monitoring SDK. (Startup is stricter: a redis adapter that can't attach aborts ws startup rather than silently falling back to in-memory delivery.)
+**A throwing `ws:connect` hook is contained to the connecting socket.** If an auth hook throws (a DB or Redis blip during the user lookup, say), the framework catches it, logs at error level, and calls `socket.disconnect(true)` — the ws process stays up. So the hook needs no outer try/catch to protect the process. Framework-contained ws failures are also surfaced to the `ws:error` hook (below), which is where you ship them to your monitoring SDK. (Startup is stricter: a redis adapter that can't attach aborts ws startup rather than silently falling back to in-memory delivery.)
 
 ### `ws:error`: the request-aware websocket error hook
 
@@ -126,19 +109,19 @@ wsApp.on('ws:error', (error, context) => {
 
 The second argument is a discriminated context (`PsychicWebsocketsErrorContext`, exported alongside `PsychicWebsocketsErrorHook`) with two phases:
 
-- **`phase: 'ws:connect'`** — a `ws:connect` hook threw while a socket was connecting. Carries `socketId`. A throw-to-reject (an auth hook throwing to refuse a connection) fires this too, so filter your own rejection sentinels inside the hook.
+- **`phase: 'ws:connect'`** — a `ws:connect` hook threw while a socket was connecting. Carries `socketId`.
 - **`phase: 'ws:health-check'`** — the websocket server's own HTTP request handler (Psychic's health check and its catch-all 404) threw. Carries `method` and `path`. This is the ws process's raw `http.Server`, **not** the Koa app — errors here never reach `server:error`.
 
 Two properties worth knowing:
 
 - **The context is privacy-scrubbed for external shipping.** It never carries a raw socket, handshake credentials, request headers, or the raw request URL — `path` is the pathname with the query string stripped, because a query string can carry tokens or PII and the 404 branch sees arbitrary URLs. The framework's own internal error *log* still records the full URL locally; only the external-bound hook context is scrubbed.
-- **Containment wraps only `ws:connect` hooks.** If you do per-socket auth inside a `ws:start` hook's own `io.on('connection')` handler instead of in a `ws:connect` hook, a throw there is **not** contained and gets no `ws:error` coverage. Put per-socket auth in `wsApp.on('ws:connect', …)` so it's both contained and observed.
+- **Containment wraps only `ws:connect` hooks.** If you do per-socket auth inside a `ws:start` hook's own `io.on('connection')` handler or `io.use` middleware instead of in a `ws:connect` hook, a throw there is **not** contained and gets no `ws:error` coverage. Put per-socket auth in `wsApp.on('ws:connect', …)` so it's both contained and observed.
 
 **Redis adapter connection errors have no `ws:error` phase, by design.** The framework already logs the pub/sub clients' `'error'` events at error level, so they don't go dark — but to ship or dedupe them, attach your own `.on('error', …)` to the public `wsApp.connection` and `wsApp.subConnection` getters right after `wsApp.set('connection', redis)` (the `subConnection`, a `duplicate()` of the pub client, exists only after that call). Dedupe before shipping — ioredis re-emits `'error'` on every reconnect attempt during an outage. Configure the connection **once, before `cable.start(...)`**: replacing it afterward silently breaks cross-process delivery.
 
 ### Origin allowlist
 
-The allowlist lives in the app. `conf/system/allowedCorsOrigins.ts` parses the `CORS_HOSTS` env var, and the websockets initializer closes over its result inside `allowRequest` (shown above) — that inline body is also where you layer an auth-token check onto the handshake.
+The allowlist lives in the app. `conf/system/allowedCorsOrigins.ts` parses the `CORS_HOSTS` env var, and the websockets initializer closes over its result inside `allowRequest` (shown above).
 
 `CORS_HOSTS` must be a JSON-encoded array of origins:
 
@@ -174,22 +157,15 @@ await ws.emit(user, '/data/update', { field: 'status', value: 'active' })
 ## Registering Users
 
 ```typescript
-// In websocket configuration (ws:start hook)
-wsApp.on('ws:start', io => {
-  io.of('/').on('connection', async socket => {
-    const userId = extractUserId(socket.handshake.auth)
-    const user = await User.find(userId)
+// inside the ws:connect hook (see Configuration), after sign-in
+await Ws.register(socket, user.id) // Redis key 'user:{id}:socket_ids'
 
-    if (user) {
-      // Register socket -> stored in Redis key 'user:{userId}'
-      await Ws.register(socket, user.id)
-
-      // With custom prefix
-      await Ws.register(socket, user.id, 'admin-user')
-    }
-  })
-})
+// another table's ids (an AdminUser's) need their own prefix;
+// emit to them with new Ws(paths, { redisKeyPrefix: 'admin-user' })
+await Ws.register(socket, adminUser.id, 'admin-user')
 ```
+
+**Each user key keeps at most three sockets** (redis adapter only, so specs never hit it). A fourth `Ws.register` — a Host's fourth tab or device — drops the oldest from the registry; that socket stays connected but silently receives nothing more. Raise the cap with `wsApp.set('maxConnectionsPerUser', n)`.
 
 ## WebSocket Server Startup
 
@@ -219,7 +195,7 @@ startWs()
 
 ## Using with Background Workers
 
-> **Process initialization required.** `Ws.emit()` boots a `PsychicAppWebsockets` instance on its first call via `PsychicAppWebsockets.getOrFail()`. If the worker process skipped the websocket initializer, that call throws:
+> **Process initialization required.** `Ws.emit()` reads the process's cached `PsychicAppWebsockets` through `PsychicAppWebsockets.getOrFail()`, which the websocket initializer populates. If the worker process skipped that initializer, the call throws:
 > ```
 > must call `cachePsychicAppWebsockets` before loading cached psychic application websockets
 > ```
@@ -258,7 +234,7 @@ public async notifyBooking(this: Booking) {
 
 ## Client Transport
 
-Set `transports: ['websocket']` on the Socket.IO client. Socket.IO tries long-polling first and upgrades in the background; WebSocket is universally supported by modern browsers and mobile apps, so skipping the polling phase just means faster connection establishment. The websocket server serves polling and WebSocket clients correctly either way, so this is a connection-latency recommendation rather than a correctness requirement — with one exception at scale: a polling client's later requests have to reach the same node, because engine.io's heartbeat timers are per-connection, so a multi-node fleet serving polling clients needs sticky sessions. Websocket-only transport sidesteps that.
+Set `transports: ['websocket']` on the Socket.IO client. Socket.IO tries long-polling first and upgrades in the background; WebSocket is universally supported by modern browsers and mobile apps, so skipping the polling phase just means faster connection establishment. The websocket server serves polling and WebSocket clients correctly either way, so this is a connection-latency recommendation rather than a correctness requirement — with one exception at scale: a polling client's later requests have to reach the node holding its engine.io session (any other node answers "Session ID unknown"), so a multi-node fleet serving polling clients needs sticky sessions. Websocket-only transport sidesteps that.
 
 ```typescript
 import { io } from 'socket.io-client'
@@ -268,6 +244,8 @@ const socket = io(websocketHost, {
   auth: { token },
 })
 ```
+
+The client's `connect` event can fire before the `ws:connect` hook has signed the socket in, so wait for the event the hook emits after `Ws.register` (`/ops/connection-success` in [Configuration](#configuration)). A socket the hook disconnects gets `disconnect` with reason `'io server disconnect'`, never `connect_error`.
 
 ## Plugin Registration
 
