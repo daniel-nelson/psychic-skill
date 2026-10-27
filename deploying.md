@@ -47,7 +47,7 @@ For variables that are only present in some environments, use `AppEnv.string(nam
 
 The generated `conf/app.ts` serves TLS in production: under `AppEnv.isProduction` it calls `psy.set('ssl', { key: AppEnv.string('SSL_KEY_PATH'), cert: AppEnv.string('SSL_CERT_PATH') })`, so the web and websocket servers listen with HTTPS, and boot throws unless both variables are set. That fits a reverse proxy (load balancer, ingress controller) that terminates TLS and re-encrypts traffic to the container. The pair is a self-signed certificate, separate from the one on the proxy; bake it into the image rather than generating it at runtime.
 
-If the proxy forwards plain HTTP to the container instead, delete that `psy.set('ssl', …)` block.
+If the proxy forwards plain HTTP to the container instead, delete that `psy.set('ssl', …)` block. Psychic marks the cookies it sets `Secure` in production, so an app that sets cookies then also sets `koaApp.proxy = true`, or `startSession` and `setCookie` answer 500. Set `koaApp.proxy` only when nothing but the proxy can reach the container ([Proxy Configuration for Secure Cookies](controllers.md#proxy-configuration-for-secure-cookies)); otherwise keep the block and have the proxy re-encrypt.
 
 ## Postgres TLS
 

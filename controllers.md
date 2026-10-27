@@ -1407,7 +1407,7 @@ Key points:
 
 ### Proxy Configuration for Secure Cookies
 
-Behind a reverse proxy that terminates TLS, Koa receives plain HTTP and rejects `secure: true` cookies with "Cannot send secure cookie over unencrypted connection". Prefer re-encrypting proxy→app traffic and configuring TLS on the application (see [deploying.md](deploying.md#tls-behind-a-reverse-proxy)) over enabling `app.proxy`, which trusts `X-Forwarded-Proto` from *any* upstream. Where `app.proxy` is genuinely the answer — a dev tunnel such as ngrok — a Psychic app sets it from `conf/app.ts`:
+Behind a reverse proxy that terminates TLS, Koa receives plain HTTP and rejects `secure: true` cookies with "Cannot send secure cookie over unencrypted connection". Prefer re-encrypting proxy→app traffic and configuring TLS on the application (see [deploying.md](deploying.md#tls-behind-a-reverse-proxy)) over enabling `app.proxy`, which trusts `X-Forwarded-Proto` from *any* upstream. Where `app.proxy` is genuinely the answer — a dev tunnel such as ngrok, or a proxy that forwards plain HTTP to a container only it can reach — a Psychic app sets it from `conf/app.ts`:
 
 ```typescript
 psy.on('server:init:after-middleware', psychicServer => {
