@@ -201,7 +201,7 @@ startWs()
 > ```
 > BullMQ marks the job failed and retries — the error looks like a framework cache problem rather than an application configuration problem. The generated initializer runs in all processes by default (see Configuration above); if a role guard was added that excludes `'worker'`, that is the cause.
 >
-> **If the job completes but the browser shows stale data until refresh:** the initializer is not the problem, and neither is the client transport. The likely cause is cross-process delivery: an emit from a web or worker process only reaches a socket held by the websocket-server process through the Redis adapter. A process emitting on the in-process adapter (the `test` default, or a misconfigured non-`test` process) fans out only within its own process, so the browser's socket never receives it.
+> **If the job completes but the browser shows stale data until refresh:** the initializer is not the problem, and neither is the client transport. The likely cause is cross-process delivery: an emit from a web or worker process only reaches a socket held by the websocket-server process through the Redis adapter. A non-`test` process misconfigured onto the in-process adapter fans out only within its own process, so the browser's socket never receives it.
 
 Common pattern: Background job sends websocket notification:
 

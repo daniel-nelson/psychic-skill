@@ -29,7 +29,7 @@ All CLI commands run through the project's package manager. Examples here are wr
 
 **Examples** use BearBnB, an AirBnB-for-bears demo app (https://github.com/daniel-nelson/bearbnb), where **Guest** and **Host** are application roles, not "visitor" (unauthenticated) or "server".
 
-**Ecosystem versions & staleness policy.** Written against `@rvoh/dream` 2.40.2, `@rvoh/psychic` 3.18.1, `@rvoh/psychic-workers` 2.9.x, `@rvoh/psychic-websockets` 3.5.4, `@rvoh/psychic-spec-helpers` 3.5.x. **Stay current:** when something here fails — an unrecognized generator flag, malformed shorthand, a missing API — update the out-of-date `@rvoh/*` packages rather than working around the skill. No feature is annotated with the version it landed in: assume current, upgrade if reality disagrees. A scoped `pnpm up -L "@rvoh/*"` leaves peers behind, so resolve every peer requirement it introduces (`kysely`), then run `pnpm psy sync`.
+**Ecosystem versions & staleness policy.** Written against `@rvoh/dream` 2.41.0, `@rvoh/psychic` 3.18.1, `@rvoh/psychic-workers` 2.9.x, `@rvoh/psychic-websockets` 3.5.4, `@rvoh/psychic-spec-helpers` 3.5.x. **Stay current:** when something here fails — an unrecognized generator flag, malformed shorthand, a missing API — update the out-of-date `@rvoh/*` packages rather than working around the skill. No feature is annotated with the version it landed in: assume current, upgrade if reality disagrees. A scoped `pnpm up -L "@rvoh/*"` leaves peers behind, so resolve every peer requirement it introduces (`kysely`), then run `pnpm psy sync`.
 
 ## Reference Map
 

@@ -599,7 +599,7 @@ After adding a named workstream, run `pnpm psy sync` to update types. Then assig
 
 ```typescript
 export default class IntercomSyncService extends ApplicationBackgroundedService {
-  public static get backgroundJobConfig(): BackgroundJobConfig<ApplicationBackgroundedService> {
+  public static override get backgroundJobConfig(): BackgroundJobConfig<ApplicationBackgroundedService> {
     return { workstream: 'Intercom' }
   }
 }
@@ -701,7 +701,7 @@ Run `pnpm psy sync` after changing the queue names, then route a service to one:
 
 ```typescript
 export default class BookingNotificationService extends ApplicationBackgroundedService {
-  public static get backgroundJobConfig(): BackgroundJobConfig<ApplicationBackgroundedService> {
+  public static override get backgroundJobConfig(): BackgroundJobConfig<ApplicationBackgroundedService> {
     return { queue: 'BookingNotifications' }
   }
 }

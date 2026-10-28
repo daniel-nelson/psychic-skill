@@ -252,7 +252,7 @@ Query-side overlap validation is not race-safe by itself. Prevent double booking
 
 ### Array column containment and equality
 
-A bare array in `where()` (`where({ status: [...] })`) means `IN`, which only works against a scalar column — against an array column it raises `malformed array literal` at the database. Use `ops` to say which array comparison you want:
+A bare array in `where()` (`where({ status: [...] })`) means `IN` against a scalar column and doesn't compile against an array column. Use `ops` to say which array comparison you want:
 
 | What you want | How you write it | SQL |
 | --- | --- | --- |
