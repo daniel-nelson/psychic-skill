@@ -565,11 +565,13 @@ await expect(page).toHaveUrl('https://example.com/dash')   // Current full URL m
 await expect(page).toHaveLink('Documentation')              // Page has a link with text
 await expect(page).toHaveChecked('Remember me')             // Checkbox with text is checked
 await expect(page).toHaveUnchecked('Opt out')               // Checkbox with text is unchecked
+await expect(page).toHaveSelected('#style', 'cabin')        // Option with value 'cabin' is selected
+await expect(page).toHaveUnselected('#style', 'tent')       // Option with value 'tent' is not selected
 ```
 
 ### What the text matchers actually read
 
-`toMatchTextContent` / `toNotMatchTextContent` assert on what the page **renders**, not its DOM source. They collect each element's `innerText` and each displayed `input`/`textarea` value, joined with spaces, so they see CSS `text-transform` and skip CSS-hidden content (`display: none`, `visibility: hidden`); `opacity: 0` and offscreen text still match. Two consequences:
+`toMatchTextContent` / `toNotMatchTextContent` assert on what the page **renders**, not its DOM source. They collect each element's `innerText` and each displayed `input`/`textarea` value, joined with spaces, so they see CSS `text-transform` and skip CSS-hidden content (`display: none`, `visibility: hidden`) and `<select>` menus; `opacity: 0` and offscreen text still match. Two consequences:
 
 **Default to a case-insensitive regex for text content.** A label whose source is `5 out of 5` but is rendered with an `uppercase` class matches as `5 OUT OF 5`. The literal string fails, and hardcoding `'5 OUT OF 5'` couples the spec to cosmetic styling. Match on meaning instead:
 
@@ -592,7 +594,7 @@ Contiguity holds between separate elements. A label and value inside one element
 
 `toNotHaveSelector` requires true DOM absence. A present-but-hidden element — one still in the DOM but invisible via CSS — **fails** `toNotHaveSelector`; only an element that's actually unmounted or never rendered passes it.
 
-The rest of the matcher set is presence/interaction-only: `toCheck`, `toClick`/`toClickButton`/`toClickLink`/`toClickSelector`, `toFill`, `toHaveChecked`, `toHaveLink`, `toHavePath`, `toHaveSelector`, `toHaveUnchecked`, `toHaveUrl`, `toNotHaveSelector`, `toSelect`, `toUncheck` — none of these assert visibility directly. `toMatchTextContent`/`toNotMatchTextContent` are the exception: as covered above, they skip CSS-hidden text.
+The rest of the matcher set is presence/interaction-only: `toCheck`, `toClick`/`toClickButton`/`toClickLink`/`toClickSelector`, `toFill`, `toHaveChecked`, `toHaveLink`, `toHavePath`, `toHaveSelected`, `toHaveSelector`, `toHaveUnchecked`, `toHaveUnselected`, `toHaveUrl`, `toNotHaveSelector`, `toSelect`, `toUncheck` — none of these assert visibility directly. `toMatchTextContent`/`toNotMatchTextContent` are the exception: as covered above, they skip CSS-hidden text.
 
 To tell hidden-but-mounted from absent, pair the presence check with a text check scoped to the element. A booking confirmation banner toggled with an `invisible` class (`visibility: hidden`) instead of being unmounted stays in the DOM but shows no text:
 

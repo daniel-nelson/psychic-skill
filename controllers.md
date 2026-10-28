@@ -1228,7 +1228,7 @@ psy.on('server:init:after-middleware', psychicServer => {
         transports: [new winston.transports.Console()],
         format: winston.format.combine(winston.format.json()),
         headerBlocklist: [
-          'authorization', 'content-length', 'connection', 'cookie',
+          'authorization', 'content-length', 'connection', 'cookie', 'referer',
           'sec-ch-ua', 'sec-ch-ua-mobile', 'sec-ch-ua-platform',
           'sec-fetch-dest', 'sec-fetch-mode', 'sec-fetch-site', 'user-agent',
         ],
@@ -1242,8 +1242,8 @@ psy.on('server:init:after-middleware', psychicServer => {
 
 Three knobs to know:
 
-- **`headerBlocklist`** — request headers left out of the log line, matched on the whole name, ignoring case. Scaffold ships `authorization`, `cookie`, plus a handful of low-signal browser-fingerprint headers.
-- **`bodyBlocklist`** — names whose values are logged as `[FILTERED]`, key kept: any body key at any depth (arrays included), query-string key, header name, or route param (the `:token` segment of `/password-resets/:token`) that *contains* a listed name, ignoring case, plus the `referer`'s query string. Scaffold ships `password`, `token`, `authentication`, `authorization`, `secret`, which already cover `accessToken` and `x-auth-token`. **Extend this when you add new sensitive fields** (`api_key`, `api-key` for an `x-api-key` header, `ssn`, `creditCard`, etc.) — otherwise they land in production logs. The path of a request no route matched is logged as sent, and so is the `referer`'s path, so put an emailed token in the fragment (`/reset-password#token=…`), which browsers never send, and have the page post it as `token` in the body, where `bodyBlocklist` masks it.
+- **`headerBlocklist`** — request headers left out of the log line, matched on the whole name, ignoring case. Scaffold ships `authorization`, `cookie` and `referer`, plus a handful of low-signal browser-fingerprint headers.
+- **`bodyBlocklist`** — names whose values are logged as `[FILTERED]`, key kept: any body key at any depth (arrays included), query-string key, header name, or route param (the `:token` segment of `/password-resets/:token`) that *contains* a listed name, ignoring case. Scaffold ships `password`, `token`, `authentication`, `authorization`, `secret`, which already cover `accessToken` and `x-auth-token`. **Extend this when you add new sensitive fields** (`api_key`, `api-key` for an `x-api-key` header, `ssn`, `creditCard`, etc.) — otherwise they land in production logs. The path of a request no route matched is logged as sent, so put an emailed token in the fragment (`/reset-password#token=…`), which browsers never send, and have the page post it as `token` in the body, where `bodyBlocklist` masks it.
 - **`ignoredRoutes`** — request paths to skip entirely. Scaffold skips `/health_check`.
 
 ### Reacting to unhandled errors
