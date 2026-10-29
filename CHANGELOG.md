@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.106.0 — 2026-10-29
+
+### Added
+
+- **`console.md`** — "Running a Script in a Deployed Container": in a built image (no `src/`, no `tsx`), the console boilerplate is saved as plain JavaScript in `dist/scratch.mjs`, beside the copy of `package.json` whose `imports` map resolves `#conf/...`, run with `node dist/scratch.mjs` from the app root, and deleted afterwards; saved at the app root it fails with `ERR_MODULE_NOT_FOUND` on `src/conf/loadEnv.js`. The script uses whatever database the container is configured for, and stage also runs `NODE_ENV=production`, so a script runs only when the user asks, in the deployment they named.
+- **`generators.md`** — "Generator workflow": column shorthand adds `.unique()` to columns whose names end in `email`, `token` or `uuid`; delete it where values repeat (`guest_email` on `bookings`), and on a soft-deleted table that needs the uniqueness, use a partial unique index instead.
+
+### Changed
+
+- **`migrations.md`** — when post-sync fails after `pnpm psy db:migrate`, fix the problem and re-run `pnpm psy db:migrate` to regenerate the types. Recovering from a stale `src/types/db.ts` regenerates with `pnpm psy db:reset`, and when a model depends on a migration that never ran, the missing migration runs with `pnpm psy db:migrate` first.
+- **`workers.md`** — the `ScheduledJobs` example labels `'0 9 * * *'` as `// 09:00 UTC daily`. The `pluckEach` examples leave the callback's `id` parameter unannotated.
+- **`SKILL.md`** — ecosystem baseline: `@rvoh/psychic-workers` 2.9.1.
+
 ## 0.105.0 — 2026-10-29
 
 ### Changed
