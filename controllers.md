@@ -18,7 +18,6 @@ controllers/
 ├── AuthedController.ts               (client auth — @BeforeAction, 401 if no user)
 ├── MaybeAuthedController.ts          (client auth — currentUser null if absent)
 ├── UnauthedController.ts             (no auth)
-├── StatusController.ts               (health check — extends UnauthedController)
 │
 ├── V1/                               (client API — AUTHED ONLY)
 │   ├── BaseController.ts             (extends AuthedController)
@@ -82,7 +81,7 @@ controllers/
 
 5. **Generate every surface; reparent the namespace base once when it loosens auth.** Always scaffold with the generators — they wire the inheritance chain and base controllers. The generator defaults each new namespace base to the client `AuthedController`, so an *authed* surface needs nothing extra:
    - `pnpm psy g:resource v1/host/places Place` → chains `V1/Host/PlacesController` → `V1/Host/BaseController` → `V1/BaseController` → `AuthedController`. No reparenting.
-   - `pnpm psy g:resource admin/cities SupportedCity` → extends `Admin/AuthedController` (the generator special-cases `Admin` / `Internal`, each authenticating its own user type). No reparenting.
+   - `pnpm psy g:resource admin/cities City` → extends `Admin/AuthedController` (the generator special-cases `Admin` / `Internal`, each authenticating its own user type). No reparenting.
 
    A surface that *loosens* auth is reparented once, at its **top-level** namespace base (the nested version base inherits it — see #6):
    - `pnpm psy g:resource api/v1/reservations Booking` (a partner channel-manager syncing reservations) → reparent `Api/BaseController` to `UnauthedController` and verify the API key in a `@BeforeAction` there. One API, one key scheme, so it lives on the shared base.
@@ -168,17 +167,21 @@ pnpm psy check:controller-hierarchy
 
 ### Routing Controllers When Directory Names Don't Map to URLs
 
-Controller directory names reflect the auth architecture, not URL structure. When the directory name shouldn't appear in the URL (e.g., `Visitor/` is the auth context, but `/v1/visitor/places` isn't a natural public URL), use an explicit `controller` reference instead of a namespace:
+Controller directory names reflect the auth architecture, not URL structure. When the directory name shouldn't appear in the URL (e.g., `Visitor/` is the auth context, but `/visitor/v1/places` isn't a natural public URL), use an explicit `controller` reference instead of a namespace:
 
 ```typescript
-// BAD — "visitor" leaks into the URL: /v1/visitor/places
+// BAD — "visitor" leaks into the URL: /visitor/v1/places
 r.namespace('visitor', r => {
-  r.resources('places', { only: ['index', 'show'] })
+  r.namespace('v1', r => {
+    r.resources('places', { only: ['index', 'show'] })
+  })
 })
 
 // GOOD — clean URL: /v1/places, controller explicitly specified
-import VisitorV1PlacesController from '@controllers/Visitor/V1/PlacesController.js'
-r.resources('places', { only: ['index', 'show'], controller: VisitorV1PlacesController })
+import VisitorV1PlacesController from '#controllers/Visitor/V1/PlacesController.js'
+r.namespace('v1', r => {
+  r.resources('places', { only: ['index', 'show'], controller: VisitorV1PlacesController })
+})
 ```
 
 The controller directory structure (`Visitor/V1/`) still enforces the auth inheritance chain, but the URL stays clean.
@@ -257,7 +260,7 @@ change so the OpenAPI specs and generated clients update.
 
 ```typescript
 import { PsychicController } from '@rvoh/psychic'
-import psychicTypes from '@src/types/psychic.js'
+import psychicTypes from '#src/types/psychic.js'
 
 export default class ApplicationController extends PsychicController {
   public override get psychicTypes() {
@@ -271,6 +274,9 @@ export default class ApplicationController extends PsychicController {
 ### Client AuthedController
 
 ```typescript
+import ApplicationController from '#controllers/ApplicationController.js'
+import resolveCurrentUser from '#controllers/helpers/resolveCurrentUser.js'
+import User from '#models/User.js'
 import { BeforeAction } from '@rvoh/psychic'
 
 export default class AuthedController extends ApplicationController {
@@ -278,27 +284,18 @@ export default class AuthedController extends ApplicationController {
 
   @BeforeAction()
   protected async authenticate() {
-    const token = (this.header('authorization') ?? '').split(' ').at(-1)!
-    // Encrypt.decrypt returns the already-parsed value — do not JSON.parse again.
-    const decrypted = Encrypt.decrypt<{ userId: string }>(token, {
-      algorithm: 'aes-256-gcm',
-      key: AppEnv.string('APP_ENCRYPTION_KEY'),
-    })
-    const userId = decrypted?.userId
-    if (!userId) return this.unauthorized()
-
-    const user = await User.find(userId)
+    const user = await resolveCurrentUser(this)
     if (!user) return this.unauthorized()
     this.currentUser = user
   }
 }
 ```
 
+The token scheme lives in `resolveCurrentUser(controller)` (`controllers/helpers/resolveCurrentUser.ts`), shared with `MaybeAuthedController`. The scaffold's helper returns `null` for a missing token or one it can't decrypt, so a forged or stale token gets a 401 rather than a 500; keep that when you replace the scheme — see [Decrypting Cookies Outside a Controller](#decrypting-cookies-outside-a-controller) for the catch.
+
 ### MaybeAuthedController
 
-Attempts authentication but does NOT 401 on failure. Sets `currentUser` to null if no token or invalid token. Use for public endpoints that behave differently when logged in (e.g., showing favorite indicators on public browse pages).
-
-Both `AuthedController` and `MaybeAuthedController` delegate to a shared `resolveCurrentUser(controller)` helper in `controllers/helpers/resolveCurrentUser.ts`. The only difference is what happens when the result is null (401 vs. silent null).
+Calls the same `resolveCurrentUser(this)` and assigns its result, `null` included, instead of responding 401. Use for public endpoints that behave differently when logged in (e.g., showing favorite indicators on public browse pages).
 
 ### Surface-Specific Auth (Admin, Internal)
 
@@ -382,7 +379,7 @@ export default class V1HostBaseController extends V1BaseController {
 
 ```typescript
 // V1/Host/Places/BaseController.ts — for doubly-nested resources (e.g., /places/:placeId/rooms)
-import V1HostBaseController from '@controllers/V1/Host/BaseController.js'
+import V1HostBaseController from '#controllers/V1/Host/BaseController.js'
 
 export default class V1HostPlacesBaseController extends V1HostBaseController {
   protected currentPlace: Place
@@ -487,7 +484,7 @@ export default class V1HostPlacesController extends V1HostBaseController {
   serializerKey: 'summary',
   query: {
     search: { required: false, schema: 'string' },
-    style: { required: false, schema: 'string' },
+    style: { required: false, schema: { type: 'string', enum: PlaceStylesEnumValues } },
     minSleeps: { required: false, schema: 'integer' },
   },
 })
@@ -497,12 +494,12 @@ public async index() {
     .preloadFor('summary')
 
   const search = this.castParam('search', 'string', { allowNull: true })
-  const style = this.castParam('style', 'string', { allowNull: true })
+  const style = this.castParam('style', 'string', { enum: PlaceStylesEnumValues, allowNull: true })
   const minSleeps = this.castParam('minSleeps', 'integer', { allowNull: true })
 
   if (search) {
     query = query.whereAny([
-      { name: ops.like(`${search}%`) },
+      { name: ops.like(`${ops.like.escape(search)}%`) },
     ])
   }
   if (style) query = query.where({ style })
@@ -572,13 +569,13 @@ psy.set('json', {
 })
 ```
 
-See the [@koa/bodyparser README](https://github.com/koajs/bodyparser) for the full option surface. Tune to the largest legitimate payload your endpoints accept; DoS protection against oversized payloads belongs at the edge (see [Rate Limiting](#rate-limiting) below), not at the body-parser layer.
+See the [@koa/bodyparser README](https://github.com/koajs/bodyparser) for the full option surface. These limits are the app's own defense against oversized-payload memory DoS, whether or not an edge layer also caps bodies — set each to the largest legitimate payload your endpoints accept, and no higher.
 
 ### castParam Types
 
 ```typescript
 // Ids — cast to the column's primary-key type, never 'string'. Match your app's
-// configured primaryKeyType: uuid4/uuid7 → 'uuid', bigserial/bigint → 'bigint',
+// configured primaryKeyType: uuid4/uuid7 → 'uuid', bigint → 'bigint',
 // integer → 'integer'.
 this.castParam('id', 'uuid')
 this.castParam('id', 'bigint')
@@ -604,9 +601,9 @@ this.castParam('roomType', 'string', { enum: RoomTypesEnumValues, allowNull: tru
 When restricting to a subset of a database enum, use `Extract` to maintain compile-time type safety:
 
 ```typescript
-import { RoomTypesEnum, RoomTypesEnumValues } from '@src/types/db.js'
+import { RoomTypesEnum, RoomTypesEnumValues } from '#src/types/db.js'
 
-// Subset — Extract ensures a compile error if the source enum changes
+// Subset — Extract makes a renamed or removed member a compile error
 const BOOKABLE_ROOM_TYPES: Extract<RoomTypesEnum, 'Bedroom' | 'Den' | 'LivingRoom'>[] =
   ['Bedroom', 'Den', 'LivingRoom']
 
@@ -615,7 +612,7 @@ this.castParam('roomType', 'string', { enum: BOOKABLE_ROOM_TYPES })
 
 ### Bounding length and range
 
-Beyond `enum`/`allowNull`/`match`, `castParam` (and `extractParams`) enforce size bounds: `minLength`/`maxLength` on a `'string'`, and `minimum`/`maximum` on a `'number'`/`'integer'`/`'bigint'`. All four are inclusive and checked *after* type coercion; a violation throws `ParamValidationError`, which Psychic renders as a `400`. Bound untrusted request input at the boundary rather than validating it later in a model or service:
+Beyond `enum`/`allowNull`/`match`, `castParam` enforces size bounds: `minLength`/`maxLength` on a `'string'`, and `minimum`/`maximum` on a `'number'`/`'integer'`/`'bigint'`. All four are inclusive and checked *after* type coercion; a violation throws `ParamValidationError`, which Psychic renders as a `400`. `extractParams` takes no bound options, so `castParam` each field that needs one. Bound untrusted request input at the boundary rather than validating it later in a model or service:
 
 ```typescript
 this.castParam('title', 'string', { minLength: 1, maxLength: 200 })
@@ -627,15 +624,15 @@ For array casts (`'string[]'`, `'integer[]'`, …) the bounds apply **element-wi
 
 ### String params are trimmed automatically
 
-Psychic strips leading and trailing whitespace from string params before validation and casting. Both `castParam` and `extractParams` resolve strings through the same `Params.cast` path, so `'  Cozy Cabin  '` arrives as `'Cozy Cabin'`. This applies to scalar `'string'` params, `enum` strings, Virtual string params, and the elements of string and enum arrays (`'string[]'`, array enum columns). Don't re-trim in a controller, a model setter, or a hook — it's already done.
+Psychic strips leading and trailing whitespace from string params before validation and casting. Both `castParam` and `extractParams` resolve strings through the same `Params.cast` path, so `'  Cozy Cabin  '` arrives as `'Cozy Cabin'`. This applies to scalar `'string'` params, `enum` strings, Virtual string params, and the elements of string and enum arrays (`'string[]'`, array enum columns). Don't re-trim a value you read through `castParam` or `extractParams` — it's already done.
 
 ### An absent key and an explicit `null` differ
 
-With `{ allowNull: true }`, `castParam` returns `undefined` for an absent key and `null` for an explicit `null`, at every depth — including a `null` nested inside a present object. That difference lets a [partial update](#worked-example--update-with-a-nullable-fk) tell "leave this column alone" apart from "clear it". Both values are falsy, so test `=== undefined` where the two must stay apart, and collapse them freely where they need not — an `index` action's optional filters.
+With `{ allowNull: true }`, `castParam` returns `undefined` for an absent key and `null` for an explicit `null`, including a key nested in a present object; a `null` parent in dot notation is a 400. That difference lets a [partial update](#worked-example--update-with-a-nullable-fk) tell "leave this column alone" apart from "clear it". Both values are falsy, so test `=== undefined` where the two must stay apart, and collapse them freely where they need not — an `index` action's optional filters.
 
 ### extractParams
 
-`extractParams(Model, allowedParams, opts?)` validates an incoming request body against a Dream model's writable params and returns a typed, safe-to-write attributes object. The `allowedParams` array is an explicit positional allowlist, TS-checked at compile time against the model's safe params: real columns, Encrypted columns, and Virtual columns. Encrypted params are accepted as `string` or `string | null` based on the backing encrypted column's nullability; Virtual params use the type declared in `@deco.Virtual(...)`. The runtime intersects the allowlist with the model's `paramSafeColumns` (when declared) and the always-excluded set described below.
+`extractParams(Model, allowedParams, opts?)` validates an incoming request body against a Dream model's writable params and returns a typed, safe-to-write attributes object. The `allowedParams` array is an explicit positional allowlist, TS-checked at compile time against the model's safe params: real columns, Encrypted columns, and Virtual columns. Encrypted params are accepted as `string` or `string | null` based on the backing encrypted column's nullability, or as the shape `@deco.Encrypted({ openapi })` declares; Virtual params use the type declared in `@deco.Virtual(...)`. `extractParams` enforces those types in TypeScript; at runtime it checks the top-level type only, not an object shape's properties. The runtime intersects the allowlist with the model's `paramSafeColumns` (when declared) and the always-excluded set described below.
 
 The allowlist is required and lives at the call site so that every controller's accepted params are locally visible. Adding a new model param doesn't widen any controller's surface — each controller has to opt in to accept it.
 
@@ -689,13 +686,13 @@ Reach for this cap when a column must never be bulk-assignable no matter what an
 
 ```typescript
 // Canonical allowlist for the model — caps extractParams.
-public get paramSafeColumns(): DreamColumnNames<CoachingSession>[] {
-  return ['rated', 'meetingIntent', 'topic']
+public get paramSafeColumns(): DreamColumnNames<Place>[] {
+  return ['name', 'style', 'sleeps']
 }
 
 // Block specific columns (in addition to the always-excluded set above)
-public get paramUnsafeColumns(): DreamColumnNames<Friend>[] {
-  return ['bff']
+public get paramUnsafeColumns(): DreamColumnNames<Host>[] {
+  return ['payoutAccountId']
 }
 ```
 
@@ -703,15 +700,15 @@ Since foreign keys are excluded, find the resource explicitly and pass it as an 
 
 ```typescript
 const place = await Place.findOrFail(this.castParam('placeId', 'uuid'))
-const favoritePlace = await this.currentUser.createAssociation('favoritePlaces', {
-  ...this.extractParams(FavoritePlace, ['rating', 'note']),
+const booking = await this.currentGuest.createAssociation('bookings', {
+  ...this.extractParams(Booking, ['startsOn', 'endsOn']),
   place,
 })
 ```
 
 The FK exclusion is intentional. Advertise the FK in the spec with `requestBody: { including: ['placeId'] }` (for typed spec helpers and client SDKs), but extraction still strips it — always pull the FK with `castParam`, or look up the parent and pass it as an association (as above).
 
-Passing the loaded parent rather than the raw id is the general rule, not a controller quirk: [pass the association instance, not the foreign key](models.md#passing-associations-use-the-instance-not-the-foreign-key). It reads best here because the two steps are the same motion — a param id is untrusted, verifying it means loading the record (ideally through an association chain from `currentUser` that proves the current user may touch it), and the load hands you the instance to pass. Scope that lookup to the current user where you can (`this.currentUser.associationQuery('places').findOrFail(...)`) rather than a bare `Place.findOrFail(...)`, so the verification and the authorization are one query.
+Passing the loaded parent rather than the raw id is the general rule, not a controller quirk: [pass the association instance, not the foreign key](models.md#passing-associations-use-the-instance-not-the-foreign-key). It reads best here because the two steps are the same motion — a param id is untrusted, verifying it means loading the record (ideally through an association chain from `currentUser` that proves the current user may touch it), and the load hands you the instance to pass. Scope that lookup to the current user where you can (`this.currentHost.associationQuery('places').findOrFail(...)`) rather than a bare `Place.findOrFail(...)`, so the verification and the authorization are one query.
 
 #### Generator output
 
@@ -720,7 +717,7 @@ Passing the loaded parent rather than the raw id is the general rule, not a cont
 ```typescript
 import { OpenAPI } from '@rvoh/psychic'
 import { DreamParamSafeColumnNames } from '@rvoh/dream/types'
-import Place from '@models/Place.js'
+import Place from '#models/Place.js'
 
 const openApiTags = ['places']
 
@@ -753,7 +750,7 @@ export default class PlacesController extends AuthedController {
 }
 ```
 
-The const is typed `DreamParamSafeColumnNames<Model>[]`, which gives autocomplete of valid columns and a compile error on anything not param-safe right at the assignment. It is emitted only when the controller has a `create` and/or `update` action and the model is known (index/show/destroy-only controllers don't get it), and when no columns survive the param-safe filter it is still emitted, typed and empty: `const paramSafeColumns: DreamParamSafeColumnNames<Place>[] = []`. The real scaffold emits the action bodies commented-out as hints; they're shown uncommented here for readability. Admin and non-admin scaffolds emit the same shape.
+The const is typed `DreamParamSafeColumnNames<Model>[]`, which gives autocomplete of valid columns and a compile error on any [always-excluded](#always-excluded-columns) column right at the assignment. It is emitted only when the controller has a `create` and/or `update` action and the model is known (index/show/destroy-only controllers don't get it), and when no columns survive the param-safe filter it is still emitted, typed and empty: `const paramSafeColumns: DreamParamSafeColumnNames<Place>[] = []`. The real scaffold emits the action bodies commented out, as hints; the bodies here are simplified. Admin and non-admin scaffolds emit the same shape.
 
 **Single edit point:** narrowing `paramSafeColumns` updates both the runtime `extractParams` allowlist *and* the documented `@OpenAPI` request body in one place — the documented request shape and the runtime extraction can't silently diverge. Note this is `requestBody`, not the response: `create`'s 201 still returns the full serializer and `update` is 204 (no body) — the allowlist constrains *input*. The `requestBody: { params }` here is the generator pre-wiring the request body for scaffolded CRUD; the [`requestBody.including`](#always-excluded-columns) escape hatch ("re-add what extraction excluded") still applies on top of it unchanged.
 
@@ -769,11 +766,12 @@ this.noContent()           // 204
 // Redirects
 this.redirect(path)        // 302
 this.movedPermanently(path) // 301
-// A same-origin relative path (starting with a single `/`) always works. An
-// absolute-URL target is checked against `redirectAllowedHosts` — an empty
-// allowlist by default — and throws a 500 (not a silent no-op) if the host
-// isn't listed. Allowlist matching is host-only: case-insensitive and both
-// port- and scheme-insensitive. Add external redirect targets explicitly:
+// A same-origin relative path (a single leading `/`) works. An absolute-URL
+// target is checked against `redirectAllowedHosts` — an empty allowlist by
+// default — and throws a 500 (not a silent no-op) if the host isn't listed.
+// Matching is host-only and case- and port-insensitive, and only `http:` and
+// `https:` URLs qualify — any other scheme is refused. Add external redirect
+// targets explicitly:
 //   psy.set('redirectAllowedHosts', ['oauth.example.com'])
 
 // Client errors
@@ -785,14 +783,14 @@ this.conflict()            // 409
 this.unprocessableContent() // 422
 
 // Server errors
-this.serverError()         // 500
+this.internalServerError() // 500
 ```
 
 ### Error markers: distinguishing two same-status causes
 
 When one endpoint can return the same status for two different reasons, the message you pass to a response helper becomes a runtime discriminator the frontend can switch on.
 
-**Layer 1 — the marker (untyped, zero-config).** `this.forbidden(msg)` / `this.unauthorized(msg)` (and the rest) throw an `HttpError` whose argument is JSON-stringified as the response body. So `this.forbidden('not_your_place')` produces the body `"not_your_place"`. The default `Forbidden` / `Unauthorized` / etc. response components are description-only — no `content`, no schema — so the marker never appears in the generated spec or client. It is a runtime-only discriminator: two same-status causes on one endpoint, with no schema change and no regen. The frontend switches on it as an untyped string:
+**Layer 1 — the marker (untyped, zero-config).** `this.forbidden(msg)` / `this.unauthorized(msg)` (and every other error helper except `internalServerError`) throw an `HttpError` whose argument is JSON-stringified as the response body. So `this.forbidden('not_your_place')` produces the body `"not_your_place"`. The default `Forbidden` / `Unauthorized` / etc. response components are description-only — no `content`, no schema — so the marker never appears in the generated spec or client. It is a runtime-only discriminator: two same-status causes on one endpoint, with no schema change and no regen. The frontend switches on it as an untyped string:
 
 ```typescript
 // BearBnB: a Host editing a Place they don't own
@@ -804,7 +802,7 @@ if (!place.hostedBy(this.currentUser)) this.forbidden('not_your_place')
 if (err.response.status === 403 && err.response.data === 'not_your_place') { /* ... */ }
 ```
 
-Two caveats. Pass a non-empty string — `forbidden()` with a falsy argument sends no body, so the discriminator check fails. And the marker is always sent to the client verbatim at runtime (that is the point), independent of the spec, so keep it a coarse, stable cause code (`not_your_place`, `terms_of_service_required`) and never put sensitive detail in it.
+Two caveats. Pass the marker on every call — `forbidden()` with no argument sends no body, so the discriminator check fails. And the marker is always sent to the client verbatim at runtime (that is the point), independent of the spec, so keep it a coarse, stable cause code (`not_your_place`, `terms_of_service_required`) and never put sensitive detail in it.
 
 **Layer 2 — the typed-enum upgrade.** The body stays a string; attaching an `enum` makes the generated client type it as a literal union instead of bare `string`. Declare it as a runtime OpenAPI schema shorthand (not a TS type) in the action's `@OpenAPI` `responses`:
 
@@ -864,14 +862,9 @@ Pass context data to serializers (e.g., locale, current user):
 public configureSerializers() {
   this.serializerPassthrough({ locale: this.locale })
 }
-
-// In controller - query with passthrough
-const places = await Place
-  .passthrough({ locale: this.locale })
-  .preloadFor('forGuests')
-  .all()
-this.ok(places)
 ```
+
+A query's `.passthrough()` is a separate channel: it scopes associations declared with `DreamConst.passthrough`, such as `currentLocalizedText`, and never reaches a serializer ([i18n.md](i18n.md#querying-with-locale-passthrough)).
 
 ## @OpenAPI Decorator Options
 
@@ -911,19 +904,19 @@ this.ok(places)
     'X-Custom': { required: false },
   },
 
-  // Custom responses (additional error descriptions)
+  // Extra responses. Psychic already documents 400, 401, 403, 404, 409 and 500;
+  // naming one of those here replaces its default entry.
   responses: {
-    400: { description: 'Bad request' },
-    404: { description: 'Not found' },
+    429: { description: 'Too many booking requests' },
   },
 })
 ```
 
 ### `requestBody` shorthand — what each option is for
 
-**Always declare `requestBody: { params: [...] }` on a model-derived create/update.** List the model columns the action accepts, mirroring the `extractParams` allowlist — the documented request shape stays visible at the call site instead of being inferred. Reach for the other options below to layer onto that `params` list.
+**Always declare `requestBody: { params: [...] }` on a model-derived create/update.** With no `params`, Psychic renders no request body at all, so the body is neither documented nor validated. List the model columns the action accepts, mirroring the `extractParams` allowlist, and layer the other options below onto that list.
 
-**`params` / `including` must be literal arrays — never compute them from the model.** Write the column names out (or share one hand-written `const paramSafeColumns: DreamParamSafeColumnNames<Place>[] = ['name', 'style']` between `extractParams` and `@OpenAPI`, as the generator does). **Never backfill them from the model's own `paramSafeColumns` or from `Model.columns()`** inside the decorator. Those give the model's *entire* writable surface — and for a model that declares no `paramSafeColumns`, that's every column on the table, names and types. Dumping that into the request body re-creates the implicit include-all default this convention exists to kill (the documented shape silently widens every time the model gains a column), advertises fields the action's `extractParams` allowlist doesn't actually accept (so the spec promises inputs that get dropped), and exposes the full column surface in the public OpenAPI shape. The `params` list is a deliberate, per-action allowlist; generating it from the model defeats the entire point.
+**`params` / `including` must be literal arrays — never compute them from the model.** Write the column names out (or share one hand-written `const paramSafeColumns: DreamParamSafeColumnNames<Place>[] = ['name', 'style']` between `extractParams` and `@OpenAPI`, as the generator does). **Never backfill them from the model's own `paramSafeColumns` or from `Model.columns()`** inside the decorator: the documented shape then widens every time the model gains a column, advertises fields the action's `extractParams` allowlist drops, and publishes the model's column set in the OpenAPI document — the leak Psychic's no-`params`, no-body default exists to prevent. The `params` list is a deliberate, per-action allowlist.
 
 **Derive before hand-writing.** If any body field is a Dream model column, use `params` / `including` / `combining` / `OpenAPI.forDream(...)` so types, nullability, and enum constraints come from the model. This still applies when the action cannot use `extractParams` directly, such as an STI create action that reads a `type` discriminator with `castParam` and then dispatches through an exhaustive `switch`. The runtime extraction can be custom; the OpenAPI request body should still be model-derived.
 
@@ -995,23 +988,23 @@ public async update() {
 
 #### Nested model-driven shapes — multi-resource creation
 
-When a request body bundles multiple Dream models — typically a parent plus a one-shot array of children — use the `for: Model` sentinel inside `combining` (or `combining.<key>.items` for arrays). It produces an inline object schema derived from the model's `paramSafeColumns`. Use `OpenAPI.forDream(Model, opts)` as the typed wrapper: `params` / `including` / `required` are constrained at compile time to that model's column names, so a misspelled column raises a TS error instead of silently dropping out of the OpenAPI shape.
+When a request body bundles multiple Dream models — typically a parent plus a one-shot array of children — use the `for: Model` sentinel inside `combining` (or `combining.<key>.items` for arrays). It produces an inline object schema of the columns its `params` and `including` name, each typed from the model; with neither, it renders an empty object. Use `OpenAPI.forDream(Model, opts)` as the typed wrapper: `params` / `including` / `required` are constrained at compile time to that model's column names, so a misspelled column raises a TS error instead of silently dropping out of the OpenAPI shape.
 
 The nested `for:` sentinel is **request-only**; response shapes are modeled as a serializer and declared with `@OpenAPI(SerializerFn)`, not hand-written — see [Custom Response Envelopes](#custom-response-envelopes).
 
 **BearBnB worked example.** A single `POST /host/places` that creates a `Place` and an array of `Room`s atomically:
 
 ```typescript
-import ApplicationModel from '@models/ApplicationModel.js'
-import Place from '@models/Place.js'
-import Room from '@models/Room.js'
-import Bathroom from '@models/Room/Bathroom.js'
-import Bedroom from '@models/Room/Bedroom.js'
-import Den from '@models/Room/Den.js'
-import Kitchen from '@models/Room/Kitchen.js'
-import LivingRoom from '@models/Room/LivingRoom.js'
-import { OpenAPI } from '@rvoh/psychic'
-import { RoomTypesEnum } from '@src/types/db.js'
+import ApplicationModel from '#models/ApplicationModel.js'
+import Place from '#models/Place.js'
+import Room from '#models/Room.js'
+import Bathroom from '#models/Room/Bathroom.js'
+import Bedroom from '#models/Room/Bedroom.js'
+import Den from '#models/Room/Den.js'
+import Kitchen from '#models/Room/Kitchen.js'
+import LivingRoom from '#models/Room/LivingRoom.js'
+import { OpenAPI, Params } from '@rvoh/psychic'
+import { RoomTypesEnumValues } from '#src/types/db.js'
 
 @OpenAPI(Place, {
   status: 201,
@@ -1037,17 +1030,17 @@ import { RoomTypesEnum } from '@src/types/db.js'
 })
 public async create() {
   const placeAttrs = this.extractParams(Place, ['name', 'style', 'sleeps'])
-  // Extraction always strips the STI `type` discriminator, so read it per item from the
-  // raw body and dispatch to the child class — see
+  // Extraction always strips the STI `type` discriminator, so cast it per item from the
+  // raw body against the enum and dispatch to the child class — see
   // [STI bulk creation](sti.md#bulk-creation-from-a-request-body-array).
   const roomsAttrs = this.extractParams(Room, ['name', 'sleeps'], { key: 'rooms', array: true })
-  const rawRooms = (this.params as { rooms?: { type?: string }[] }).rooms ?? []
+  const rawRooms = (this.params as { rooms?: object[] }).rooms ?? []
 
   const place = await ApplicationModel.transaction(async txn => {
     const created = await Place.txn(txn).create({ ...placeAttrs, host: this.currentHost })
 
     for (const [i, roomAttrs] of roomsAttrs.entries()) {
-      const roomType = rawRooms[i]?.type as RoomTypesEnum
+      const roomType = Params.cast(rawRooms[i] ?? {}, 'type', 'string', { enum: RoomTypesEnumValues })
       switch (roomType) {
         case 'Bathroom':   await Bathroom.txn(txn).create({ place: created, ...roomAttrs }); break
         case 'Bedroom':    await Bedroom.txn(txn).create({ place: created, ...roomAttrs }); break
@@ -1118,7 +1111,7 @@ When an endpoint returns an unexpected 400 (or a spec fails with a 500 thrown by
 
 The `validate` option accepts `requestBody`, `responseBody`, `headers`, `query`, and `all` booleans. Setting `all: false` disables every validation segment, which is useful because:
 - For **400s on requests**, it reveals whether the failure was in OpenAPI request validation (problem stops) or in controller logic (problem persists).
-- For **500s in specs caused by response validation**, it lets the full response body reach the spec so you can inspect what actually came back — much more useful than the opaque validation error message.
+- For **500s in specs caused by response validation**, it lets the full response body reach the spec so you can inspect what actually came back — much more useful than the opaque validation error message. Comment out `fastJsonStringify: true` too: it serializes through the response schema, coercing the very mismatch you're hunting (`null` renders as `""` or `0`).
 
 ### Workflow
 
@@ -1129,8 +1122,8 @@ The `validate` option accepts `requestBody`, `responseBody`, `headers`, `query`,
      console.dir(this.params, { depth: null })
      ```
      Check whether the shape matches what the endpoint expects. If a feature spec was the trigger and the payload looks correct, consider writing a controller spec — faster and more isolated than feature specs — and iterate from there.
-   - **If the failure persists:** the problem is in controller logic (likely a `castParam` / `extractParams` failure, a DB constraint violation, or unhandled application error). Add logs around those calls to isolate.
-3. **Remove the `validate` line** from the decorator once the problem is identified. Leaving it disabled defeats the protection OpenAPI validation provides.
+   - **If the failure persists:** OpenAPI validation wasn't the cause. A persistent 400 is a `castParam` / `extractParams` rejection, a model validation failing on save, or a not-null, check-constraint, overflow or type-mismatch error from the database on save; a persistent 500 is an unhandled error, a unique-constraint violation among them. Add logs around those calls to isolate.
+3. **Remove the `validate` line** (and restore `fastJsonStringify`) once the problem is identified. Leaving it disabled defeats the protection OpenAPI validation provides.
 
 `NODE_DEBUG=psychic` also surfaces validation info, but `validate: { all: false }` is usually more useful because it lets the real response body through for direct inspection.
 
@@ -1143,21 +1136,22 @@ Psychic automatically converts certain errors to HTTP responses:
 | `castParam` fails | 400 | Invalid parameter type/value |
 | `extractParams` fails | 400 | Invalid model attributes |
 | Model validation fails | 400 | `isInvalid` with errors |
+| The database rejects a save | 400 | Not-null, check, overflow or type mismatch (`DataIncompatibleWithDatabaseField`) |
 | `findOrFail` no match | 404 | Record not found |
 | `firstOrFail` no match | 404 | Record not found |
-| `save` / `update` that writes changes to a loaded record | 404 | Row deleted after it was loaded (`CannotSaveMissingDream`) |
+| `save` / `update` that writes changes to a loaded record | 404 | Row hard-deleted after it was loaded (`CannotSaveMissingDream`) |
 
 All validation-layer errors return 400 by design — this prevents attackers from distinguishing which layer rejected a request. Psychic's automatic conversions return a bare 400 with no body for param, requestBody, and model validation failures, so the response is opaque about which layer rejected.
 
-To deliberately surface field-level validation errors to the end user, return a 400 that carries the error shape — call `this.badRequest({ errors: { ... } })`. The natural source of that shape is a Dream model's `.errors` getter, which is keyed `{ field: ['message'], ... }`:
+To deliberately surface field-level validation errors to the end user, return a 400 that carries the error shape — call `this.badRequest({ errors: { ... } })`. The natural source of that shape is a Dream model's `.errors` getter, which is keyed by field, each entry naming the validation that failed (`presence`, `contains`, …) or the message a custom `addError` supplied:
 
 ```ts
 const place = Place.new(this.extractParams(Place, ['name', 'style', 'sleeps']))
-if (place.isInvalid) this.badRequest({ errors: place.errors })   // place.errors → { name: ['must be present'], ... }
+if (place.isInvalid) this.badRequest({ errors: place.errors })   // place.errors → { name: ['presence'], ... }
 await place.save()
 ```
 
-Without the explicit check, an invalid `save()` / `create()` still returns 400, but with no body — the framework logs the errors rather than sending them. Conveying the error shape to the client is therefore an explicit, deliberate act.
+Without the explicit check, an invalid `save()` / `create()` still returns 400, but with no body; the errors are logged only under `NODE_DEBUG=psychic`. Conveying the error shape to the client is therefore an explicit, deliberate act.
 
 ### Two rationalizations for a catch-all, and why neither holds
 
@@ -1195,7 +1189,7 @@ try {
 this.noContent()
 ```
 
-**A delete guard must accept both literals.** Postgres raises `'RESTRICT_VIOLATION'` under `.onDelete('restrict')` and `'FOREIGN_KEY_VIOLATION'` under `no action`. Since `restrict` is the recommended foreign key action (see [soft delete](soft-delete.md)), a guard written for `'FOREIGN_KEY_VIOLATION'` alone never fires and the endpoint 500s — and only a spec that creates the referencing `Place` first reaches the branch. `'UNIQUE_VIOLATION'` on create is the same pattern.
+**A delete guard must accept both literals.** A delete blocked by `.onDelete('restrict')` arrives as `'RESTRICT_VIOLATION'` or `'FOREIGN_KEY_VIOLATION'` depending on the Postgres version, and `no action` raises `'FOREIGN_KEY_VIOLATION'`. Since `restrict` is the recommended foreign key action (see [soft delete](soft-delete.md)), a guard written for one literal can miss and 500 — and only a spec that creates the referencing `Place` first reaches the branch. `'UNIQUE_VIOLATION'` on create is the same pattern.
 
 ## Rate Limiting
 
@@ -1205,24 +1199,24 @@ Only fall back to a Koa-compatible middleware when you need fine-grained per-rou
 
 ## Logging
 
-Use `PsychicApp.log` and `PsychicApp.logWithLevel` for all application logging. They route through Dream's configured logger (Winston by default) so output respects the log level, the configured transports, and any structured-log format the app sets.
+Use `PsychicApp.log` and `PsychicApp.logWithLevel` for all application logging. They write through the logger `conf/app.ts` sets with `psy.set('logger', ...)` (Winston in the scaffold), so output respects its level and transports.
 
 ```typescript
 import { PsychicApp } from '@rvoh/psychic'
 
-PsychicApp.log('order placed', { orderId: order.id, totalCents })
-PsychicApp.logWithLevel('warn', 'inventory low', { sku, remaining })
-PsychicApp.logWithLevel('error', 'payment provider error', { orderId: order.id, err })
+PsychicApp.log('booking confirmed', { bookingId: booking.id, nights })
+PsychicApp.logWithLevel('warn', 'place nearly booked out', { placeId: place.id, openNights })
+PsychicApp.logWithLevel('error', 'payment provider error', { bookingId: booking.id, err })
 ```
 
-Both are variadic — pass a message followed by any structured metadata. `logWithLevel` accepts `'debug' | 'info' | 'warn' | 'error'` (Dream's log levels).
+Both are variadic and join their arguments into one message string — an object is rendered with `util.inspect`, not passed to the logger as structured fields. `logWithLevel` accepts `'debug' | 'info' | 'warn' | 'error'` (Dream's log levels).
 
 ### Request logging
 
-`create-psychic` scaffolds a request logger in `conf/app.ts` mounted via the `server:init:after-middleware` hook. The default emits one structured line per request through `PsychicApp.log` under the hood:
+`create-psychic` scaffolds a request logger (`conf/system/requestLogger.ts`) in `conf/app.ts`, mounted via the `server:init:after-middleware` hook. It writes one structured JSON line per request through its own Winston instance — the `transports` and `format` passed below, not the app logger:
 
 ```typescript
-import requestLogger from '@conf/system/requestLogger.js'
+import requestLogger from '#conf/system/requestLogger.js'
 import winston from 'winston'
 
 psy.on('server:init:after-middleware', psychicServer => {
@@ -1234,7 +1228,7 @@ psy.on('server:init:after-middleware', psychicServer => {
         transports: [new winston.transports.Console()],
         format: winston.format.combine(winston.format.json()),
         headerBlocklist: [
-          'authorization', 'content-length', 'connection', 'cookie',
+          'authorization', 'content-length', 'connection', 'cookie', 'referer',
           'sec-ch-ua', 'sec-ch-ua-mobile', 'sec-ch-ua-platform',
           'sec-fetch-dest', 'sec-fetch-mode', 'sec-fetch-site', 'user-agent',
         ],
@@ -1248,13 +1242,13 @@ psy.on('server:init:after-middleware', psychicServer => {
 
 Three knobs to know:
 
-- **`headerBlocklist`** — request headers redacted from the log line. Scaffold ships `authorization`, `cookie`, plus a handful of low-signal browser-fingerprint headers.
-- **`bodyBlocklist`** — request body keys redacted from the log line. Scaffold ships `password`, `token`, `authentication`, `authorization`, `secret`. **Extend this when you add new sensitive fields** (`api_key`, `ssn`, `creditCard`, etc.) — otherwise they land in production logs.
+- **`headerBlocklist`** — request headers left out of the log line, matched on the whole name, ignoring case. Scaffold ships `authorization`, `cookie` and `referer`, plus a handful of low-signal browser-fingerprint headers.
+- **`bodyBlocklist`** — names whose values are logged as `[FILTERED]`, key kept: any body key at any depth (arrays included), query-string key, header name, or route param (the `:token` segment of `/password-resets/:token`) that *contains* a listed name, ignoring case. Scaffold ships `password`, `token`, `authentication`, `authorization`, `secret`, which already cover `accessToken` and `x-auth-token`. **Extend this when you add new sensitive fields** (`api_key`, `api-key` for an `x-api-key` header, `ssn`, `creditCard`, etc.) — otherwise they land in production logs. The path of a request no route matched is logged as sent, so put an emailed token in the fragment (`/reset-password#token=…`), which browsers never send, and have the page post it as `token` in the body, where `bodyBlocklist` masks it.
 - **`ignoredRoutes`** — request paths to skip entirely. Scaffold skips `/health_check`.
 
 ### Reacting to unhandled errors
 
-Genuine server errors (anything Psychic doesn't render as a 4xx) fire the `server:error` hook. This is the right place to ship to Sentry, Datadog, structured alerting, or whatever your error pipeline is:
+Server errors fire the `server:error` hook: `this.internalServerError()`, and anything thrown that Psychic doesn't map to a status — another library's error that carries a `status` included. Psychic's other error helpers (`this.notFound()`, `this.serviceUnavailable()`, …) and Koa's `ctx.throw` with a 4xx or 501–510 status render their own status without it, from a controller action or from `psy.use` middleware. This is the right place to ship to Sentry, Datadog, structured alerting, or whatever your error pipeline is:
 
 ```typescript
 psy.on('server:error', (err, ctx) => {
@@ -1262,7 +1256,6 @@ psy.on('server:error', (err, ctx) => {
     err,
     method: ctx.method,
     path: ctx.path,
-    requestId: ctx.state.requestId,
   })
   // ...ship to Sentry / Datadog / etc.
 
@@ -1271,11 +1264,11 @@ psy.on('server:error', (err, ctx) => {
 })
 ```
 
-The handler signature is `(err: Error, ctx: Koa.Context) => void | Promise<void>`. The scaffold registers a default that sets `ctx.status = 500` if a response hasn't been sent and re-throws in development/test so the failure surfaces loudly.
+The handler signature is `(err: Error, ctx: Koa.Context) => void | Promise<void>`. Before the hooks run, Psychic logs the error and sets a 500 with an empty body; a hook may reshape that response through `ctx`, and one that sets nothing leaves it. The scaffold's hook re-throws in development/test when headers were already sent, so a late failure surfaces loudly.
 
-`server:error` is the surface for every **shapeable** 5xx error — one the boundary catches while the response can still be formed. Psychic mounts an error boundary as its outermost middleware, so everything inside it — the body parser, CORS origin callbacks, custom `psy.use(...)` middleware, anything mounted via `server:init:after-routes` (e.g. Bull Board), and controller actions — escalates its uncaught genuine errors to this one hook. A 4xx-shaped error (a body-parser 400, an `HttpError` thrown from middleware) never reaches it: that renders as its own status. So don't filter by status inside the hook — it only ever sees 5xx-class errors.
+`server:error` is the surface for every **shapeable** genuine server error — one the boundary catches while the response can still be formed. Psychic mounts an error boundary as its outermost middleware, so everything inside it — the body parser, CORS origin callbacks, custom `psy.use(...)` middleware, anything mounted via `server:init:after-routes` (e.g. Bull Board), and controller actions — escalates its uncaught genuine errors to this one hook. A deliberate HTTP error (above) and the body parser's own 4xx errors (malformed JSON, an oversized or undecompressable body) never reach it: those render as their own status. Another library's error does, even one carrying a 4xx `status` (an API client mirroring an upstream 401), and it is answered 500 — so don't branch on `err.status` inside the hook.
 
-One registration does **not**, however, give you every 5xx error. A residual class bypasses `server:error` and surfaces only on Koa's app-level `'error'` event: an error thrown **after headers were already sent**, a response-stream failure, and errors the router re-throws to Koa. Psychic registers its own `koaApp.on('error')` listener that **logs** this class through the configured logger but does not run your `server:error` hooks for it. If your error pipeline (Sentry, Datadog, alerting) — not just your logs — must capture those post-response failures too, register your own app-level `'error'` listener; reach `koaApp` from a `server:init` hook:
+One registration does **not**, however, give you every 5xx error. A residual class bypasses `server:error` and surfaces only on Koa's app-level `'error'` event: an error a middleware throws **after headers were already sent**, and a response-stream failure. Psychic registers its own `koaApp.on('error')` listener that **logs** this class through the configured logger but does not run your `server:error` hooks for it. If your error pipeline (Sentry, Datadog, alerting) — not just your logs — must capture those post-response failures too, register your own app-level `'error'` listener; reach `koaApp` from a `server:init` hook:
 
 ```typescript
 psy.on('server:init:after-middleware', psychicServer => {
@@ -1287,7 +1280,7 @@ psy.on('server:init:after-middleware', psychicServer => {
 
 This won't double-report the shapeable errors — those are handled inside the boundary and never reach this event.
 
-One integration caveat, independent of Psychic: an error-tracking SDK configured with `defaultIntegrations: false` (common, to keep the captured payload lean) does **not** auto-attach HTTP request context. The `server:error` hook receives `ctx`, so pull the fields you want — `ctx.method`, `ctx.path`, `ctx.state.requestId`, the authenticated principal — and attach them to the event yourself, exactly as the example above logs them. Nothing upstream will populate them for you when the default integrations are off.
+One integration caveat, independent of Psychic: an error-tracking SDK configured with `defaultIntegrations: false` (common, to keep the captured payload lean) does **not** auto-attach HTTP request context. The `server:error` hook receives `ctx`, so pull the fields you want — `ctx.method`, `ctx.path`, the authenticated principal — and attach them to the event yourself, exactly as the example above logs them. Nothing upstream will populate them for you when the default integrations are off.
 
 ## Session & Cookie Management
 
@@ -1300,16 +1293,12 @@ this.endSession()
 
 // Cookies
 this.getCookie<string>('theme')
-this.setCookie('theme', 'dark', { expires: new Date('2025-12-31') })
+this.setCookie('theme', 'dark', { maxAge: { days: 365 } })
 ```
 
-`startSession` creates no server-side session record — the encrypted cookie itself is the entire credential. `endSession` only clears the cookie on the client; a cookie already captured elsewhere stays valid until it expires regardless of "logout." There is no per-session or per-user revocation — the only framework lever to invalidate outstanding sessions is rotating the cookie encryption key (see [Cookie Encryption](#cookie-encryption) below), which logs out every user, not just one. Design around this: if you need to revoke a single compromised session or a single user's sessions without logging everyone out, track that state yourself (e.g. a `sessionsInvalidatedAt` column on the user, checked against a timestamp embedded in the session payload) rather than assuming `endSession` accomplishes it server-side. The default cookie `maxAge` is 31 days. `startSession` takes no options and always uses the app's default `maxAge` — for a shorter-lived session, lower the default: `psy.set('cookie', { maxAge: { hours: 12 } })` (this changes the default for every cookie the app sets, not just sessions).
+`startSession` creates no server-side session record — the encrypted cookie, whose payload is `{ id, modelKey }`, is the entire credential. `endSession` only clears the cookie on the client, and `maxAge` only tells the browser when to discard its copy: a cookie value captured elsewhere stays valid for as long as its encryption key is `current` or `legacy`. There is no per-session or per-user revocation — the only framework lever is replacing the cookie encryption key without keeping the old one as `legacy` (see [Cookie Encryption](#cookie-encryption) below), which invalidates every user's session, not just one. If you need to revoke a single compromised session or a single user's sessions, track that state yourself rather than assuming `endSession` accomplishes it server-side. `startSession` takes no options and uses the app's default `maxAge`, which the scaffold sets to 14 days in `conf/app.ts` (31 days when unset) — for a shorter-lived session, lower it there: `psy.set('cookie', { maxAge: { hours: 12 } })` (this changes the default for every cookie the app sets, not just sessions).
 
-Session cookies set by Psychic default to `SameSite=Strict` — the browser won't send them on any cross-origin request (including link-click navigations from another site), which blocks classical CSRF without needing a CSRF token. Override only when a legitimate cross-site link-follow flow needs to preserve auth (rare for JSON APIs):
-
-```typescript
-psy.set('cookie', { sameSite: 'lax' })
-```
+Cookies Psychic sets default to `SameSite=Strict` — the browser never sends them on a cross-site request (including a link-click navigation from another site), which blocks classical CSRF without a CSRF token. A client on another origin of the same site (`app.bearbnb.com` → `api.bearbnb.com`) still sends them. `startSession` always uses Strict; `this.setCookie`'s options override it for a single cookie.
 
 ### Cookie Encryption
 
@@ -1356,7 +1345,7 @@ pnpm psy g:encryption-key --algorithm aes-128-gcm
 
 ```typescript
 // Programmatic equivalent — useful in specs, fixtures, or one-off scripts.
-import { Encrypt } from '@rvoh/dream'
+import { Encrypt } from '@rvoh/dream/utils'
 
 const key = Encrypt.generateKey('aes-256-gcm')
 ```
@@ -1365,73 +1354,33 @@ Never hand-type encryption keys. Use one of these helpers and feed the result th
 
 ### Decrypting Cookies Outside a Controller
 
-Koa middleware that runs outside Psychic's controller layer (e.g., protecting a bull-board dashboard) cannot use `this.getCookie()`. To decrypt a Psychic-encrypted cookie in plain middleware, use `Encrypt` from Dream directly:
+Koa middleware that runs outside Psychic's controller layer (e.g., protecting a bull-board dashboard) has no `this.getCookie()`. Read the cookie through `PsychicSession`, the class `this.getCookie()` calls, which decrypts with the same keys:
 
 ```typescript
-import { PsychicApp } from '@rvoh/psychic'
-import { Encrypt } from '@rvoh/dream'
-import { DecryptionError, DecryptionRotationError } from '@rvoh/dream/errors'
+import { PsychicApp, PsychicSession } from '@rvoh/psychic'
+import type Koa from 'koa'
 
-const encrypted = ctx.cookies.get('cookie_name')
-if (encrypted) {
-  let decrypted: { userId: string } | null
-  try {
-    // Three-arg (rotation) form: current key, with legacy fallback.
-    decrypted = Encrypt.decrypt<{ userId: string }>(
-      encrypted,
-      { algorithm: 'aes-256-gcm', key: AppEnv.string('APP_ENCRYPTION_KEY') },
-      { algorithm: 'aes-256-gcm', key: AppEnv.string('APP_LEGACY_ENCRYPTION_KEY') },
-    )
-  } catch (err) {
-    if (err instanceof DecryptionRotationError) {
-      // Both the current AND legacy keys failed. Do NOT swallow this as an
-      // auth failure: the default posture is to rethrow so a misconfigured
-      // rotation (wrong legacy key, legacy dropped too early) fails the
-      // FIRST request — caught by smoke tests / health checks at deploy
-      // time, not discovered later in a log nobody is tailing while every
-      // user is being logged out. Only once a rotation has been proven
-      // stable in production for a prolonged window might you deliberately
-      // downgrade this to log-at-error + unauthenticated (so legitimately
-      // expired ciphertext during a long rotation isn't a hard failure).
-      // That downgrade is a conscious, reversible decision — never the
-      // starting point.
-      throw err
-    }
-    if (err instanceof DecryptionError) {
-      // Wrong/tampered/stale-key ciphertext. Expected at low volume
-      // (old cookies, forgery attempts); worth a warn for incident
-      // correlation. A sustained spike is an attack or a key problem.
-      PsychicApp.logWithLevel('warn', 'cookie decryption failed', { reason: err.message })
-      return // treat this request as unauthenticated
-    }
-    // DecryptionParseError: the key was correct and the ciphertext intact
-    // (cipher + auth tag validated), but the decrypted plaintext was not
-    // valid JSON. Encrypt.decrypt always JSON.parses, so this is a
-    // format/contract mismatch, not tampering and not a wrong key — e.g.
-    // a non-JSON value passed into Encrypt.encrypt on our side, or (with a
-    // shared key from another service) their payload not matching the
-    // JSON-wrapped shape Encrypt expects. Never an auth outcome; let it
-    // propagate to the error handler (500) so the mismatch is visible.
-    throw err
-  }
-  // ...use decrypted (already the parsed object, not a JSON string)
+// the session cookie's { id, modelKey }, or null for a logged-out request
+export default function readSessionCookie(ctx: Koa.Context): { id: string; modelKey: string } | null {
+  const payload = new PsychicSession(ctx).getCookie(PsychicApp.getOrFail().sessionCookieName) as string | null
+
+  // startSession stores the JSON string of { id, modelKey }
+  return payload ? (JSON.parse(payload) as { id: string; modelKey: string }) : null
 }
 ```
 
-The `catch` exists to convert an untrusted-input failure into an auth decision **and emit the security signal** — not to swallow it. The original finding (R-019) was that silent-null *"conflates an attacker attempting forgery with this value never being set, and obscures bugs in app code — loses operationally important signal for incident logs."* A bare `catch { return unauthenticated }` reintroduces exactly that defect: it hides both forgery attempts and a broken key rotation.
-
-`DecryptionRotationError` is reachable only from the three-argument (current + legacy) form, and its safe default is to **rethrow**, not log-and-continue. A logged-and-swallowed rotation error still ships a broken rotation to production; a thrown one fails the first request at deploy time, which is exactly when a wrong legacy key or a prematurely-dropped legacy key must be caught. Downgrading it to log-at-error + unauthenticated is a deliberate, reversible posture you adopt *only after* a rotation has run cleanly in production for a prolonged window (so that genuinely expired ciphertext mid-rotation isn't a hard failure) — it is never the starting configuration. `DecryptionError` (single-key / no-rotation path) is the normal stale-or-forged-cookie case: log at `warn` and treat as unauthenticated. Never blanket-catch (see Critical Rule 13).
+`getCookie` reads a cookie no configured key opens — forged, or from a retired key — as absent: it returns `null`, as for a missing cookie, and logs nothing. A bearer token the app decrypts itself in `resolveCurrentUser` gets the same answer, logged out rather than a 500: catch exactly the two errors that mean no configured key opens it, `DecryptionError` and `DecryptionRotationError` (neither extends the other), return `null`, and rethrow anything else.
 
 `Encrypt.decrypt` throws on failure rather than silently returning null, and the three errors export from `@rvoh/dream/errors` (not the `@rvoh/dream` root):
 
-- `decrypt` returns the **already-`JSON.parse`d** value, not a string. Don't `JSON.parse` the result again.
+- `decrypt` returns what was encrypted, `JSON.parse`d once.
 - `null` / `undefined` ciphertext returns `null` (no throw). A missing key throws `MissingEncryptionKey`.
 - **`DecryptionError`** — cipher op / auth-tag / payload-shape was invalid: the ciphertext was tampered with, corrupted, or encrypted with a different key. This is the untrusted-input signal — the legitimate "treat as unauthenticated" case for user-controlled ciphertext like a session cookie.
 - **`DecryptionParseError`** — the cipher and auth tag validated (correct key, untampered ciphertext) but `JSON.parse` of the decrypted plaintext threw. `Encrypt.decrypt` always `JSON.parse`s the plaintext — it cannot return a raw string — so this is strictly a **format/contract mismatch**, not tampering and not a wrong key. With ciphertext you produced via `Encrypt.encrypt`, it means a non-JSON value was encrypted (your bug). With a shared key from another service, it usually means that service's payload doesn't match the JSON-wrapped shape `Encrypt` expects (their encoder, or the cross-service contract). Either way it is **never** an auth failure: let it propagate to the error handler as a 500 so the mismatch surfaces; swallowing it as "auth failure" hides the defect.
 - **Three-argument form** `decrypt(ciphertext, currentOpts, legacyOpts)` tries the current key, and on `DecryptionError` only falls back to the legacy key. If both fail with `DecryptionError`, it throws **`DecryptionRotationError`** carrying `.currentKeyError` and `.legacyKeyError`. A `DecryptionParseError` from the current key is **not** retried against the legacy key and **not** wrapped — the cipher already matched (right key, intact ciphertext), so a non-JSON plaintext is a format/contract mismatch rather than a key problem, and it propagates as `DecryptionParseError` directly.
 - The `@Encrypted` model decorator propagates these errors up to the app's error handler — there's no try/catch inside the decorator. Keys *and* ciphertext for an encrypted column are both system-controlled, so any decryption error there is a corrupted column or a broken rotation, not untrusted input: it should fail loudly, never be caught and nulled.
 
-The asymmetry is deliberate. **User-controlled ciphertext** (a session cookie, a token from a header) is the only place where catching is ever correct, and even there only `DecryptionError` (the single-key stale/forged case) is caught-and-converted to unauthenticated with a `warn` log. `DecryptionRotationError` defaults to rethrow — a broken rotation is a configuration defect that must fail loudly at deploy, not a per-request auth outcome; only downgrade it to log-and-unauthenticated as a conscious, reversible decision after the rotation has proven stable in production. **System-controlled ciphertext** (`@Encrypted` columns, internal share tokens) propagates untouched in every case. And `DecryptionParseError` is always a format/contract mismatch (your encoder or a cross-service one), never an auth outcome. If you do adopt the log-and-continue downgrade for a prolonged rotation, treat a rising rate of `DecryptionRotationError` as a rotation-misconfiguration alarm wired into monitoring — but prefer the throw, which needs no one watching a dashboard.
+**User-controlled ciphertext** (a session cookie, a token from a header) is the only place where catching is correct, and only for the two errors that mean no configured key opens it. **System-controlled ciphertext** (`@Encrypted` columns, internal share tokens) propagates untouched, and `DecryptionParseError` is always a format/contract mismatch (your encoder or a cross-service one), never an auth outcome.
 
 ### Setting Cookies for External Services (Bypassing Encryption)
 
@@ -1458,7 +1407,7 @@ Key points:
 
 ### Proxy Configuration for Secure Cookies
 
-Behind a reverse proxy that terminates TLS, Koa receives plain HTTP and rejects `secure: true` cookies with "Cannot send secure cookie over unencrypted connection". Prefer re-encrypting proxy→app traffic and configuring TLS on the application (see [deploying.md](deploying.md#tls-behind-a-reverse-proxy)) over enabling `app.proxy`, which trusts `X-Forwarded-Proto` from *any* upstream. Where `app.proxy` is genuinely the answer — a dev tunnel such as ngrok — a Psychic app sets it from `conf/app.ts`:
+Behind a reverse proxy that terminates TLS, Koa receives plain HTTP and rejects `secure: true` cookies with "Cannot send secure cookie over unencrypted connection". Prefer re-encrypting proxy→app traffic and configuring TLS on the application (see [deploying.md](deploying.md#tls-behind-a-reverse-proxy)) over enabling `app.proxy`, which trusts `X-Forwarded-Proto` from *any* upstream. Where `app.proxy` is genuinely the answer — a dev tunnel such as ngrok, or a proxy that forwards plain HTTP to a container only it can reach — a Psychic app sets it from `conf/app.ts`:
 
 ```typescript
 psy.on('server:init:after-middleware', psychicServer => {
@@ -1470,18 +1419,14 @@ psy.on('server:init:after-middleware', psychicServer => {
 
 ```typescript
 // Create through association (automatically sets FK)
-let model = await this.currentCity.createAssociation('rooms', {
-  ...this.extractParams(Room, ['name', 'sleeps']),
+let place = await this.currentCity.createAssociation('places', {
+  ...this.extractParams(Place, ['name', 'style', 'sleeps']),
   additionalField: value,
 })
 
 // Load for serialization if persisted
-if (model.isPersisted) {
-  model = await model.loadFor('admin').execute()
+if (place.isPersisted) {
+  place = await place.loadFor('admin').execute()
 }
-this.created(model)
+this.created(place)
 ```
-
-## Generator Gotcha: Duplicate Route Namespaces
-
-When running `pnpm psy g:resource` for a resource in an existing namespace (e.g., generating `v1/guest/reviews` when `v1/guest/bookings` already exists), the generator may add a second `r.namespace('guest', ...)` block in `routes.ts`. Always check `routes.ts` and consolidate duplicate namespace blocks after running a generator.

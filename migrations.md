@@ -18,7 +18,7 @@ Use `git diff --name-only origin/main -- api/src/db/migrations/` to confirm a mi
 
 Migrations `main` brings in may sort between your branch's; `pnpm psy db:migrate` still runs every pending one. Never rename a migration to reorder it: a database that already ran it (the user's dev DB, a deployed branch) keeps the old name recorded and fails `db:migrate` with `corrupted migrations`. That error means the database recorded a migration whose file is missing, usually after switching branches; on the test DB, the fix is `pnpm psy db:reset`.
 
-Every `pnpm psy` command boots the full app, importing all models, before any type-regeneration step — so a stale `src/types/db.ts` (referencing a column the model no longer has, for example) crashes the CLI at import, before even `pnpm psy db:reset` or `pnpm psy sync` can reach the fix. Recover with `git checkout HEAD -- src/types/db.ts src/types/dream.ts`, then `pnpm psy db:reset` (or `sync`) to regenerate from a clean baseline. This only helps when `db.ts`/`dream.ts` themselves regressed — overwritten by a fresh scaffold's version, for example. If the real cause is a model referencing a column that was never migrated, `HEAD`'s version is equally stale and the checkout is a no-op — run the missing migration (or revert the model edit) first, then sync.
+Every `pnpm psy` command boots the full app, importing all models, before any type-regeneration step — so a stale `src/types/db.ts` crashes the CLI at import, before even `pnpm psy db:reset` or `pnpm psy sync` can reach the fix. Recover with `git checkout HEAD -- src/types/db.ts src/types/dream.ts`, then `pnpm psy db:reset` (or `sync`) to regenerate from a clean baseline. This only helps when `db.ts`/`dream.ts` themselves regressed — overwritten by a fresh scaffold's version, for example. If the real cause is a model that depends on a migration that never ran, `HEAD`'s version is equally stale and the checkout is a no-op — run the missing migration (or revert the model edit) first, then sync.
 
 ### NOT NULL columns and defaults
 
@@ -47,13 +47,13 @@ await db.schema
   .execute()
 ```
 
-The temporary default backfills existing rows; dropping it afterward keeps the "no silent default in caller code" guarantee for everything written from here on. (If a permanent default genuinely fits the domain, keep it and skip the drop — that's the `col.defaultTo(value).notNull()` case above.) Column-shorthand generators omit the default by design, since they can't know whether the table is populated — this is expected generate-then-edit territory, not a generator bug.
+The temporary default backfills existing rows; dropping it afterward keeps the "no silent default in caller code" guarantee for everything written from here on. (If a permanent default genuinely fits the domain, keep it and skip the drop — that's the `col.defaultTo(value).notNull()` case above.) Column shorthand supplies a default on its own only for non-optional `boolean` (`false`), array (`'{}'`) and `json`/`jsonb` (`'{}'`) columns, so adding any other `NOT NULL` column to a populated table means hand-editing the generated migration as above.
 
 `pnpm psy db:migrate` runs migrations, then syncs types **only when `NODE_ENV=test`** — the default for `psy` commands. `db:rollback` carries the same guard. Generated types are only ever built from the **test** database — `pnpm psy sync` is a no-op under any other `NODE_ENV`, and no standalone sync can read a development database. Migrating development therefore does not update `src/types/`; run `pnpm psy db:migrate` under the default test environment as well, which migrates the test database and regenerates the types. If post-sync fails (e.g., a model references an old table name), Dream reverts `db.ts`, `dream.ts`, and any other generated type files that already existed before this sync began back to their pre-sync content. The migration itself and the database schema it applied are unaffected by this revert — the migration is recorded and its schema change is committed before sync ever starts, so there's no need to `db:rollback` on the assumption the ledger is out of sync. Fix the problem and run `pnpm psy sync` to regenerate the types.
 
 ### Generating column-only migrations
 
-For schema changes that just add columns (or a foreign key) to an existing table, `pnpm psy g:migration` accepts the same column shorthand as `g:resource` and `g:model` — including `BelongsTo:type` and `:optional` modifiers. See the canonical examples in [generators.md — Adding properties to an existing model](generators.md#adding-properties-to-an-existing-model). Hand-edit the generated migration only when the change isn't expressible as column shorthand (check constraints, enum alterations, custom backfill).
+For schema changes that just add columns (or a foreign key) to an existing table, `pnpm psy g:migration` accepts the same column shorthand as `g:resource` and `g:model` — including `Model:belongs_to` and `:optional` modifiers. See the canonical examples in [generators.md — Adding properties to an existing model](generators.md#adding-properties-to-an-existing-model). Hand-edit the generated migration for what column shorthand can't express (check constraints, enum alterations, custom backfill).
 
 A hand-written migration's name must contain neither `-to-` nor `-from-` anywhere: either marker resolves the text after it into a real table name — a `-to-` anywhere in the name wins even when a `-from-` appears earlier, and `-from-` applies only when there's no `-to-` at all — and once the table name is resolved rather than left as a `<table-name>` placeholder, the generator fails when no columns are passed.
 
@@ -92,7 +92,7 @@ export async function down(db: Kysely<any>): Promise<void> {
 
 ## Rename Table
 
-Use `DreamMigrationHelpers.renameTable` instead of Kysely's `alterTable(...).renameTo(...)` — it automatically renames the associated sequence (for tables with serial primary keys) in addition to the table itself:
+Use `DreamMigrationHelpers.renameTable` instead of Kysely's `alterTable(...).renameTo(...)` — it also renames `<table>_pkey` and, for an identity or serial primary key, `<table>_id_seq`, which Postgres leaves under the old table's name:
 
 ```typescript
 export async function up(db: Kysely<any>): Promise<void> {
@@ -127,7 +127,7 @@ Step 3 must happen before step 4. `db:migrate` runs migrations then sync (under 
 
 ### Text Types
 ```typescript
-.addColumn('name', 'varchar')                    // varchar(255) default
+.addColumn('name', 'varchar(255)')               // what name:string generates
 .addColumn('name', 'varchar(128)')               // varchar with length
 .addColumn('name', sql`citext`, col => col.notNull())  // Case-insensitive (requires extension)
 .addColumn('bio', 'text')                        // Unlimited text
@@ -147,7 +147,7 @@ Step 3 must happen before step 4. `db:migrate` runs migrations then sync (under 
 .addColumn('created_at', 'timestamp', col => col.notNull())
 .addColumn('birthday', 'date')
 .addColumn('start_time', 'time')
-.addColumn('scheduled_at', 'timestamp with time zone')
+.addColumn('scheduled_at', 'timestamptz')
 ```
 
 ### Boolean
@@ -204,28 +204,18 @@ export async function down(db: Kysely<any>): Promise<void> {
 }
 ```
 
-`encryptColumn` renames `column` to `encrypted_<column>`, widens it to `text`, and
-encrypts each non-null value. `decryptColumn` performs the inverse; pass
-`columnType` when the decrypted column should be restored to something other than
-`text`. Both helpers run inside the migration transaction and preserve nulls.
+`encryptColumn` renames `column` to the backing column `@deco.Encrypted()` reads
+(`encrypted_phone` for `phone`), widens it to `text`, and encrypts each non-null
+value. `decryptColumn` performs the inverse; pass `columnType` when the decrypted
+column should be restored to something other than `text`. Both helpers run inside
+the migration transaction and preserve nulls.
 
-They require column encryption to already be configured — they encrypt/decrypt through
-the same keys the `@deco.Encrypted()` getter/setter use. Configure them in
-`conf/dream.ts` before running the migration (this is Dream-app config, separate from
-the cookie encryption config in `conf/app.ts`):
-
-```typescript
-// conf/dream.ts — app is the DreamApp passed to the default export
-app.set('encryption', {
-  columns: {
-    current: { algorithm: 'aes-256-gcm', key: AppEnv.string('COLUMN_ENCRYPTION_KEY') },
-  },
-})
-```
-
-Generate a key with `pnpm psy g:encryption-key`. The model-side `@deco.Encrypted()`
-setup is in [models.md](models.md); run `pnpm psy sync` after adding the decorator so
-the `encrypted_<column>` column is registered in the generated types.
+They encrypt and decrypt through the same `encryption.columns` keys as the
+`@deco.Encrypted()` getter/setter — set in the scaffold's `conf/dream.ts` from
+`COLUMN_ENCRYPTION_KEY` — and throw `MissingColumnEncryptionOpts` without them. The
+model-side `@deco.Encrypted()` setup is in [models.md](models.md); run `pnpm psy sync`
+after adding the decorator so the generated types list the plaintext property (`phone`)
+among the model's virtual columns.
 
 These helpers intentionally rewrite one row at a time, reading rows in bounded
 batches. That keeps memory bounded but is still not an online migration for
@@ -346,15 +336,15 @@ A `replacements` entry for a **scalar** enum column is exactly `{ table, column,
 
 Dream automatically starts a new transaction when it encounters `dropEnumValue` in a migration, ensuring the new enum value from Migration 1 is committed and visible before Migration 2 tries to use it as a replacement. If an enum is used on multiple tables/columns, add a separate entry in the `replacements` array for each.
 
-**A column `DEFAULT` or a check constraint referencing the enum blocks `dropEnumValue`.** Internally `dropEnumValue` retypes each replacement column to `text`, drops and re-creates the type, then retypes back with `USING column::enum`. A `DEFAULT` on that column fails the retype-to-text step (`default for column … cannot be cast automatically`), and a check constraint comparing against the enum's values fails the same way (a type-agnostic check such as `column IS NOT NULL` never blocks). Drop the default before the first `dropEnumValue` and re-establish it after; drop each value-comparing check constraint with `DreamMigrationHelpers.dropConstraint(db, constraintName, { table })` before the first `dropEnumValue`, re-adding whichever should survive.
+**Anything stored against a replacement column that the retype has to re-derive — a check constraint, a partial-index predicate, an expression index, a `DEFAULT` — can block `dropEnumValue`**, which retypes each replacement column to `text`, recreates the enum, and retypes back. The error it raises names the column, lists its check constraints with a paste-ready `DreamMigrationHelpers.dropConstraint(...)` call for each, and names the other candidates; drop the blocker before the first `dropEnumValue` and re-add whatever should survive. A type-agnostic check such as `column IS NOT NULL` never blocks.
 
 **A fully-restoring rollback must be split across the pair, exactly like the forward pass.** The minimal `down()` above only re-adds the dropped value, which is safe. But a `down()` that also maps rows back with `dropEnumValue` can't re-`addEnumValue` and `dropEnumValue` in one file (same one-transaction constraint as the forward pass). Mirror the split: re-`addEnumValue`s in Migration 2's `down()`, row-mapping `dropEnumValue`s in Migration 1's `down()`. The pair rolls back together (`--steps 2`).
 
 ### Forcing a New Transaction in Migrations
 
-Dream runs all pending migrations in a single transaction by default. If a migration file contains the string `DreamMigrationHelpers.dropEnumValue` or `DreamMigrationHelpers.newTransaction()`, Dream runs that file in its own transaction, separate from the migrations before and after it.
+Dream runs all pending migrations in a single transaction by default. When a migration's `up` or `down` contains `DreamMigrationHelpers.dropEnumValue` or `DreamMigrationHelpers.newTransaction()`, Dream commits everything before it and starts a new transaction there; the migrations after it share that transaction until the next such migration.
 
-This detection is a naive string search on the file contents — it looks for those exact strings. Do not rename `DreamMigrationHelpers` on import (e.g., `import { DreamMigrationHelpers as DMH }`) or the transaction boundary will not be detected.
+The check is a plain substring search of the `up`/`down` function source, so a call made from a helper function outside them, or through a renamed import (`import { DreamMigrationHelpers as DMH }`), is not detected.
 
 ```typescript
 export async function up(db: Kysely<any>): Promise<void> {
@@ -365,7 +355,7 @@ export async function up(db: Kysely<any>): Promise<void> {
 
 ## Raw Kysely Data Queries in Migrations
 
-A migration's `db` handle is the same Kysely instance Dream builds everywhere else, with `CamelCasePlugin` applied — so it works the same way here as it does anywhere else in a Dream app: in the query builder, write table and column identifiers in camelCase and Kysely translates them to the real snake_case columns on the way out; it camelCases every result key on the way back, unconditionally ([SKILL.md — Naming Conventions](SKILL.md#naming-conventions)). A migration is easy to get wrong here because the rest of the file — DDL, `DreamMigrationHelpers` calls — is written in snake_case, so a builder query reads like it should be too:
+A migration's `db` handle is the same Kysely instance Dream builds everywhere else, with `CamelCasePlugin` applied: builder identifiers are snake-cased on the way out, and every result key is camelCased on the way back, unconditionally ([SKILL.md — Naming Conventions](SKILL.md#naming-conventions)). The rest of a migration file — DDL, `DreamMigrationHelpers` calls — is snake_case, but rows are not: select `host_id` and the value is at `row.hostId`, while `row.host_id` is `undefined` and `Kysely<any>` won't flag it. Write builder identifiers in camelCase so they match the keys you read back:
 
 ```typescript
 export async function up(db: Kysely<any>): Promise<void> {
@@ -424,12 +414,13 @@ await db.schema
   .column('host_id')
   .execute()
 
-// Multi-column
+// Multi-column, unique among live rows of a soft-deleted table
 await db.schema
   .createIndex('localized_texts_localizable_for_locale')
   .on('localized_texts')
   .columns(['localizable_type', 'localizable_id', 'locale'])
   .unique()
+  .where(sql<SqlBool>`deleted_at IS NULL`)
   .execute()
 
 // Type column for STI
@@ -528,7 +519,7 @@ await DreamMigrationHelpers.createExtension(db, 'pg_trgm')
 
 ## Polymorphic Association Columns
 
-For polymorphic BelongsTo, you need a type column (enum) and an ID column:
+For polymorphic BelongsTo, you need a type column (here an enum of the target model names) and an ID column:
 
 ```typescript
 // Create localizable type enum
@@ -544,22 +535,25 @@ await db.schema
   .addColumn('localizable_id', 'uuid', col => col.notNull())
   .addColumn('locale', sql`locales_enum`, col => col.notNull())
   .addColumn('title', 'varchar')
+  .addColumn('markdown', 'text')
   .addColumn('created_at', 'timestamp', col => col.notNull())
   .addColumn('updated_at', 'timestamp', col => col.notNull())
+  .addColumn('deleted_at', 'timestamp')
   .execute()
 
-// Index for polymorphic lookup
+// Polymorphic lookup, one live row per locale
 await db.schema
   .createIndex('localized_texts_localizable_for_locale')
   .on('localized_texts')
   .columns(['localizable_type', 'localizable_id', 'locale'])
   .unique()
+  .where(sql<SqlBool>`deleted_at IS NULL`)
   .execute()
 ```
 
 ## STI Columns
 
-STI uses a `type` column (varchar, stores child class name) plus child-specific columns with check constraints:
+STI uses a `type` enum column, whose values are the child class names, plus child-specific columns with check constraints:
 
 ```typescript
 // Create base table with type column
@@ -633,7 +627,6 @@ types:enum[]:room_types:bathroom,bedroom     # Enum array
 User:belongs_to                # user_id FK
 User:belongs_to:optional       # nullable FK
 User@created_by:belongs_to     # created_by_id FK, createdBy assoc (aliased)
-Messaging/Template@template:belongs_to   # template_id FK (namespace stripped)
 phone:encrypted                # encrypted text column → DB column `encrypted_phone`
 ```
 
@@ -649,8 +642,7 @@ A `@alias` suffix on segment-1 of the `belongs_to` shorthand drives three identi
 
 ```bash
 pnpm psy g:model Messaging/MessageRequest \
-  InternalUser@canceled_by:belongs_to:optional \
-  Messaging/Template@template:belongs_to
+  InternalUser@canceled_by:belongs_to:optional
 ```
 
 Generates:
@@ -659,14 +651,8 @@ Generates:
 @deco.BelongsTo('InternalUser', { on: 'canceledById', optional: true })
 public canceledBy: InternalUser | null
 public canceledById: DreamColumn<MessageRequest, 'canceledById'>
-
-@deco.BelongsTo('Messaging/Template', { on: 'templateId' })
-public template: MessagingTemplate
-public templateId: DreamColumn<MessageRequest, 'templateId'>
 ```
 
 **Canonical use case** — the `_by` pattern: `User@created_by`, `User@approved_by`, `InternalUser@canceled_by`. Lets one model carry multiple FKs to the same target without collision (`Messaging/Message@last_inbound:belongs_to`, `Messaging/Message@last_outbound:belongs_to`, etc.).
-
-**Secondary use case** — namespace strip: `Messaging/Template@template:belongs_to` produces `template: MessagingTemplate` rather than `messagingTemplate: MessagingTemplate`. Useful when the namespace is organizational rather than semantic.
 
 Without an `@alias`, the property/column derive from the model's last namespace segment — the plain `Model:belongs_to[:optional]` form. Works in every generator that accepts `belongs_to`: `g:model`, `g:migration`, `g:resource`. `g:sti-child` does not accept `belongs_to` — STI children cannot declare associations (see [sti.md — STI Limitations](sti.md#sti-limitations)); declare the association on the STI parent instead.

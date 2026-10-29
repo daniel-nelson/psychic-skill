@@ -29,19 +29,14 @@ NODE_ENV=development pnpm console
 
 Wait for the console to fully load before using auto-imported names. The console does NOT live-reload — exit and re-launch after code changes.
 
-### Exiting
-
-Press `ESC` twice to exit.
-
 ### Auto-imported Models
 
-Models are available by their class name, derived from the file path relative to `src/app/models/` with slashes removed and the extension dropped:
+Models are globals named from the file path relative to `src/app/models/`, slashes removed and the extension dropped — not from the class name, so the two differ for a class generated with `--model-name`:
 
 | File Path | Console Name |
 |---|---|
-| `src/app/models/User.ts` | `User` |
-| `src/app/models/Client/Contract.ts` | `ClientContract` |
-| `src/app/models/Client/Contract/Invoice.ts` | `ClientContractInvoice` |
+| `src/app/models/Place.ts` | `Place` |
+| `src/app/models/Room/Kitchen.ts` (class `Kitchen`) | `RoomKitchen` |
 
 Only Dream model classes that have a table become globals. `ApplicationModel` has no table and so no global, and neither does any other kind of default export under `src/app/models/`.
 
@@ -61,11 +56,11 @@ Every file under `src/app/services/` contributes its default export as a `Servic
 Dream utilities are available globally:
 - `CalendarDate.today()`, `DateTime.now()`
 - `sort(array)`, `sortBy(array, callback)`
-- Other Dream utils from `@rvoh/dream/utils`
+- Some other `@rvoh/dream/utils` helpers (`uniq`, `compact`, `range`, `camelize`, …); `groupBy`, `isEmpty` and the rest need a manual import (see Manual Imports)
 
 ### Manual Imports
 
-For anything not auto-imported — a named export, or a file outside `src/app/models/` and `src/app/services/` — use dynamic import with a path from `api/`. Bind with `let`, not `const`: a `const` cannot be reassigned in the REPL after a mistake, a `let` can.
+For anything not auto-imported — a named export, or a file outside `src/app/models/` and `src/app/services/` — use dynamic import with a path from `api/`.
 
 ```js
 let { PlaceSerializer } = await import('./src/app/serializers/PlaceSerializer.js')
@@ -83,7 +78,7 @@ let rooms = await place.associationQuery('rooms').all()
 
 ## Non-interactive console use from an agent
 
-**`pnpm console` is interactive — designed for a human at a terminal who launches it, waits for full boot, then types or pastes queries.** Piping commands into stdin races the boot: the REPL begins reading before auto-imports finish, each newline is a separate evaluation (so `let x = ...` on line 1 isn't visible to line 2), and `process.exit(0)` can fire before async work resolves. Treat piping as unreliable, not as a documented option.
+**`pnpm console` is interactive — designed for a human at a terminal who launches it, waits for full boot, then types or pastes queries.** Piping commands into stdin is racy: the REPL evaluates each line as it arrives, without waiting for boot to finish the auto-imports or for an earlier line's `await` to settle — so `let x = await ...` on line 1 is still `undefined` on line 2, and `process.exit(0)` can fire before async work resolves. Treat piping as unreliable, not as a documented option.
 
 For non-interactive work from an agent, the answer is a **scratch script** using the boilerplate in "Running Scripts Against the Development Database" below. The boilerplate handles Psychic's load-bearing init order; do not hand-roll an alternative.
 
@@ -93,21 +88,21 @@ If a human is in the loop, the cleanest path is still: launch `pnpm console`, wa
 
 For non-interactive use from an agent, write a scratch script using the boilerplate below. (For interactive use by a human, `pnpm console` is the right tool — see "Dream Console" above.)
 
-The boilerplate mirrors the canonical `src/conf/repl.ts` (the file `pnpm console` runs), minus the REPL-specific `DreamCLI.loadRepl(...)` call. Same boot order — load env first, then initialize the Psychic app, then import models.
+The boilerplate mirrors the canonical `src/conf/repl.ts` (the file `pnpm console` runs), minus the REPL-specific `DreamCLI.loadRepl(...)` call. Same boot order — load env first, then initialize the Psychic app, then query.
 
 ```typescript
 // api/scratch-cleanup.ts
 //
 // Mirrors src/conf/repl.ts boot order. DreamCLI.loadRepl is REPL-specific
-// and intentionally omitted — a script imports models explicitly.
+// and intentionally omitted — a script imports what it uses.
 
-import '@conf/loadEnv.js'                                      // (1) side-effect — loads .env / .env.test based on NODE_ENV
-import initializePsychicApp from '@conf/system/initializePsychicApp.js'
+import '#conf/loadEnv.js'                                      // (1) side-effect — loads .env / .env.test based on NODE_ENV
+import initializePsychicApp from '#conf/system/initializePsychicApp.js'
 
 await initializePsychicApp()                                   // (2) boots Dream + Psychic
 
-const { default: Place } = await import('./src/app/models/Place.js')  // (3) dynamic — must be after init
-console.log(await Place.count())
+const { default: Place } = await import('./src/app/models/Place.js')
+console.log(await Place.count())                               // (3) query after init
 
 process.exit(0)
 ```
@@ -126,7 +121,7 @@ APP_NAME=$(node -p "require('./package.json').name") \
 **Only switch to `NODE_ENV=development` when the user explicitly asks** for development-database work. The development DB is not the agent's to manage:
 
 - **Never run `pnpm psy db:reset` against development.** The agent does not know what data the developer has in dev — seed data, ad-hoc records, partially-imported fixtures, anything. A reset destroys all of it. The way to ensure `db:reset` targets the test DB is to invoke it with no `NODE_ENV` prefix and to confirm `NODE_ENV` is not exported in the surrounding shell (`echo $NODE_ENV` should be empty, or `test`). If `NODE_ENV=development` is set in the environment, unset it before running `psy` commands — never let an inherited environment variable silently redirect a destructive command.
-- **Migrations are roughly safe to run forward, but rollback by step count is not reliable.** `pnpm psy db:rollback --steps=<N>` rolls back the last `N` recorded migrations on the dev DB; in principle `N` is the number of migration files present on the feature branch but not on `main`. In practice that count can be wrong: `main` can carry migrations whose timestamps are *later* than the branch's, so "what's on the branch but not main" doesn't match "what migrated last on dev." Verify before rolling back, or ask the user to do it.
+- **Migrations are roughly safe to run forward, but rollback by step count is not reliable.** `pnpm psy db:rollback --steps=<N>` rolls back the last `N` recorded migrations on the dev DB; in principle `N` is the number of migration files present on the feature branch but not on `main`. In practice that count can be wrong: rollback undoes migrations in the order dev ran them, so a `main` migration dev ran after the branch's — after merging `main`, say — is undone first. Verify before rolling back, or ask the user to do it.
 - **Schema drift hazard when editing a branch-only migration in place.** Recall from `migrations.md`: editing a still-on-branch migration plus `pnpm psy db:reset` on the test DB will bring test back in sync, but the development DB — already migrated against the *pre-edit* shape — silently retains the old shape (e.g., the old enum values). The result is dev and test diverging in ways that confuse subsequent work. If the user has migrated dev against an unmerged migration that you then edit, you must tell them — they need to choose between resetting dev themselves, manually backing out the affected rows, or recreating dev from a seed.
 
 When the user has explicitly asked for dev-database work, prefix the invocation:
@@ -140,8 +135,7 @@ NODE_ENV=development \
 
 **Things that bite agents who don't follow this exactly:**
 
-- **CWD must be `api/`.** Both the path alias `@conf/...` and the relative `./src/...` resolve from `api/`.
+- **Run from `api/`, with the script in `api/`.** `loadEnv` reads `.env` / `.env.test` relative to the working directory, and the `./src/...` imports resolve from the script's own location.
 - **`APP_NAME` / `APP_VERSION` are read at boot** by some projects' `app.ts` / `AppEnv` setup. The `console` script in `package.json` sets these from `$npm_package_name` / `$npm_package_version` automatically; standalone `tsx` doesn't, so set them explicitly. Skip this only if the project's boot doesn't reference them.
-- **Mixed import paths are intentional.** Static framework-config imports use the `@conf/...` alias (resolved by `tsx` via `tsconfig.json`). Model imports go through `await import('./src/...')` because the model registry is built **during** `initializePsychicApp()` — a static `import` would resolve before init completes.
-- **Do not hand-roll an alternative** — `tsx -e "..."` one-liners that import individual models without `loadEnv` + `initializePsychicApp` will fail in confusing ways that look like model bugs but are actually init-order bugs.
+- **Do not hand-roll an alternative** — a `tsx -e "..."` one-liner that skips `loadEnv` loads no `.env` file and runs with `NODE_ENV` unset, which `AppEnv` reads as production; one that skips `initializePsychicApp` fails its first query.
 - Add `scratch-*.ts` to `.gitignore` if it isn't already, and delete scratch files after use — they're throwaway, not artifacts.

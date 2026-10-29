@@ -120,17 +120,16 @@ record another transaction has moved out of the query is left alone. Destroy hoo
 `dependent: 'destroy'` cascade run per record, and on a `@SoftDelete()` model this is still a soft
 delete — see [soft-delete.md](soft-delete.md). `reallyDestroy` takes the same option.
 
-`lock` lives on the query, never on an instance. Destroying an already-loaded instance has no
-select-then-destroy window to close, so there is no instance-level equivalent and none is needed.
+`lock` lives on the query, never on an instance.
 
 ## What a lock costs
 
 - **`batchSize` defaults to 10**, not the 1000 an unlocked batch uses, and the small default is
   deliberate. Every row in a batch stays locked for the whole batch — each record's hooks, each
-  record's `dependent: 'destroy'` cascade, and, on the callback form, the query's `preload` queries,
-  which are fetched inside the lock window. An oversized batch blocks unrelated writers touching those
-  rows and surfaces as timeouts elsewhere in the application, very hard to trace back here. Lower it
-  further for models with expensive hooks or deep cascades.
+  record's `dependent: 'destroy'` cascade, and any `preload` on the query, which is fetched inside
+  the lock window (the attributes form of `update` drops it). An oversized batch blocks unrelated
+  writers touching those rows and surfaces as timeouts elsewhere in the application, very hard to
+  trace back here. Lower it further for models with expensive hooks or deep cascades.
 - **A batch waits, without bound, for whoever holds the row.** The locked read is a plain
   `FOR UPDATE` — no `NOWAIT`, no `SKIP LOCKED`. If another transaction holds a lock on one of the
   batch's rows, the call blocks until that transaction ends, holding its own transaction and pooled
@@ -157,12 +156,11 @@ select-then-destroy window to close, so there is no instance-level equivalent an
 - **Above READ COMMITTED the loss is loud.** The drop-out-of-the-locked-read behavior described here
   is READ COMMITTED, Postgres's default. Under REPEATABLE READ or SERIALIZABLE the same race raises a
   serialization failure instead of a quieter lower count. Both are safe.
-- **A `limit` or `offset` on the query throws** `BatchingIncompatibleWithLimitOrOffset`. A batched run
-  would re-apply either inside every batch window rather than bounding the run as a whole.
-- **An unlocked update racing a deleter aborts mid-run.** Without `lock`, a matched record another
-  transaction destroys between a batch's read and that record's write throws: earlier batches stay
-  committed and no count is returned. Where deleters race the update, `lock: true` holds claimed rows
-  under their locks until they are written.
+- **An unlocked update racing a hard delete aborts mid-run.** Without `lock`, a matched record
+  another transaction hard-deletes between a batch's read and that record's write throws: the records
+  written before it stay committed (unless the query carries `.txn(txn)`) and no count is returned.
+  Where deleters race the update, `lock: true` holds claimed rows under their locks until they are
+  written.
 
 **If you are writing a large set and do not need compare-and-set, do not pass `lock`.** It is slower
 than the plain form by construction.

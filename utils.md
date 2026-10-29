@@ -12,7 +12,7 @@ import { camelize, compact, groupBy, sort, uniq /* etc. */ } from '@rvoh/dream/u
 - **camelize** - Convert to camelCase
 - **capitalize** / **uncapitalize** - Capitalize or uncapitalize first letter
 - **cloneDeepSafe** - Deep clone
-- **compact** - Remove falsy values from array
+- **compact** - Remove `null`/`undefined` from an array or object (keeps `false`, `0`, `''`)
 - **groupBy** - Group array items by key
 - **hyphenize** - Convert to hyphen-case
 - **intersection** - Array intersection
@@ -20,9 +20,9 @@ import { camelize, compact, groupBy, sort, uniq /* etc. */ } from '@rvoh/dream/u
 - **normalizeUnicode** - Normalize unicode strings
 - **pascalize** - Convert to PascalCase
 - **percent** - Calculate percentage
-- **range** / **Range** - Numeric range generation; also supported as a bounded `where` predicate helper. See [querying.md — Range Predicates](querying.md#range-predicates).
+- **range** / **Range** - A bounded or open-ended range (`range(begin, end?, excludeEnd?)`) for `where` predicates. See [querying.md — Range Predicates](querying.md#range-predicates).
 - **round** - Round numbers
-- **sanitizeString** - Sanitize string input
+- **sanitizeString** - Escape `< > & " ' / \` as literal `\uXXXX` text (`null`/`undefined` pass through)
 - **snakeify** - Convert to snake_case
 - **sort** / **sortBy** - Sort arrays
 - **sortObjectByKey** / **sortObjectByValue** - Sort object entries

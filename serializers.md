@@ -16,10 +16,10 @@ import { DreamSerializer, ObjectSerializer } from '@rvoh/dream'
 
 ## Basic Pattern
 
-Serializer files must use **named exports only**. Do not use `export default` for a serializer function. Dream derives runtime serializer global names from the serializer file path plus the export name; default exports use the file path alone, which is easier to collide with generated/path-normalized names and makes OpenAPI names less explicit. Named exports keep the model's `serializers` getter, OpenAPI component names, and imports aligned.
+Serializer files must use **named exports only**. Do not use `export default` for a serializer function.
 
 ```typescript
-import Place from '@models/Place.js'
+import Place from '#models/Place.js'
 import { DreamSerializer } from '@rvoh/dream'
 
 // Summary serializer — used for index/list views. Generators create it with
@@ -58,7 +58,7 @@ export default class Place extends ApplicationModel {
 }
 ```
 
-Serializer names are **strings** matching named exported function names. They're loaded globally via `app.load('serializers', ...)` in `conf/dream.ts`.
+Serializer names are **strings**: the global name Dream registers for each exported serializer. At the root of `serializers/` that is the export name; in a subdirectory it is the directory plus the export name, minus a leading prefix that repeats the directory — `PlacePhotoSerializer` in `serializers/Place/PhotoSerializer.ts` registers as `'Place/PhotoSerializer'`. They're loaded globally via `app.load('serializers', ...)` in `conf/dream.ts`.
 
 ## Serializer Methods
 
@@ -69,28 +69,30 @@ Include a model column:
 ```typescript
 .attribute('id')           // Auto-typed from DB schema
 .attribute('name')         // Auto-typed from DB schema
-.attribute('email')        // Auto-typed from DB schema
+.attribute('sleeps')       // Auto-typed from DB schema
 ```
 
 Options:
 
 ```typescript
 // Rename in output
-.attribute('email', { as: 'userEmail' })
+.attribute('name', { as: 'placeName' })
 
 // Decimal precision
 .attribute('price', { precision: 2 })
 
-// Explicit OpenAPI type (needed for Virtual columns or when inference isn't enough)
-.attribute('status', { openapi: { type: 'string', enum: StatusEnumValues } })
+// Explicit OpenAPI type — required for json/jsonb columns and plain getters
 .attribute('computed', { openapi: 'string' })
 .attribute('data', { openapi: { type: 'object', properties: { key: { type: 'string' } } } })
+
+// Any other column takes its shape from the column; `openapi` adds only a description
+.attribute('style', { openapi: { description: "The place's architectural style" } })
 
 // Default value
 .attribute('status', { default: 'pending' })
 ```
 
-**Important**: For `@deco.Virtual()` columns with an OpenAPI type annotation, use plain `.attribute('name')` without the openapi option - the type is inferred from the Virtual decorator.
+**Important**: For `@deco.Virtual()` columns, use plain `.attribute('name')` without an `openapi` type - the type is inferred from the Virtual decorator.
 
 ### .customAttribute(name, fn, options)
 
@@ -105,10 +107,14 @@ Computed/virtual field with a callback:
   openapi: 'string',
 })
 
-// Flatten computed object into parent
+// Flatten a computed object into the parent — `openapi` describes the whole object
 .customAttribute('coordinates', () => ({ lat: 40.7, lng: -74.0 }), {
   flatten: true,
-  openapi: { lat: { type: 'number' }, lng: { type: 'number' } },
+  openapi: {
+    type: 'object',
+    required: ['lat', 'lng'],
+    properties: { lat: { type: 'number' }, lng: { type: 'number' } },
+  },
 })
 
 // Nested object: return an exported ObjectSerializer's builder; `$serializer` derives the schema
@@ -127,26 +133,26 @@ Note: a `customAttribute` whose function body reads an association is invisible 
 Access a property on a loaded association:
 
 ```typescript
-// Gets `place.currentLocalizedText.title`
-.delegatedAttribute('currentLocalizedText', 'title', { openapi: 'string' })
+// Gets `place.currentLocalizedText.title` — a column, so its OpenAPI shape is inferred
+.delegatedAttribute('currentLocalizedText', 'title')
 
-// Gets `user.profile.avatarUrl`
-.delegatedAttribute('profile', 'avatarUrl', { openapi: 'string' })
+// Gets `booking.guest.name`
+.delegatedAttribute('guest', 'name')
 
 // Key always present; null when association is missing (HasOne that isn't always present).
-.delegatedAttribute('profile', 'avatarUrl', { openapi: 'string', optional: true })
+.delegatedAttribute('currentLocalizedText', 'title', { optional: true })
 
 // Key omitted from response when association/path is missing.
-.delegatedAttribute('profile', 'avatarUrl', { openapi: 'string', required: false })
+.delegatedAttribute('currentLocalizedText', 'title', { required: false })
 ```
 
 When the delegated-through path may resolve to `undefined`/`null` (a missing `HasOne`, an absent JSON sub-key, etc.), choose between `optional: true` and `required: false` based on what consumers should see. They are not aliases; they govern different layers and can be combined.
 
 | Option | Runtime | OpenAPI |
 |---|---|---|
-| `optional: true` | No effect — key always rendered (`null` when missing). | Schema wrapped in `anyOf: [schema, { type: 'null' }]`. |
+| `optional: true` | No effect — key always rendered (`null` when missing). | Schema made nullable. |
 | `required: false` | Key **omitted** from the response when the resolved value is `undefined`. | Field excluded from the containing schema's `required[]`. |
-| `default: <value>` | Substitutes the value when the resolved path is `undefined`. | (No effect.) |
+| `default: <value>` | Substitutes the value when the resolved path is `null` or `undefined`. | (No effect.) |
 
 Resolution order at render time: first non-`null`/non-`undefined` value from `target?.[name]`; else `default` if provided; else omit if `required: false`; else render `null`.
 
@@ -162,8 +168,8 @@ over a global default). The builder folds attributes in declaration order, so
 a later directive overwrites an earlier one — unless it's skipped:
 
 ```typescript
-.delegatedAttribute('fallbackAssociation', 'title', { openapi: 'string' })
-.delegatedAttribute('specificAssociation', 'title', { openapi: 'string', required: false })
+.delegatedAttribute('fallbackAssociation', 'title')
+.delegatedAttribute('specificAssociation', 'title', { required: false })
 ```
 
 - The first (fallback) directive is required, so it always writes `title`.
@@ -186,40 +192,40 @@ Single associated object:
 
 ```typescript
 // Auto-infer serializer from association's model
-.rendersOne('profile')
+.rendersOne('place')
 
 // Use specific serializer key
-.rendersOne('user', { serializerKey: 'summary' })
+.rendersOne('guest', { serializerKey: 'summary' })
 
 // Custom serializer function
-.rendersOne('owner', { serializer: CustomOwnerSerializer })
+.rendersOne('host', { serializer: CustomHostSerializer })
 
 // Flatten into parent (merges properties)
-.rendersOne('profile', { flatten: true })
+.rendersOne('guest', { flatten: true })
 
 // Allow null — only needed when the association is NOT a BelongsTo (e.g., HasOne
 // that may be absent). For BelongsTo, the model's `optional: true` declaration is
 // auto-inferred; restating it in the serializer is a DRY violation, and changing
 // it is almost always a mistake (the model governs runtime nullability).
-.rendersOne('approver', { optional: true })
+.rendersOne('currentLocalizedText', { optional: true })
 ```
 
-**Don't pass `optional: true` to `rendersOne` for a `BelongsTo` association.** The `BelongsTo` declaration on the model — `optional: true` or the default `false` — is the canonical source of truth for whether the association can be null. The renderer auto-infers nullability from that metadata: a `rendersOne('approver')` whose `BelongsTo('User', { optional: true })` declaration says nullable produces exactly the same OpenAPI shape (`anyOf: [{ $ref: ... }, { type: 'null' }]`) as if you had passed `optional: true` explicitly.
+**Don't pass `optional: true` to `rendersOne` for a `BelongsTo` association.** The `BelongsTo` declaration on the model — `optional: true` or the default `false` — is the canonical source of truth for whether the association can be null. The renderer auto-infers nullability from that metadata: a `rendersOne('city')` whose `BelongsTo('City', { optional: true })` declaration says nullable produces exactly the same OpenAPI shape (`anyOf: [{ $ref: ... }, { type: 'null' }]`) as if you had passed `optional: true` explicitly.
 
 ```typescript
 // Model
-@deco.BelongsTo('User', { optional: true })
-public approver: User | null
+@deco.BelongsTo('City', { optional: true })
+public city: City | null
 
 // Serializer — no `optional` needed; auto-inferred from the BelongsTo declaration.
-.rendersOne('approver')
+.rendersOne('city')
 ```
 
 Restating `optional: true` in the serializer duplicates the declaration; **changing** it — passing `optional: true` when the BelongsTo is non-optional, or vice versa — is almost always a mistake, because the model's declaration governs whether the value can actually be `null` at runtime. Explicit `optional: true` on `rendersOne` is only meaningful when the association is **not** a BelongsTo (e.g., a `HasOne` that may be absent), where there is no model-side nullability for the renderer to infer.
 
 Note: `optional` on `rendersOne` is purely an OpenAPI nullability marker — the key is always rendered. `rendersOne` does not support `required: false`. If you need the key absent from the response, reshape the serializer (a custom attribute, or a different serializer variant) rather than reaching for an option that does not exist. `optional: true` has no effect on `NonLoadedAssociation`: if the association was never preloaded or loaded, rendering it still throws regardless of `optional`.
 
-The non-optional → non-nullable mapping is a contract Dream defends on both sides, so you never need to loosen a serializer to "maybe null" to stay safe. A non-optional `BelongsTo` cannot be conditionally loaded (a trailing constraint on it is a compile error in `preload`/`load`/`leftJoinPreload`/`leftJoinLoad`), and a required parent that goes missing at runtime throws `MissingRequiredBelongsToAssociation` rather than serializing as `null`. Both are signals to fix the model — add `dependent: 'destroy'` to the inverse `HasOne`/`HasMany`, or make the `BelongsTo` `optional: true` — not to mark the serializer field nullable. See [models.md — required BelongsTo contract](models.md).
+The non-optional → non-nullable mapping is a contract Dream defends on both sides, so you never need to loosen a serializer to "maybe null" to stay safe. A non-optional `BelongsTo` cannot be conditionally loaded (a trailing constraint on it is a compile error in `preload`/`load`/`leftJoinPreload`/`leftJoinLoad`), and a required parent that goes missing at runtime throws `MissingRequiredBelongsToAssociation` rather than serializing as `null`. Both are signals to fix the model, not to mark the serializer field nullable — see [models.md — required BelongsTo contract](models.md#a-required-belongsto-is-a-two-way-non-nullable-contract) for the fixes.
 
 ### .rendersMany(name, options?)
 
@@ -264,7 +270,7 @@ Flattening merges a `rendersOne` association's attributes directly into the pare
 
 ### Attribute Shadowing
 
-**When flattening, the flattened association's attributes overwrite any same-named attributes on the parent serializer.** The most common collision is `id` — both the parent and the flattened association will typically have an `id` attribute, and the flattened one wins.
+**When flattening, the flattened association's attributes overwrite same-named attributes the parent declares before the `rendersOne`** — attributes fold in declaration order, so the later one wins. The most common collision is `id`: the parent declares its `id` first, so the flattened association's `id` wins.
 
 **Symptoms:**
 - The `id` in the API response is the associated record's ID, not the parent's
@@ -304,7 +310,7 @@ export const BookingSerializer = (booking: Booking) =>
 
 ```typescript
 // HostPlace only contributes `position`; Place's attributes (including id) are flattened in
-const HostPlaceSerializer = (hostPlace: HostPlace) =>
+export const HostPlaceSerializer = (hostPlace: HostPlace) =>
   DreamSerializer(HostPlace, hostPlace)
     .attribute('position')
     .rendersOne('place', { flatten: true })
@@ -411,10 +417,7 @@ In controllers, set passthrough via:
 this.serializerPassthrough({ locale: this.locale })
 ```
 
-Or via query passthrough:
-```typescript
-await Place.passthrough({ locale: 'en-US' }).preloadFor('forGuests').all()
-```
+`Place.passthrough({ locale })` on a query is a separate channel: it scopes associations declared with `DreamConst.passthrough`, such as `currentLocalizedText`, and never reaches a serializer ([i18n.md](i18n.md#querying-with-locale-passthrough)).
 
 ## ObjectSerializer (for non-Dream objects)
 
@@ -478,7 +481,7 @@ To keep the shape off the model when rendering a single `Place`, hand it in with
 For Single Table Inheritance, use generic type parameter:
 
 ```typescript
-import Room from '@models/Room.js'
+import Room from '#models/Room.js'
 import { DreamSerializer } from '@rvoh/dream'
 
 // Base serializer uses generic
@@ -496,8 +499,8 @@ export const RoomSerializer = <T extends Room>(StiChildClass: typeof Room, room:
 STI child serializers pass their class:
 
 ```typescript
-import Bedroom from '@models/Room/Bedroom.js'
-import { RoomSerializer, RoomSummarySerializer } from '@serializers/RoomSerializer.js'
+import Bedroom from '#models/Room/Bedroom.js'
+import { RoomSerializer, RoomSummarySerializer } from '#serializers/RoomSerializer.js'
 
 export const RoomBedroomSummarySerializer = (bedroom: Bedroom) =>
   RoomSummarySerializer(Bedroom, bedroom)
@@ -509,12 +512,12 @@ export const RoomBedroomSerializer = (bedroom: Bedroom) =>
 
 ### Generic Parameter on `rendersOne`, `rendersMany`, and `delegatedAttribute`
 
-When an STI child serializer extends an STI base serializer and calls `rendersOne`, `rendersMany`, or `delegatedAttribute`, it must pass the STI child class as a generic parameter. Without it, TypeScript cannot resolve the association types correctly because the base serializer's generic context is lost at the call site.
+When an STI child serializer calls `rendersOne`, `rendersMany`, or `delegatedAttribute` on a property the **child** declares, pass the child class as a generic: these three resolve names against the class type the base serializer hands `DreamSerializer` (`typeof Room`), so a child-only property isn't found without it. Associations are always declared on the base and need none.
 
-`.attribute` infers types correctly without a generic argument, and `.customAttribute` doesn't do type inference, so neither needs this.
+`.attribute` resolves names against the record's own type, and `.customAttribute` doesn't do type inference, so neither needs this.
 
 ```typescript
-// CORRECT — pass <Bedroom> so rendersMany can resolve Bedroom's associations
+// CORRECT — pass <Bedroom> so rendersMany can resolve the Bedroom-only `bedTypes`
 export const RoomBedroomForGuestsSerializer = (bedroom: Bedroom, passthrough: { locale: LocalesEnum }) =>
   RoomForGuestsSerializer(Bedroom, bedroom, passthrough)
     .rendersMany<Bedroom>('bedTypes', { serializer: BedTypeSerializer })
@@ -589,11 +592,7 @@ async function assignCurrentLocalizedText(places: Place[], rooms: Room[], locale
   if (places.length === 0 && rooms.length === 0) return
 
   // Single query across both polymorphic types
-  const texts = await LocalizedText.where({ locale })
-    .whereAny([
-      { localizableType: 'Place', localizableId: places.map(p => p.id) },
-      { localizableType: 'Room', localizableId: rooms.map(r => r.id) },
-    ]).all()
+  const texts = await LocalizedText.where({ locale, localizable: [...places, ...rooms] }).all()
 
   // Index by (type, id) for O(1) lookup
   const byKey = new Map(texts.map(t => [`${t.localizableType}:${t.localizableId}`, t]))

@@ -2,21 +2,7 @@
 
 ## Base Model
 
-Every project has an `ApplicationModel` that extends Dream:
-
-```typescript
-import Dream from '@rvoh/dream'
-import { DB } from '@src/types/db.js'
-import schema from '@src/types/dream.js'
-import { connectionTypeConfig, globalTypeConfig } from '@src/types/dream.globals.js'
-
-export default class ApplicationModel extends Dream {
-  declare public DB: DB
-  public override get schema() { return schema }
-  public override get connectionTypeConfig() { return connectionTypeConfig }
-  public override get globalTypeConfig() { return globalTypeConfig }
-}
-```
+Every model inherits from `ApplicationModel` (`src/app/models/ApplicationModel.ts`), the app's Dream subclass that create-psychic generates.
 
 ## Model Organization & Namespacing
 
@@ -57,7 +43,7 @@ export default class BasePlace extends ApplicationModel {
 
 ```typescript
 // app/models/Place.ts — DraftPlace is declared the same way in app/models/Place/Draft.ts
-import BasePlace from '@models/Place/Base.js'
+import BasePlace from '#models/Place/Base.js'
 
 @STI(BasePlace)
 export default class Place extends BasePlace {}
@@ -69,7 +55,7 @@ These two are not the whole menu — a status enum, or a genuinely separate mode
 
 ## Column Types
 
-Use `DreamColumn<ModelClass, 'columnName'>` for all database-backed columns. The type is inferred from the database schema via Kysely codegen.
+Use `DreamColumn<ModelClass, 'columnName'>` for all database-backed columns. The type is inferred from the database schema.
 
 ```typescript
 public id: DreamColumn<User, 'id'>
@@ -82,7 +68,7 @@ public updatedAt: DreamColumn<User, 'updatedAt'>
 
 **Decimal columns return JavaScript `number`, not `string` or a `Decimal` wrapper.** Dream's type-sync converts PostgreSQL `numeric`/`decimal` columns to TS `number`, so `DreamColumn<Place, 'latitude'>` resolves to `number | null` (or `number` if NOT NULL). No `Number(value)` coercion is needed when reading.
 
-Use the serializer `precision` option (`.attribute('latitude', { precision: 7 })`, also supported on `.delegatedAttribute`) to control how many decimal places appear in the rendered response. This handles the typical floating-point quirk where `1.1 + 2.2` becomes `3.3000000000000003` — a value that rounds cleanly to `3.30` at the precision the schema actually cares about. The OpenAPI shape and the rendered output stay consistent because precision is declared once at the serializer.
+Use the serializer `precision` option (`.attribute('latitude', { precision: 7 })`, also supported on `.delegatedAttribute`) to round the rendered number to that many decimal places: at `precision: 2`, `1.1 + 2.2` (`3.3000000000000003`) renders as `3.3`. It changes only the rendered value; the OpenAPI shape is unchanged.
 
 ## Decorator Setup
 
@@ -99,7 +85,7 @@ const deco = new Decorators<typeof MyModel>()
 // const deco = new Decorators<typeof MyModel>()
 ```
 
-STI children and `@SoftDelete`-decorated models follow the same rule for the field-level `Decorators` import — `STI` and `SoftDelete` are class-level decorators imported directly from `@rvoh/dream` and are unaffected by this rule.
+`@SoftDelete` models follow the same rule; a generated STI child omits the commented block. `STI` and `SoftDelete` are class-level decorators imported directly from `@rvoh/dream` and are unaffected by this rule.
 
 ## Associations - Full Reference
 
@@ -114,10 +100,9 @@ public userId: DreamColumn<Post, 'userId'>
 
 // Optional (nullable FK).
 // The `optional` flag on a BelongsTo is the canonical declaration of nullability
-// for that association. It is auto-inferred by serializer `rendersOne` and
-// `delegatedAttribute`, and by `extractParams` / OpenAPI request-body shape. Don't
-// restate `optional: true` in serializers — that's a DRY violation, and changing
-// it in the serializer is almost always a mistake.
+// for that association. Serializer `rendersOne` and `delegatedAttribute` infer it,
+// so don't restate `optional: true` in serializers — that's a DRY violation, and
+// changing it in the serializer is almost always a mistake.
 @deco.BelongsTo('User', { optional: true })
 public approver: User | null
 public approverId: DreamColumn<Post, 'approverId'>
@@ -161,11 +146,12 @@ public placeId: DreamColumn<Booking, 'placeId'>
 
 - **You may not conditionally load it.** A trailing constraint on a non-optional `BelongsTo` in `preload` / `load` / `leftJoinPreload` / `leftJoinLoad` is a **compile error** — the constraint could filter the parent out and null a field the spec declares non-nullable. (`innerJoin` / `leftJoin` are exempt; they don't hydrate a value.) See [querying.md — Conditions on associations in the chain](querying.md).
 - **It registers a `requiredBelongsTo` validation for you.** Saving without the parent fails Dream validation before Postgres sees it, and `.errors` is keyed by the *association* name (`{ place: ['requiredBelongsTo'] }`), not the foreign key column. Never declare `@deco.Validates('requiredBelongsTo')` yourself.
-- **Accessing it when null throws `MissingRequiredBelongsToAssociation`.** When an *internal* mechanism nulls a required parent — a default scope (e.g. soft-delete) filtered it out, an `and`/`on` baked into the association definition excluded it, or the parent row was hard-deleted leaving a dangling FK — the getter throws this error instead of returning a null the types say is impossible.
+- **Accessing it when null throws `MissingRequiredBelongsToAssociation`.** When an *internal* mechanism nulls a required parent — a default scope (e.g. soft-delete) filtered it out, the row's STI `type` is not the child the association targets, or the parent row was hard-deleted leaving a dangling FK — the getter throws this error instead of returning a null the types say is impossible.
 
 The runtime error is a modeling bug, so the fix is a model change, not a looser spec:
 
-- add `dependent: 'destroy'` to the inverse `HasOne` / `HasMany` so the parent can't be orphaned, or
+- add `dependent: 'destroy'` to the inverse `HasOne` / `HasMany` so no child outlives its parent,
+- add `withoutDefaultScopes: ['dream:SoftDelete']` to the `BelongsTo` when the child must still reach a soft-deleted parent (a past `Booking` whose `Place` was delisted), or
 - mark the `BelongsTo` `optional: true` if absence is legitimate — which makes the OpenAPI field nullable and re-allows conditional loading.
 
 #### Anchor polymorphism to a stable model
@@ -310,11 +296,11 @@ public host: Host
 
 `host` is now one association name on `Booking`, usable with `preload`, `associationQuery`, `association`, or a serializer, replacing a per-hop preload of `room` and `place` and the `booking.room?.place?.host` walk. A chain over an optional `BelongsTo` is nullable — type it `Host | null`. Condition and shaping clauses work on `through` associations too (`and`, `andNot`, `andAny`, `selfAnd`, `selfAndNot`, `order`, `distinct`), at any position in a chain — on the association you load directly, on an intermediate that a further through reaches across, and whether the hop's source is a concrete association or itself another `through`. Each hop's clauses shape the join of that hop's own target model (the model its property is typed as), referencing the target's columns, never an intermediate join table's; for `selfAnd`/`selfAndNot`, the "self" columns come from the model the clause is declared on. Multiple hops' `order`s compose rather than override — each is appended to the ORDER BY in join order. Two limits: a hop whose `and` uses `DreamConst.required` cannot be bridged across (see [DreamConst in Association Conditions](#dreamconst-in-association-conditions)), and a `distinct`-carrying through association loads with `preload` or `innerJoin` but not `leftJoinPreload` (Postgres rejects `leftJoinPreload`'s hydration `ORDER BY` alongside the association's `DISTINCT ON`).
 
-**`source` defaults to the association's own name, matched by name (not by target model).** In each hop above, `source` is omitted because the next model's association is also named `host`; Dream looks up an association literally named after the property. This is what disambiguates an intermediate that has two associations of the *same* target model (e.g. a `Room` with both `host` and `substituteHost`, both `BelongsTo('Host')`) — the name match picks the right one. Pass `source: '...'` only when the intermediate's association name differs from the name you want on this model (as in the `through: 'bookings', source: 'guest'` example above).
+**`source` defaults to the association's own name, matched by name (not by target model).** In each hop above, `source` is omitted because the next model's association is also named `host`; Dream looks up an association with the property's name, then with its singular (`guests` finds `guest`). This is what disambiguates an intermediate that has two associations of the *same* target model (e.g. a `Room` with both `host` and `substituteHost`, both `BelongsTo('Host')`) — the name match picks the right one. `source: '...'` is required when the intermediate has an association under neither name (as in `recentGuests` below, whose intermediate association is `guest`).
 
 #### Every hop applies its own default scopes, including soft delete
 
-A `through` chain joins each intermediate under that model's default scopes, so a soft-deleted intermediate makes the chain resolve `null` (`HasOne`) or `[]` (`HasMany`) with no error — as if the row never existed. `through` cannot take `withoutDefaultScopes`; to traverse a hidden intermediate, name the scope at the root of the query — `removeDefaultScope` lifts it on every hop (see [Removing Default Scopes](#removing-default-scopes)).
+A `through` chain joins each intermediate under that model's default scopes, so a soft-deleted intermediate makes the chain resolve `null` (`HasOne`) or `[]` (`HasMany`) with no error — as if the row never existed. A hop skips the scopes its own association lists in `withoutDefaultScopes` (`through` itself takes none), so `through: 'allBookings', source: 'guest'` on `Place` reaches the guests of soft-deleted bookings. `removeDefaultScope` at the root of a query lifts the scope on every hop (see [Removing Default Scopes](#removing-default-scopes)).
 
 #### Where a hop belongs: compose across models, or stack on the origin
 
@@ -355,7 +341,7 @@ public profile: Profile
 })
 public currentLocalizedText: LocalizedText
 
-// With required condition — query will fail if the passthrough value is not provided
+// With required condition — every query must supply the value with `{ and: { locale } }`
 @deco.HasOne('LocalizedText', {
   polymorphic: true,
   on: 'localizableId',
@@ -437,22 +423,6 @@ This is distinct from `selfAnd`: `on` / `primaryKeyOverride` change **which colu
 
 The `and` option on HasMany and HasOne supports two special `DreamConst` values instead of fixed values:
 
-```typescript
-import { DreamConst } from '@rvoh/dream'
-
-// passthrough — value is supplied at query time via passthrough context, optional
-@deco.HasOne('LocalizedText', {
-  and: { locale: DreamConst.passthrough },
-})
-public currentLocalizedText: LocalizedText
-
-// required — like passthrough, but the query will raise an error if the value is not provided
-@deco.HasOne('LocalizedText', {
-  and: { locale: DreamConst.required },
-})
-public requiredLocalizedText: LocalizedText
-```
-
 - **`DreamConst.passthrough`** — the value is provided at query time via `.passthrough({ column: value })`. Throws `MissingRequiredPassthroughForAssociationAndClause` if the value is `undefined`.
 - **`DreamConst.required`** — the value must be provided via `{ and: { column: value } }` conditions whenever the association is used in any query — `load`, `preload`, `innerJoin`, `leftJoin`, `associationQuery`, `association`, etc. Throws `MissingRequiredAssociationAndClause` if the value is not provided. The value can only be supplied for the association actually named in the query, so an association carrying `DreamConst.required` cannot serve as an intermediate hop of a `through` chain — bridging across it always throws.
 
@@ -461,6 +431,8 @@ Both are required — the difference is *how* the value is supplied. Use `passth
 **Neither can be combined with `dependent: 'destroy'`.**
 
 ```typescript
+import { DreamConst } from '@rvoh/dream'
+
 // passthrough — value supplied via .passthrough() on the query
 @deco.HasOne('LocalizedText', {
   polymorphic: true, on: 'localizableId',
@@ -482,14 +454,14 @@ public preference: Preference
 
 // The value must be provided in any query that touches this association:
 await user.load('preference', { and: { category: 'notifications' } }).execute()
-await user.associationQuery('preference').where({ category: 'notifications' }).first()
+await user.associationQuery('preference', { and: { category: 'notifications' } }).first()
 await User.preload('preference', { and: { category: 'notifications' } }).all()
 await User.innerJoin('preference', { and: { category: 'notifications' } }).all()
 ```
 
 ## Hooks - Full Reference
 
-### Before Hooks (run in same transaction, before DB write)
+### Before Hooks (run before the DB write)
 
 ```typescript
 @deco.BeforeCreate()
@@ -531,7 +503,7 @@ public async normalizeAddress(this: Place) {
 
 Use after hooks for side effects that require the row to already exist, such as creating associated records or delegating to a service. If that side effect writes other records, pass the provided `txn` through; if it must run after commit, use a `Commit` hook variant.
 
-### After Hooks (run in same transaction, after DB write)
+### After Hooks (run after the DB write)
 
 ```typescript
 import { Dream, DreamTransaction } from '@rvoh/dream'
@@ -539,13 +511,13 @@ import { Dream, DreamTransaction } from '@rvoh/dream'
 @deco.AfterCreate()
 public async createDefaults(this: Host, txn: DreamTransaction<Dream> | null) {
   // Inline for simple cases
-  await this.createAssociation('profile', {}, { txn })
+  await this.txn(txn).createAssociation('profile', {})
 }
 
 @deco.AfterCreate()
 public async seedRooms(this: Place, txn: DreamTransaction<Dream> | null) {
   // Delegate to a service for non-trivial logic; pass txn so all writes are atomic
-  await SeedDefaultRooms.seed(this, txn)
+  await SeedDefaultRooms.call(this, txn)
 }
 
 @deco.AfterUpdate({ ifChanged: ['status'] })
@@ -571,7 +543,7 @@ export default class SeedDefaultRooms {
 }
 ```
 
-**`txn` is `null` unless the caller explicitly started a transaction.** Dream does NOT automatically wrap `Model.create()` in a transaction. The `txn` parameter is only non-null when the caller wraps the create in `ApplicationModel.transaction(async txn => await Model.txn(txn).create(...))`. Hooks should still accept and propagate `txn` so that *if* the create happens inside a transaction, the side effects are atomic with it.
+**A create or update hook's `txn` is `null` unless the write runs inside a transaction** — one the caller started, or the per-batch transaction of a `{ lock: true }` query update. Dream opens no transaction around `Model.create()` or an instance `update()` for its hooks. The `txn` parameter is only non-null when the caller wraps the create in `ApplicationModel.transaction(async txn => await Model.txn(txn).create(...))`. Hooks should still accept and propagate `txn` so that *if* the create happens inside a transaction, the side effects are atomic with it.
 
 `Model.txn(null).create(...)` is a no-op variant — the same service can be called from a hook (with `txn` possibly null) or from a controller (with `null`).
 
@@ -599,7 +571,7 @@ public invalidateCache(this: Place) { ... }
 public removeFromSearchIndex(this: Place) { ... }
 ```
 
-**Gating on an encrypted property.** When the gated property is `@deco.Encrypted`, list the persisted column name `encrypted<Name>` in `ifChanged` (e.g. `ifChanged: ['encryptedPhone']`), not the plaintext virtual (`phone`). `ifChanged` is typed over the real persisted columns (`DreamColumnNames`); setting the virtual marks the underlying `encrypted<Name>` column dirty, which is what change detection sees.
+**Gating on an encrypted property.** When the gated property is `@deco.Encrypted`, list the persisted column name `encrypted<Name>` in `ifChanged` (e.g. `ifChanged: ['encryptedPhone']`), not the plaintext virtual (`phone`). `ifChanged` is typed over the real persisted columns (`DreamColumnNames`); changing the virtual marks the underlying `encrypted<Name>` column dirty, which is what change detection sees.
 
 **A commit hook that throws rejects its writer after the write has committed.** The `create`, `update` or `destroy` — or the enclosing `ApplicationModel.transaction(...)` — rejects, skipping the code after it and any later commit hooks, and nothing rolls back. A failed `background(...)` in a `Booking` `@deco.AfterUpdateCommit` leaves the booking confirmed with nothing enqueued. For work that must not be lost, see [workers.md](workers.md#work-that-must-not-be-lost-after-a-commit).
 
@@ -616,19 +588,17 @@ A destroy runs the record's own `beforeDestroy` hooks **first**, then the `depen
 public name: DreamColumn<Place, 'name'>
 
 @deco.Validates('length', { min: 4, max: 64 })
-public email: DreamColumn<User, 'email'>
-
 @deco.Validates('contains', '@')
-public email: DreamColumn<User, 'email'>
+public email: DreamColumn<Guest, 'email'>
 
-@deco.Validates('numericality', { min: 0, max: 100 })
-public volume: DreamColumn<User, 'volume'>
+@deco.Validates('numericality', { min: 1, max: 16 })
+public sleeps: DreamColumn<Place, 'sleeps'>
 
 // Custom validation method
 @deco.Validate()
-public validateWeightConsistency(this: Sandbag) {
-  if (this.weight && this.weightKgs) {
-    this.addError('weight', 'cannot include both weight and weightKgs')
+public validateStayDates(this: Booking) {
+  if (this.startsOn && this.endsOn && this.endsOn.valueOf() <= this.startsOn.valueOf()) {
+    this.addError('endsOn', 'must be after startsOn')
   }
 }
 ```
@@ -637,9 +607,9 @@ The presence of a non-optional `BelongsTo` is validated for you — see [A requi
 
 Checking validity:
 ```typescript
-const user = User.new({ email: 'bad' })
-if (user.isInvalid) {
-  console.log(user.errors) // { email: ['must contain @'] }
+const guest = Guest.new({ email: 'bearmail.com' })
+if (guest.isInvalid) {
+  console.log(guest.errors.email) // ['contains']
 }
 ```
 
@@ -710,7 +680,7 @@ An empty result after a targeted removal may be the correct answer — the row m
 The `schema` exported from `api/src/types/dream.ts` (`src/types/dream.ts` for api-only applications) contains the default scopes for any model:
 
 ```typescript
-import schema from '@src/types/dream.js'
+import { schema } from '#src/types/dream.js'
 
 // schema[dreamModelInstance.table].scopes.default
 // Returns an array of strings, e.g. ['dream:STI', 'dream:SoftDelete']
@@ -739,7 +709,7 @@ ops.ilike('%PATTERN%')     // PostgreSQL ILIKE — operator forces case-insensit
 ops.match('^[A-Z]')        // Regex
 ops.match('^[A-Z]', { caseInsensitive: true })
 
-// Fuzzy search (requires pg_trgm extension + GIN index)
+// Fuzzy search (requires the pg_trgm extension; a GIN index keeps it fast)
 ops.similarity('search term')
 ops.wordSimilarity('search term')
 ops.similarity('term', { score: 0.2 })
@@ -786,33 +756,33 @@ public phone: DreamColumn<User, 'encryptedPhone'>
 // DB column is 'encrypted_phone', model property is 'phone'
 // extractParams and model-derived OpenAPI request bodies use the public property
 // name (`phone`), not the encrypted DB column name. The accepted type is string
-// or string | null depending on whether the backing encrypted column is nullable;
-// extractParams enforces that type at runtime and in TypeScript.
+// or string | null depending on whether the backing encrypted column is nullable,
+// unless the decorator declares an `openapi` shape (see `:encrypted` below);
+// extractParams enforces that type in TypeScript; at runtime it checks the
+// top-level type only, not an object shape's properties.
 //
-// Column encryption must be configured before the getter/setter will work. This is
-// a Dream-app config in conf/dream.ts (distinct from the cookie encryption config in
-// conf/app.ts — see controllers.md "Cookie Encryption"):
-//   // conf/dream.ts — app is the DreamApp passed to the default export
-//   app.set('encryption', {
-//     columns: {
-//       current: { algorithm: 'aes-256-gcm', key: AppEnv.string('COLUMN_ENCRYPTION_KEY') },
-//     },
-//   })
+// Column encryption is a Dream-app config in conf/dream.ts, distinct from the cookie
+// encryption config in conf/app.ts (see controllers.md "Cookie Encryption"). The
+// scaffold sets `encryption.columns.current` from `COLUMN_ENCRYPTION_KEY`; without it
+// the getter/setter throw.
 // Add an optional `legacy` key beside `current` to rotate keys (current is tried
-// first, then legacy). Generate keys with `pnpm psy g:encryption-key`. Without this
-// config the getter/setter throw. After adding @deco.Encrypted() and its migration,
-// run `pnpm psy sync` so the `encrypted<Column>` column is in the generated types. The
-// plaintext property (e.g. `phone`) is not assignable in `.create()` / `UpdateableProperties`
-// until sync lists it under the model's `virtualColumns`; until then `tsc` reports
-// `TS2353 ... 'phone' does not exist` even though the model declares the field.
+// first, then legacy). Before dropping `legacy`, run
+// `await Booking.reencryptEncryptedColumns()` for every model with encrypted
+// properties, from the console or a script, in each environment once all its
+// servers encrypt with the new `current`. Generate keys with
+// `pnpm psy g:encryption-key`. After adding @deco.Encrypted() and its migration,
+// run `pnpm psy sync` so the generated types list the plaintext property (e.g. `phone`)
+// under the model's `virtualColumns`; until then it is not assignable in `.create()` /
+// `UpdateableProperties`, and `tsc` reports `TS2353 ... 'phone' does not exist` even
+// though the model declares the field.
 //
 // The raw encrypted column (`encryptedPhone`) has a setter that throws if you try
 // to assign it directly — write through the plaintext property (`phone`) instead.
-// That guard is itself a custom setter, so it only fires on the setter path
-// (`create`/`update`/`assignAttribute(s)`/`this.phone = ...`). `setAttribute(s)`
-// bypasses custom setters entirely (see "Which writes run the setter" below) and
-// will write an unencrypted value straight into `encryptedPhone` with no error —
-// never use `setAttributes`/`updateAttributes` to touch an `@deco.Encrypted` column.
+// The writers that bypass custom setters (`setAttribute(s)`, `updateAttributes`; see
+// "Which writes run the setter" below) accept a value for `encryptedPhone` only when
+// it is ciphertext the app's column keys decrypt, or `null`, and otherwise throw
+// `DoNotSetEncryptedFieldsDirectly`. `setAttribute('phone', …)` neither encrypts nor
+// stores the value — assign `phone` or use `setAttributes`.
 //
 // An @deco.Encrypted column is not queryable in a `where` clause. The plaintext
 // property (`phone`) is virtual, not a DB column, so it isn't in the model's
@@ -835,9 +805,12 @@ public phone: DreamColumn<User, 'encryptedPhone'>
 // round-trips objects and arrays as-is, with no model-layer parse/stringify. The
 // generated declaration types the plaintext property from its `text` backing column
 // (`DreamColumn<Place, 'encryptedHouseRules'>`, i.e. `string | null`), so widen it by
-// hand to the structured type (`public houseRules: HouseRules | null`). So the
-// decision is whether the data warrants encryption at all: if it does, `:encrypted`;
-// if not, it stays `jsonb` and keeps its query ergonomics.
+// hand and declare the same shape on the decorator — without `openapi`, Psychic casts
+// the param and documents the property as a string:
+//   @deco.Encrypted({ openapi: { type: ['object', 'null'], properties: { petsAllowed: 'boolean' } } })
+//   public houseRules: HouseRules | null
+// So the decision is whether the data warrants encryption at all: if it does,
+// `:encrypted`; if not, it stays `jsonb` and keeps its query ergonomics.
 
 // Virtual — accepted by create(), update(), and extractParams() but not stored directly in DB.
 // Use getter/setter pairs to transform between the virtual and the actual DB column.
@@ -858,7 +831,7 @@ public set pounds(pounds: DreamColumn<Place, 'grams'>) {
   this.setAttribute('grams', pounds === null ? null : pounds * GRAMS_PER_POUND)
 }
 
-// All Virtual types: 'boolean', 'date-time', 'date', 'integer', 'null', 'number',
+// Virtual shorthand types: 'boolean', 'date-time', 'date', 'integer', 'null', 'number',
 // 'string', 'decimal', 'json', and array variants: 'boolean[]', 'date-time[]',
 // 'date[]', 'decimal[]', 'integer[]', 'number[]', 'string[]'
 // Use arrays for nullable: ['string', 'null']
@@ -880,7 +853,7 @@ public set pounds(pounds: DreamColumn<Place, 'grams'>) {
 // @deco.Virtual(['number', 'null']) produces and accepts a `number | null` shape
 // in any serializer that exposes the attribute via .attribute('pounds') or
 // .delegatedAttribute('foo', 'pounds'), and in requestBody.params when `pounds`
-// is part of the accepted params. Don't pass an explicit `openapi:` to those
+// is part of the accepted params. Don't pass an `openapi:` type to those
 // serializer methods when surfacing a virtual — it overrides the auto-inferred
 // shape and creates a place for the spec to drift when the virtual's declared
 // type changes.
@@ -909,9 +882,9 @@ This is distinct from `@deco.Virtual`: a virtual backs a property that is not a 
 **Which writes run the setter.** Dream splits attribute assignment into two paths:
 
 - `create()`, `update()`, `assignAttribute` / `assignAttributes`, and a plain `this.email = …` **run** your custom setter (`assignAttribute` is literally `this[attr] = value`).
-- `setAttribute` / `setAttributes` (plural) **bypass** custom setters and write the bag raw — use these when you deliberately want the untransformed value, and inside the setter body itself.
+- `setAttribute` / `setAttributes` (plural) **bypass** custom setters and write the bag raw — use these when you deliberately want the untransformed value, and `setAttribute` inside the setter body itself. `setAttributes` still runs the setter of a non-column key or a `json`/`jsonb` column.
 
-So input arriving through `create` / `update` / extracted params is transformed, while internal hydration (loading a row from the DB) writes raw and is never double-transformed.
+So input arriving through `create` / `update` / extracted params is transformed, while internal hydration (loading a row from the DB) writes raw and is never double-transformed, `json`/`jsonb` columns aside.
 
 A `{ skipHooks: true }` query update — `Booking.where(…).update(attrs, { skipHooks: true })` — never instantiates a model, so no setter runs at all: the attribute names go into the `UPDATE` as given and the transform is silently skipped. Naming an `@deco.Encrypted` column's backing column here throws unless the value is `null`. To update an encrypted column, use a path that instantiates the model — a plain query update, or `{ lock: true }` (with or without `skipHooks`) — and write through the encrypted property. The instance form, `instance.update(attrs, { skipHooks: true })`, is unaffected — it assigns through `assignAttributes`, so custom setters still run; `skipHooks` there means hooks, not setters.
 
@@ -921,36 +894,36 @@ A `{ skipHooks: true }` query update — `Booking.where(…).update(attrs, { ski
 
 ```typescript
 // Create in one call
-const user = await User.create({ email: 'charlie@peanuts.com', name: 'Charlie Brown' })
+const guest = await Guest.create({ email: 'baloo@bearbnb.com', name: 'Baloo' })
 
 // Instantiate, assign, and save
-const user = User.new({ email: 'charlie@peanuts.com' })
-user.name = 'Charlie Brown'
-await user.save()
+const guest = Guest.new({ email: 'baloo@bearbnb.com' })
+guest.name = 'Baloo'
+await guest.save()
 
 // Update in one call
-await user.update({ name: 'New Name' })
+await guest.update({ name: 'New Name' })
 
 // Assign and save — equivalent to update
-user.name = 'New Name'
-await user.save()
+guest.name = 'New Name'
+await guest.save()
 
 // Assign and update — also valid (update persists any prior assignments too)
-user.name = 'New Name'
-await user.update({ email: 'gary@farside.com' })
+guest.name = 'New Name'
+await guest.update({ email: 'paddington@bearbnb.com' })
 
 // Skip lifecycle hooks — useful for bulk imports and historical data backfills
 // where the new-record side effects shouldn't fire
-await User.create({ email: 'imported@example.com' }, { skipHooks: true })
-await user.update({ name: 'Updated' }, { skipHooks: true })
+await Guest.create({ email: 'imported@example.com' }, { skipHooks: true })
+await guest.update({ name: 'Updated' }, { skipHooks: true })
 ```
 
 `save()` and `update()` trigger the same lifecycle hooks and are largely interchangeable:
 - `save()` persists all dirty attributes but does not accept attributes itself
 - `update()` accepts attributes, applies them, and persists — it also persists any attributes previously assigned via `=`
-- On an unpersisted instance (`User.new()`), both `save()` and `update({})` will create the record
+- On an unpersisted instance (`Guest.new()`), both `save()` and `update({})` will create the record
 
-Query-level updates run instance hooks by default: `User.where(...).update(attrs)`
+Query-level updates run instance hooks by default: `Guest.where(...).update(attrs)`
 iterates the matched records and calls instance `.update()` on each, so the cost is one
 `UPDATE` per matched row. `{ skipHooks: true }` collapses that to one SQL statement, at the
 price of the callback lifecycle — pay it only when the hooks carry no business logic that
@@ -965,7 +938,7 @@ When you hold a model instance and are creating or updating a record with an ass
 ```typescript
 // create / update
 await Booking.create({ place, guest })          // not { placeId: place.id, guestId: guest.id }
-await review.update({ booking })                 // not { bookingId: booking.id }
+await booking.update({ guest })                  // not { guestId: guest.id }
 
 // filtering
 await Booking.where({ place }).all()             // not { placeId: place.id }
@@ -979,23 +952,22 @@ await LocalizedText.where({ localizable: host }).first()      // not { localizab
 await Booking.where({ place: places }).all()                  // place_id IN (...)
 ```
 
-The instance form works the same **regardless of the association's shape** — polymorphic or not, and whether the model you pass is a plain model or an STI child. Dream derives the foreign key from the instance's primary key and, for a polymorphic association, the type discriminator from the instance's `referenceTypeString` (which resolves an STI child such as a `Bathroom` to its base, `'Room'`). One form covers every case, so the call site never has to know which case it is in.
+The instance form works the same **regardless of the association's shape** — polymorphic or not, and whether the model you pass is a plain model or an STI child. Dream reads the foreign-key value off the instance and, for a polymorphic association, the type discriminator from the instance's `referenceTypeString` (which resolves an STI child such as a `Bathroom` to its base, `'Room'`). One form covers every case, so the call site never has to know which case it is in.
 
 **Filtering accepts an array of instances**, not just a single one — `where({ place: places })`, and likewise in `whereNot`/`whereAny` and the `and`/`andNot`/`andAny` of a join on-clause. A non-polymorphic key expands to a foreign-key `IN`; a polymorphic key groups the instances by type, turns each group into an id-`IN` plus type-match pair, and ORs the groups, so an id collision across types can never match the wrong row. This is query-only: `create`, `update`, and `findOrCreateBy` still take a single instance, because a list of parents is meaningless there.
 
 Four reasons this is the rule, not a preference:
 
 1. **Polymorphic filters are wrong without it.** `where({ localizableId: host.id })` constrains the id alone — it never sets `localizable_type`. With integer/serial primary keys a `Host` and a `Place` can share id `1`, so that query matches localized texts belonging to *both*. `where({ localizable: host })` adds `localizable_type = 'Host'` for you. (UUID keys hide the collision, but the id-only form is still incomplete.)
-2. **STI type strings resolve correctly.** Creating or filtering through an STI child records/matches the base type (`'Room'`). A hand-written `localizableType: 'Bathroom'` matches nothing, because the association is declared on the `Room` base — and nothing at the call site warns you.
+2. **STI type strings resolve correctly.** Creating or filtering through an STI child records/matches the base type (`'Room'`). A hand-written `localizableType: 'Bathroom'` matches nothing — and nothing at the call site warns you.
 3. **Holding the instance means you loaded it.** The authorized way to obtain a record is to load it, usually through an association chain from `currentUser` that proves the current user may touch it. Passing the instance keeps that step in the code path; hand-assigning a raw id from a request param skips it.
 4. **Factories create an orphan from an id.** Generated factories guard on the association (`host: attrs.host ?? (await createHost())`) with `...attrs` spread after, so `createHostPlace({ hostId: host.id })` creates a second Host and then overwrites `hostId` with the one passed — a stray row and an extra insert per call, silently.
 
 In a **controller this is effectively absolute** (see [controllers.md — `extractParams`](controllers.md#extractparams)): an id or type that arrives in a param is untrusted, verifying it means loading the record through an authorized association chain, and once you have done that you hold the instance — so you use it. There is no path where you legitimately hold a verified id but not the instance.
 
-**When the id form is correct** — all cases where you genuinely do not hold a single instance, never "you hold it but prefer the id":
+**When the id form is correct** — only where you genuinely do not hold the instances, never "you hold them but prefer the id":
 
 - An **array of ids** (bulk filter): `Booking.where({ placeId: placeIds })` where `placeIds` came from a prior query. (Use the plain array — `where({ col: [...] })` — not `ops.in([...])`.)
-- A **cross-type polymorphic batch load**, where two types cannot be expressed in one `where` and you fall back to `whereAny` with explicit `localizableType`/`localizableId` groups (see [serializers.md](serializers.md)).
 - **Background-job arguments**, which must serialize to Redis and therefore pass IDs, not instances — this is the deliberate opposite rule for the worker boundary ([workers.md](workers.md)), where the implementation method re-hydrates the model from the id.
 
 Only `BelongsTo` associations are assignable through `create` / `update` params — the write path is the model holding the foreign key, so a `HasOne`/`HasMany` (including `through`) is neither in the param type nor accepted at runtime.
@@ -1017,7 +989,7 @@ In a validation or `Before*` hook, `this.willSaveChangeToAttribute('status')` te
 
 Save's after hooks run once the snapshot has been refreshed, so there `willSaveChangeToAttribute` is `false` and `dirtyAttributes()` is empty; `savedChangeToAttribute(column)` and `changes()` report the last save, which after a create covers every column the insert returned, unassigned `null`s and database defaults included. To run an after hook only when a column changed, gate it with `ifChanged`, which is checked at the save itself and on a create counts only the columns that were assigned.
 
-A persisted instance with nothing dirty issues no `UPDATE` on `save()` or `update()` and leaves `updatedAt` unstamped — `update({})`, or an `update()` assigning values equal to the current ones, is a no-op rather than a touch. Re-assigning the same plaintext to an `@deco.Encrypted()` property is always a real write: each assignment re-encrypts to fresh ciphertext. Before-save hooks and validations still run first, so a hook that dirties the record turns it back into a real write. The comparison is against the instance's own snapshot from its last load or save, not against the row currently in the database.
+A persisted instance with nothing dirty issues no `UPDATE` on `save()` or `update()` and leaves `updatedAt` unstamped — `update({})`, or an `update()` assigning values equal to the current ones, is a no-op rather than a touch. Before-save hooks and validations still run first, so a hook that dirties the record turns it back into a real write. The comparison is against the instance's own snapshot from its last load or save, not against the row currently in the database.
 
 For an `@deco.Encrypted()` property, `dirtyAttributes()` and `changedAttributes()` report the persisted `encrypted<Name>` key, not the plaintext virtual property. `getAttribute('<plaintext>')` returns `undefined` — it isn't the decrypting accessor; `getAttribute('encrypted<Name>')` returns ciphertext. Read the decrypted value via the instance property (`instance.<plaintext>`) — see [Encrypted](#special-decorators) above.
 
@@ -1038,27 +1010,27 @@ await Guest.pluckEach('email', async (email) => {
 })
 ```
 
-`findEach` always iterates in ascending primary-key order and discards any `order` applied to the query — it delivers its exactly-once guarantee via keyset pagination (`WHERE id > lastId LIMIT n`), which only holds over a stable, unique key. If records must be visited in a particular order, load them with a regular ordered query instead of reaching for `findEach`.
+`findEach` always iterates in ascending primary-key order and discards any `order` applied to the query — it visits each row `all()` returns exactly once via keyset pagination, which only holds over a stable, unique key. `Place.innerJoin('rooms').findEach(...)` visits each place once per room. If records must be visited in a particular order, load them with a regular ordered query instead of reaching for `findEach`.
 
 ## Find-or-Create and Upsert Methods
 
-Dream provides four methods for atomically finding or creating/updating records. Each takes a set of lookup attributes and an options object. None of these methods can be chained with other query methods.
+Dream provides four methods for finding or creating/updating records. Each takes a set of lookup attributes and an options object. None of these methods can be chained with other query methods.
 
 ### findOrCreateBy
 
 Finds a record matching the given attributes, or creates one if none exists. Safe to use in transactions.
 
 ```typescript
-const user = await User.findOrCreateBy(
-  { email: 'how@yadoin' },
-  { createWith: { name: 'Chalupa Joe' } }
+const guest = await Guest.findOrCreateBy(
+  { email: 'baloo@bearbnb.com' },
+  { createWith: { name: 'Baloo' } }
 )
 
 // With a transaction
 await ApplicationModel.transaction(async txn => {
-  const user = await User.txn(txn).findOrCreateBy(
-    { email: 'how@yadoin' },
-    { createWith: { name: 'Chalupa Joe' } }
+  const guest = await Guest.txn(txn).findOrCreateBy(
+    { email: 'baloo@bearbnb.com' },
+    { createWith: { name: 'Baloo' } }
   )
 })
 ```
@@ -1071,9 +1043,9 @@ Like `findOrCreateBy`, but attempts to create first. Relies on a **unique constr
 
 ```typescript
 // Requires a unique index on the lookup column(s)
-const user = await User.createOrFindBy(
-  { email: 'how@yadoin' },
-  { createWith: { name: 'Chalupa Joe' } }
+const guest = await Guest.createOrFindBy(
+  { email: 'baloo@bearbnb.com' },
+  { createWith: { name: 'Baloo' } }
 )
 ```
 
@@ -1092,15 +1064,15 @@ const booking = await Booking.createOrFindBy(
 Finds a record and updates it, or creates one if none exists. Functionally equivalent to an upsert, but runs as two queries. Safe to use in transactions. There is a race condition risk between the find and create steps — if concurrent requests could match the same lookup attributes, prefer `createOrUpdateBy`.
 
 ```typescript
-const user = await User.updateOrCreateBy(
-  { email: 'how@yadoin' },
+const guest = await Guest.updateOrCreateBy(
+  { email: 'baloo@bearbnb.com' },
   { with: { name: 'New Name' } }
 )
 
 // With a transaction
 await ApplicationModel.transaction(async txn => {
-  const user = await User.txn(txn).updateOrCreateBy(
-    { email: 'how@yadoin' },
+  const guest = await Guest.txn(txn).updateOrCreateBy(
+    { email: 'baloo@bearbnb.com' },
     { with: { name: 'New Name' } }
   )
 })
@@ -1112,8 +1084,8 @@ Like `updateOrCreateBy`, but attempts to create first. Relies on a **unique cons
 
 ```typescript
 // Requires a unique index on the lookup column(s)
-const user = await User.createOrUpdateBy(
-  { email: 'how@yadoin' },
+const guest = await Guest.createOrUpdateBy(
+  { email: 'baloo@bearbnb.com' },
   { with: { name: 'New Name' } }
 )
 ```
@@ -1123,8 +1095,8 @@ const user = await User.createOrUpdateBy(
 All four methods run lifecycle hooks by default. Pass `skipHooks: true` to bypass them:
 
 ```typescript
-const user = await User.updateOrCreateBy(
-  { email: 'how@yadoin' },
+const guest = await Guest.updateOrCreateBy(
+  { email: 'baloo@bearbnb.com' },
   { with: { name: 'New Name' }, skipHooks: true }
 )
 ```
@@ -1148,48 +1120,47 @@ Open one only when a set of writes must land together or not at all — a `Place
 
 **Every model operation inside a transaction must be explicitly bound via `.txn(txn)`.** This includes creates, updates, destroys, queries, association operations — everything. If you forget `.txn(txn)`, the operation runs outside the transaction and won't roll back on failure.
 
-On a `@deco.Sortable` model the omission is worse than a lost rollback. A sortable write computes its position under a lock on its sort scope, so an unbound `room.destroy()` inside a transaction that is writing its `Place` opens a second transaction on another connection and waits on a lock the enclosing transaction is holding. Only one side is waiting, so Postgres's deadlock detector never sees it: the call hangs until `sortableScopeLockTimeout` expires, then throws `SortableScopeLockWaitTimedOut`. That error advises retrying; a retry cannot help here — add the missing `.txn(txn)`.
+On a `@deco.Sortable` model the omission is worse than a lost rollback. A sortable write computes its position under a lock on its sort scope, so an unbound `room.destroy()` inside a transaction that has already created, moved or destroyed another `Room` of the same `Place` opens a second transaction on another connection and waits on a lock the enclosing transaction is holding. Only one side is waiting, so Postgres's deadlock detector never sees it: the call hangs until `sortableScopeLockTimeout` expires, then throws `SortableScopeLockWaitTimedOut`. That error advises retrying; a retry cannot help here — add the missing `.txn(txn)`.
 
 Binding every write correctly leaves a second cost. A sortable write holds the lock on its sort scope until the transaction commits, and nothing releases them along the way, so a transaction that writes `Room`s across many `Place`s holds one lock per place at once. Advisory locks come from a table the whole Postgres cluster shares, so exhausting it fails other connections' transactions with `out of shared memory` — the symptom lands away from the code that caused it. Keep the transaction to the writes that must land together; a loop whose sortable writes span many `Place` scopes is not one of them, and atomicity across the loop is what narrowing it costs. A re-run after a later iteration fails must skip what already committed. Inside a transaction you did not open, every write still binds to that `txn` — breaking one out is the hang above.
 
 ```typescript
 await ApplicationModel.transaction(async (txn) => {
-  const user = await User.txn(txn).create({ email: 'test@test.com' })
-  const post = await Post.txn(txn).create({ user, title: 'Test' })
-  await user.txn(txn).createAssociation('profile', {})
+  const place = await Place.txn(txn).create({ host, name: 'Honey Hollow' })
+  await place.txn(txn).createAssociation('localizedTexts', { locale: 'es-ES', title: 'Honey Hollow' })
 
   // Queries also need .txn(txn) to see uncommitted data
-  const found = await User.txn(txn).findBy({ email: 'test@test.com' })
+  const found = await Place.txn(txn).findBy({ name: 'Honey Hollow' })
 })
 ```
 
-**`instance.txn(txn).update(attrs)` mutates that same in-memory instance** — it assigns the attributes to the instance before saving, exactly like non-txn `instance.update()`. So the caller's reference is current after the call and can be handed onward (to a service, a serializer) without re-querying. The catch: only *that* instance is updated. If a helper loaded a *different* instance of the same row (e.g. `Place.txn(txn).findBy(...)`) and updated it, the caller's original instance is now stale; `await original.reload()` before reading from it.
+**`instance.txn(txn).update(attrs)` mutates that same in-memory instance** — it assigns the attributes to the instance before saving, exactly like non-txn `instance.update()`. So the caller's reference is current after the call and can be handed onward (to a service, a serializer) without re-querying. The catch: only *that* instance is updated. If a helper loaded a *different* instance of the same row (e.g. `Place.txn(txn).findBy(...)`) and updated it, the caller's original instance is now stale; `await original.txn(txn).reload()` before reading from it — an unbound `reload()` cannot see the transaction's uncommitted write.
 
 ### Optional transaction participation with `.txn(null)`
 
 `.txn()` accepts `null` as well as a `DreamTransaction`. When `null` is passed, the operation runs without a transaction — it's a no-op. This lets methods that _optionally_ participate in a transaction use a single code path instead of branching:
 
 ```typescript
-async function doWork(user: User, txn: DreamTransaction<ApplicationModel> | null = null) {
+async function doWork(place: Place, txn: DreamTransaction<ApplicationModel> | null = null) {
   // No if/else needed — .txn(null) is a no-op
-  await user.txn(txn).update({ status: 'done' })
-  await user.txn(txn).createAssociation('posts', { title: 'New' })
+  await place.txn(txn).update({ name: 'Honey Hollow' })
+  await place.txn(txn).createAssociation('localizedTexts', { locale: 'es-ES', title: 'Honey Hollow' })
 }
 
 // Call with a transaction
 await ApplicationModel.transaction(async txn => {
-  await doWork(user, txn)
+  await doWork(place, txn)
 })
 
 // Call without — works the same, just no transaction wrapping
-await doWork(user)
+await doWork(place)
 ```
 
 `Model.txn(null)` works the same way.
 
 **Restrictions inside transactions:** Methods that rely on unique-constraint violations to function (`createOrFindBy`, `createOrUpdateBy`) cannot be used inside a transaction. Use their transaction-safe counterparts (`findOrCreateBy`, `updateOrCreateBy`) instead. See the [find-or-create methods](#find-or-create-and-upsert-methods) table for details.
 
-**Background jobs and transactions:** When queuing background work from a Dream lifecycle hook, always use the `Commit` variant of the hook (e.g., `@deco.AfterCreateCommit` instead of `@deco.AfterCreate`). This applies to backgrounded services, model instance backgrounding, and indirect helper methods that enqueue jobs. Regular hooks run inside the transaction, so the worker may execute before the transaction commits and either miss a newly-created row or read stale persisted data after an update. This also applies to imperative `background()` calls from services with a `txn` parameter — see [workers.md](workers.md) for both forms.
+**Background jobs and transactions:** When queuing background work from a Dream lifecycle hook, always use the `Commit` variant of the hook (e.g., `@deco.AfterCreateCommit` instead of `@deco.AfterCreate`). This applies to backgrounded services, model instance backgrounding, and indirect helper methods that enqueue jobs. Regular hooks run before an enclosing transaction commits, so the worker may execute before the commit and either miss a newly-created row or read stale persisted data after an update. This also applies to imperative `background()` calls from services with a `txn` parameter — see [workers.md](workers.md) for both forms.
 
 **What goes inside `ApplicationModel.transaction(...)` is database writes only.** HTTP fetches, S3 / object-storage uploads, sending email, calling third-party APIs, file I/O, sleeps, and any other non-DB work belong outside the transaction.
 
@@ -1242,7 +1213,7 @@ If the I/O phase fails partway, nothing is in the database and the caller can sa
 
 ## Replica Safety (`@ReplicaSafe`)
 
-`@ReplicaSafe()` is a class decorator that opts a model into reading from a read replica when one is configured (see [deploying.md — Read Replicas](deploying.md#read-replicas) for the connection config). Without it, every query against that model always hits the primary:
+`@ReplicaSafe()` is a class decorator that opts a model into reading from a read replica when one is configured (see [deploying.md — Read Replicas](deploying.md#read-replicas) for the connection config). Without it, the model's queries read the primary unless a call asks for `.connection('replica')` (below):
 
 ```typescript
 @ReplicaSafe()
@@ -1263,7 +1234,7 @@ await Room.innerJoin('bookings').all()   // primary — Booking isn't ReplicaSaf
 await Room.all()                          // replica — Room alone is ReplicaSafe
 ```
 
-`preload` (and `preloadFor`) is different: it runs the base query and each preloaded association as **separate** queries, so each one is routed independently by its own model's `@ReplicaSafe()` status — a `@ReplicaSafe()` base model still reaches the replica even when a preloaded association isn't.
+`preload` (and `preloadFor`) is different: it runs the base query and each preloaded association as **separate** queries, so a `@ReplicaSafe()` base model still reaches the replica even when a preloaded association isn't.
 
 **Override per call with `.connection('primary' | 'replica')`.** Use this when a specific call needs different routing than the model's default — e.g., a `@ReplicaSafe()` model read immediately after a write in the same action, where replica lag could return stale data:
 
@@ -1300,16 +1271,16 @@ const opensAt = ClockTime.fromISO('09:30:00')
 const callWindowStart = ClockTimeTz.fromISO('14:00:00-05:00')
 ```
 
-Each Dream date/time class maps to exactly one Postgres column type, and `pnpm psy sync` rewrites `src/types/db.ts` so the matching `DreamColumn<Model, '...'>` resolves to the right class automatically (the same mechanism that makes a `timestamp` column resolve to `DateTime`):
+Each Postgres date/time column type maps to one Dream class, and `pnpm psy sync` regenerates the column types `DreamColumn<Model, '...'>` reads, so it resolves to the right class automatically:
 
 | Postgres column type | Dream class |
 |---|---|
-| `timestamp` | `DateTime` |
+| `timestamp`, `timestamptz` | `DateTime` |
 | `date` | `CalendarDate` |
 | `time` (TIME WITHOUT TIME ZONE) | `ClockTime` |
 | `timetz` (TIME WITH TIME ZONE) | `ClockTimeTz` |
 
-A `ClockTimeTz` parsed from SQL is interpreted as UTC. These four classes are what `castParam` / `extractParams` return for date/time params and columns, and what Dream hydrates from the database — so any code touching those values already holds them; there is never a JS `Date` to reach for in the first place.
+A `ClockTimeTz` comes back from the database converted to UTC: the `callWindowStart` above, saved and reloaded, reads 19:00 UTC. These four classes are what `castParam` / `extractParams` return for date/time params and columns, and what Dream hydrates from the database — so any code touching those values already holds them; there is never a JS `Date` to reach for in the first place.
 
 These classes carry **microsecond precision** — unusual for a TypeScript framework, and worth knowing: the fractional second is six digits (first three milliseconds, next three microseconds). Microseconds are preserved when a value is supplied via the API (`fromISO`, etc.) or hydrated from the database. `.now()` is backed by JavaScript `Date` and is therefore millisecond-only *at the moment of creation*; if you need sub-millisecond values, set them explicitly via `plus` / `set` after construction.
 
@@ -1324,7 +1295,7 @@ Every parser on every one of these classes — `fromISO`, `fromSQL`, `fromFormat
 | `ClockTime` | `InvalidClockTime` |
 | `ClockTimeTz` | `InvalidClockTimeTz` |
 
-A calendar-clean-but-impossible string (`'2026-02-31'`) throws just like `'garbage'` does. To validate an untrusted date string (an LLM-emitted value, a query param), just parse it and catch the specific error:
+A calendar-clean-but-impossible string (`'2026-02-31'`) throws just like `'garbage'` does. To validate an untrusted date string (an LLM-emitted value), just parse it and catch the specific error:
 
 ```typescript
 import { DateTime } from '@rvoh/dream'

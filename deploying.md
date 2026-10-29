@@ -15,24 +15,27 @@ A Psychic application runs multiple process roles from a single built image. Eac
 
 ## Health Checks
 
-The API server needs an explicit health check route registered in `api/src/conf/routes.ts`:
+The API server needs an explicit health check route. The scaffold's `api/src/conf/routes.ts` carries one commented out; uncomment it and adjust the path and body to what your infra expects:
 
 ```typescript
-r.get('health_check', HealthCheckController, 'index')
+r.get('health_check', ctx => {
+  ctx.status = 200
+  ctx.body = { ok: true }
+})
 ```
 
-The `@rvoh/psychic-websockets` package has a **built-in** health check, but be aware of two differences from the API health check:
+The `@rvoh/psychic-websockets` server answers its own **built-in** health check, configured with `wsApp.set('healthCheck', …)` ([websockets.md](websockets.md#configuration)). Its defaults differ from the API route:
 
-| | API | WebSocket |
+| | API | WebSocket (default) |
 |--|-----|-----------|
-| Default path | `/health_check` (you define it) | `/healthcheck` (built-in) |
-| HTTP methods | Responds to `GET` and `HEAD` | Responds to `GET` only |
+| Path | `/health_check` (you define it) | `/healthcheck` |
+| HTTP methods | `GET` and `HEAD` | `GET` only (one configurable method) |
 
-**Practical consequence:** `curl -I` (which sends `HEAD`) works against the API health check but returns `404` from the websocket service. When verifying websocket health externally, use `curl -X GET` instead.
+**Practical consequence:** `curl -I` (which sends `HEAD`) works against the API health check but returns `404` from a default websocket health check; use `curl -X GET` there.
 
 ## Environment Variables
 
-**Always use `AppEnv` to access environment variables** — never `process.env` directly. `AppEnv` (defined in `api/src/conf/AppEnv.ts`) validates that required variables are present at boot time and provides a clear error message when one is missing, rather than failing silently deep in application code.
+**Always use `AppEnv` to access environment variables** — never `process.env` directly. `AppEnv` (defined in `api/src/conf/AppEnv.ts`) throws `MissingRequiredEnvironmentVariable`, naming the variable, when a required one is read while unset — at boot for anything `conf/app.ts`, `conf/dream.ts` or an initializer reads — instead of handing `undefined` on.
 
 `AppEnv` also decouples the application from the container's environment. Because all env access goes through a single entry point, the application can load secrets from external sources at boot time — e.g., AWS Secrets Manager or AWS Systems Manager Parameter Store — and inject them into `AppEnv` before anything else runs. This is a significant advantage for secret management: the container itself doesn't need every secret baked into its environment, and secrets can be rotated without redeploying.
 
@@ -42,17 +45,17 @@ For variables that are only present in some environments, use `AppEnv.string(nam
 
 ## TLS Behind a Reverse Proxy
 
-If your reverse proxy (load balancer, ingress controller, etc.) terminates TLS but re-encrypts traffic to the container, the Psychic app must speak TLS on its container port. In this case, baking a self-signed certificate into the image is more reliable than generating one dynamically at runtime.
+The generated `conf/app.ts` serves TLS in production: under `AppEnv.isProduction` it calls `psy.set('ssl', { key: AppEnv.string('SSL_KEY_PATH'), cert: AppEnv.string('SSL_CERT_PATH') })`, so the web and websocket servers listen with HTTPS, and boot throws unless both variables are set. That fits a reverse proxy (load balancer, ingress controller) that terminates TLS and re-encrypts traffic to the container. The pair is a self-signed certificate, separate from the one on the proxy; bake it into the image rather than generating it at runtime.
 
-If the proxy terminates TLS and forwards plain HTTP to the container, no additional TLS configuration is needed in the app.
+If the proxy forwards plain HTTP to the container instead, delete that `psy.set('ssl', …)` block. Psychic marks the cookies it sets `Secure` in production, so an app that sets cookies then also sets `koaApp.proxy = true`, or `startSession` and `setCookie` answer 500. Set `koaApp.proxy` only when nothing but the proxy can reach the container ([Proxy Configuration for Secure Cookies](controllers.md#proxy-configuration-for-secure-cookies)); otherwise keep the block and have the proxy re-encrypt.
 
 ## Postgres TLS
 
 `DreamDbConfig` accepts an `ssl?: TlsConnectionOptions | false` field that flows directly to the underlying `pg.Pool` connection. The bare `ssl: true` shorthand is rejected — callers must choose explicitly between verified TLS (`{ rejectUnauthorized: true }`) and unverified TLS (`{ rejectUnauthorized: false }`). `ssl: false` is the explicit TLS-off sentinel.
 
-`app.set('db', ...)` throws `MissingDbSslDirective` at setter time — in every environment, not just production — if neither `ssl` nor the legacy `useSsl` is set on a credential, so the call site has to make TLS posture explicit.
+`app.set('db', ...)` throws `MissingDbSslDirective` at setter time — in every environment, not just production — if a credential sets neither `ssl` nor the legacy `useSsl: true`, so the call site has to make TLS posture explicit.
 
-The `create-psychic` boilerplate ships verified TLS via the system CA store as the default, with `DB_NO_SSL=true` as the explicit-off escape hatch:
+The `create-psychic` boilerplate ships verified TLS via the system CA store as the default, with `DB_NO_SSL=1` as the explicit-off escape hatch:
 
 ```typescript
 const dbSsl: { rejectUnauthorized: true } | false = AppEnv.boolean('DB_NO_SSL')
@@ -61,7 +64,7 @@ const dbSsl: { rejectUnauthorized: true } | false = AppEnv.boolean('DB_NO_SSL')
 
 app.set('db', {
   primary: { /* host, port, user, password, name */ ssl: dbSsl },
-  replica: hasReplica ? { /* ... */ ssl: dbSsl } : undefined,
+  replica: AppEnv.string('REPLICA_DB_HOST', { optional: true }) ? { /* ... */ ssl: dbSsl } : undefined,
 })
 ```
 
@@ -73,7 +76,7 @@ Most managed Postgres providers (Supabase, Neon, Render, Azure Database for Post
 | AWS RDS | `{ rejectUnauthorized: true, ca: readFileSync('rds-ca.pem') }` |
 | GCP Cloud SQL | `{ rejectUnauthorized: true, ca: readFileSync('server-ca.pem') }` |
 | Heroku Hobby, some local Docker images | `{ rejectUnauthorized: false }` |
-| Local dev with no TLS | `ssl: false` or `DB_NO_SSL=true` |
+| Local dev with no TLS | `ssl: false` or `DB_NO_SSL=1` |
 
 ```typescript
 // Verified TLS with a pinned CA — e.g., AWS RDS
@@ -99,18 +102,15 @@ A credential still carrying the deprecated `useSsl: true` resolves to **unverifi
 
 ## Read Replicas
 
-`app.set('db', { primary, replica })` accepts an optional `replica` credential alongside `primary`, same shape (`host`, `port`, `user`, `password`, `name`, `ssl`) pointed at your read replica instance:
+The generated `conf/dream.ts` already passes a `replica` credential — same shape as `primary` (`host`, `port`, `user`, `password`, `name`, `ssl`) — whenever `REPLICA_DB_HOST` is set. Set it to your read replica's host, and `REPLICA_DB_PORT` if the replica's port differs from `DB_PORT`:
 
 ```typescript
-app.set('db', {
-  primary: { host: AppEnv.string('DB_HOST'), /* port, user, password, name */ ssl: dbSsl },
-  replica: hasReplica
-    ? { host: AppEnv.string('DB_REPLICA_HOST'), /* port, user, password, name */ ssl: dbSsl }
-    : undefined,
-})
+replica: AppEnv.string('REPLICA_DB_HOST', { optional: true })
+  ? { host: AppEnv.string('REPLICA_DB_HOST'), /* port, user, password, name */ ssl: dbSsl }
+  : undefined,
 ```
 
-Configuring `replica` only makes the connection available — it doesn't route any traffic there by itself. A model only reads from the replica when it's decorated `@ReplicaSafe()`, and even then only for `select` queries outside a transaction. See [models.md — Replica Safety](models.md#replica-safety-replicasafe) for the full routing rules (join fallback to primary, `create`/`update`/`destroy` always primary, per-call `.connection(...)` override).
+Configuring `replica` only makes the connection available — it doesn't route any traffic there by itself. A model reads from the replica only when it's decorated `@ReplicaSafe()` or a call asks for `.connection('replica')`, and only for `select` queries outside a transaction. See [models.md — Replica Safety](models.md#replica-safety-replicasafe) for the full routing rules (join fallback to primary, `create`/`update`/`destroy` always primary, per-call `.connection(...)` override).
 
 Omit `replica` (or pass `undefined`) for environments with no replica — every model, `@ReplicaSafe()` or not, then reads from `primary`.
 
@@ -118,12 +118,12 @@ Omit `replica` (or pass `undefined`) for environments with no replica — every 
 
 ### The migrate task is the boot smoke test
 
-Running `node ./dist/src/conf/system/cli.js db:migrate` exercises the full Psychic boot chain before applying any migrations:
+Running `node ./dist/src/conf/system/cli.js db:migrate` exercises the Psychic boot chain before applying any migrations:
 
 1. Node boot on the deployed image.
 2. `loadEnv` resolves the environment (including any external-secret injection wired through `AppEnv`).
-3. `AppEnv` materializes — every required env var is validated and the application halts with a clear error if anything is missing.
-4. The Psychic registry initializes — every module that registers on import (models, serializers, controllers, routes, workers, websocket channels) runs its top-level side effects.
+3. Every required variable boot reads through `AppEnv` (`conf/app.ts`, `conf/dream.ts`, initializers) must be set, or boot throws naming it.
+4. Models, serializers, controllers, services and initializers load, so import-time errors surface. `db:migrate` boots with integrity checks bypassed, so route building, the OpenAPI document and the check that every model's table is in the schema run only when the web, websocket and worker processes boot.
 5. A database connection is established using the configured credentials, including TLS negotiation against the resolved `ssl` value.
 
 Only then does Kysely start applying pending migrations. Any failure in steps 1–5 fails the migrate task before the schema changes — which means a no-op "boot smoke" task that only waits for the container to reach a running state is redundant. The migrate task itself is the smoke test, and it covers strictly more than container liveness: missing env vars, registry-time import errors, malformed DB credentials, TLS handshake failures, and network reachability all surface here.

@@ -41,7 +41,7 @@ pnpm fspec:visible                            # Feature specs (visible browser)
 
 **Always run migrations before specs.** After generating a resource or migration, run `pnpm psy db:migrate` before `pnpm uspec` or `pnpm fspec`. The integrity check will fail with "Migrations need to be run on default database" if migrations are pending.
 
-**Never run `uspec` and `fspec` at the same time.** Both suites share the same test database lifecycle. Run them sequentially. It is fine to pass multiple file patterns to a single `pnpm uspec` or `pnpm fspec` invocation — the runner manages that suite's lifecycle internally.
+**Never run `uspec` and `fspec` at the same time.** Each spec worker claims its own database from a test-database pool sized for one suite's workers, so two suites at once can exhaust it. It is fine to pass multiple file patterns to a single `pnpm uspec` or `pnpm fspec` invocation.
 
 **Path filters match by prefix, not by directory.** vitest's positional path filters (including `pnpm fspec <path>`) match by prefix/substring against file paths, not real path-scoping — `pnpm fspec spec/features/host` also runs a sibling directory like `spec/features/host-verification/` (prefix collision). Check the reported file count rather than assuming a filter scoped the run to what its path implies.
 
@@ -60,7 +60,7 @@ Factories create real database records with sensible defaults:
 
 ```typescript
 // spec/factories/PlaceFactory.ts
-import Place from '@models/Place.js'
+import Place from '#models/Place.js'
 import { UpdateableProperties } from '@rvoh/dream/types'
 
 let counter = 0
@@ -101,7 +101,7 @@ preferredBedTypes: ['TODO'],
 
 ```typescript
 // spec/factories/HostPlaceFactory.ts
-import HostPlace from '@models/HostPlace.js'
+import HostPlace from '#models/HostPlace.js'
 import createHost from './HostFactory.js'
 import createPlace from './PlaceFactory.js'
 import { UpdateableProperties } from '@rvoh/dream/types'
@@ -121,7 +121,7 @@ export default async function createHostPlace(
 
 ```typescript
 // spec/factories/Room/BedroomFactory.ts
-import Bedroom from '@models/Room/Bedroom.js'
+import Bedroom from '#models/Room/Bedroom.js'
 import createPlace from '../PlaceFactory.js'
 import { UpdateableProperties } from '@rvoh/dream/types'
 
@@ -160,7 +160,7 @@ export default async function createGuest(attrs: UpdateableProperties<Guest> = {
 When a model's AfterCreate hook creates side-effect records that aren't a single auto-associated child (e.g., Place auto-creates default rooms, default photos, default amenities — multiple records), the factory should pass `skipHooks: true` so test data stays minimal and predictable:
 
 ```typescript
-// PlaceFactory — bypasses the AfterCreate hook that auto-seeds rooms.
+// PlaceFactory — skipHooks bypasses every Place hook, before and after, including the AfterCreate that auto-seeds rooms.
 // Specs that want to verify the auto-seed flow should call Place.create() directly.
 export default async function createPlace(attrs: UpdateableProperties<Place> = {}) {
   return await Place.create(
@@ -174,7 +174,7 @@ export default async function createPlace(attrs: UpdateableProperties<Place> = {
 }
 ```
 
-**Why:** if the factory fires the hook, every spec that creates a Place gets the auto-seeded rooms. Index queries, count assertions, and isolation specs break in confusing ways. The factory's job is to provide a minimal valid record; specs that need the full hook flow can call `Model.create()` directly without `skipHooks`.
+**Why:** if the factory fires the hook, every spec that creates a Place gets the auto-seeded rooms. Index queries, count assertions, and isolation specs break in confusing ways. `skipHooks` skips every hook on the save, so a `BeforeSave` that fills or normalizes a column is skipped too. Specs that need the full hook flow call `Model.create()` directly without `skipHooks`.
 
 **Test the hook itself in the model spec.** Have explicit specs for both paths:
 
@@ -199,10 +199,14 @@ it('does NOT auto-seed when skipHooks is true', async () => {
 ## Model Specs
 
 ```typescript
-import Place from '@models/Place.js'
-import createPlace from '@factories/PlaceFactory.js'
-import createHost from '@factories/HostFactory.js'
-import createHostPlace from '@factories/HostPlaceFactory.js'
+import HostPlace from '#models/HostPlace.js'
+import Place from '#models/Place.js'
+import { CalendarDate } from '@rvoh/dream'
+import createHost from '#spec/factories/HostFactory.js'
+import createHostPlace from '#spec/factories/HostPlaceFactory.js'
+import createPlace from '#spec/factories/PlaceFactory.js'
+import createBedroom from '#spec/factories/Room/BedroomFactory.js'
+import createKitchen from '#spec/factories/Room/KitchenFactory.js'
 
 describe('Place', () => {
   // Test associations
@@ -229,7 +233,7 @@ describe('Place', () => {
   describe('hooks', () => {
     context('upon creation', () => {
       it('creates default LocalizedText', async () => {
-        const place = await createPlace({ style: 'cottage' })
+        const place = await Place.create({ host: await createHost(), name: 'Test', style: 'cottage' })
         const text = await place.associationQuery('localizedTexts').firstOrFail()
         expect(text.locale).toEqual('en-US')
         expect(text.title).toEqual('My cottage')
@@ -284,9 +288,9 @@ describe('Place', () => {
 
   // Test virtual attributes
   describe('#age', () => {
-    it('computes age from birthYear', async () => {
-      const candidate = await createCandidate({ birthYear: 1990 })
-      const reloaded = await Candidate.findOrFail(candidate.id)
+    it('computes age from yearBuilt', async () => {
+      const place = await createPlace({ yearBuilt: 1990 })
+      const reloaded = await Place.findOrFail(place.id)
       expect(reloaded.age).toEqual(CalendarDate.today().year - 1990)
     })
   })
@@ -298,15 +302,14 @@ describe('Place', () => {
 Controller specs use `OpenapiSpecRequest` for type-safe HTTP testing:
 
 ```typescript
-import { PsychicServer } from '@rvoh/psychic'
-import { OpenapiSpecRequest } from '@rvoh/psychic-spec-helpers'
-import { session } from '@spec/unit/helpers/authentication.js'
-import createUser from '@factories/UserFactory.js'
-import createHost from '@factories/HostFactory.js'
-import createPlace from '@factories/PlaceFactory.js'
-import createHostPlace from '@factories/HostPlaceFactory.js'
-
-type SpecRequestType = Awaited<ReturnType<typeof session>>
+import Host from '#models/Host.js'
+import Place from '#models/Place.js'
+import User from '#models/User.js'
+import createHost from '#spec/factories/HostFactory.js'
+import createHostPlace from '#spec/factories/HostPlaceFactory.js'
+import createPlace from '#spec/factories/PlaceFactory.js'
+import createUser from '#spec/factories/UserFactory.js'
+import { session, SpecRequestType } from '#spec/unit/helpers/authentication.js'
 
 describe('V1/Host/PlacesController', () => {
   let request: SpecRequestType
@@ -342,19 +345,22 @@ describe('V1/Host/PlacesController', () => {
     })
   })
 
-  describe('GET /v1/host/places/:id', () => {
+  describe('GET /v1/host/places/{id}', () => {
     it('returns the place', async () => {
       const place = await createPlace()
       await createHostPlace({ host, place })
 
-      const { body } = await request.get(`/v1/host/places/${place.id}`, 200)
+      const { body } = await request.get('/v1/host/places/{id}', 200, { id: place.id })
       expect(body.id).toEqual(place.id)
       expect(body.name).toEqual(place.name)
     })
 
-    context('when place does not exist', () => {
-      it('returns 404', async () => {
-        await request.get('/v1/host/places/nonexistent-id', 404)
+    context('a Place belonging to another Host', () => {
+      it('is not found', async () => {
+        const otherPlace = await createPlace()
+        await createHostPlace({ place: otherPlace })
+
+        await request.get('/v1/host/places/{id}', 404, { id: otherPlace.id })
       })
     })
   })
@@ -381,12 +387,13 @@ describe('V1/Host/PlacesController', () => {
     })
   })
 
-  describe('PATCH /v1/host/places/:id', () => {
+  describe('PATCH /v1/host/places/{id}', () => {
     it('updates the place', async () => {
       const place = await createPlace()
       await createHostPlace({ host, place })
 
-      await request.patch(`/v1/host/places/${place.id}`, 204, {
+      await request.patch('/v1/host/places/{id}', 204, {
+        id: place.id,
         data: { name: 'Updated Name' },
       })
 
@@ -395,12 +402,12 @@ describe('V1/Host/PlacesController', () => {
     })
   })
 
-  describe('DELETE /v1/host/places/:id', () => {
+  describe('DELETE /v1/host/places/{id}', () => {
     it('soft deletes the place', async () => {
       const place = await createPlace()
       await createHostPlace({ host, place })
 
-      await request.delete(`/v1/host/places/${place.id}`, 204)
+      await request.delete('/v1/host/places/{id}', 204, { id: place.id })
 
       expect(await Place.where({ id: place.id }).exists()).toBe(false)
     })
@@ -417,7 +424,7 @@ The `request` returned by `session(...)` is an `OpenapiSpecRequest` parameterize
 
 `RequestBody` / `RequestQuery` are exposed from the generated `spec/unit/helpers/authentication.ts`. Pass the URI as a literal with `{placeholder}` params, not an interpolated string, so it can index the spec.
 
-This makes the spec and the API contract impossible to drift apart silently: change an endpoint's params or response shape, run `pnpm psy sync`, and any spec that no longer matches stops compiling under `pnpm build:spec` until it is updated. For example, an out-of-enum value or an unknown param fails the type-check:
+This keeps the spec and the API contract from drifting apart silently: change an endpoint's params or response shape, run `pnpm psy sync`, and a spec that sends a value of the wrong type, asserts a status the endpoint no longer declares, or reads a field it no longer returns stops compiling under `pnpm build:spec`. For example, an out-of-enum value fails the type-check:
 
 ```typescript
 await request.post('/v1/host/places', 201, {
@@ -438,7 +445,7 @@ So build resourceful controllers before non-resourceful ones. It seeds the codeb
 
 ### Query parameters in spec requests
 
-**Query parameters nest under `query: {...}`; path parameters are direct keys.** The third argument to `request.get/post/patch/delete` carries everything the request needs beyond URL and expected status: path params as top-level keys (matching the `{name}` placeholders in the URI), and query-string params under a `query` key. Passing a flat `{ search: 'Alice' }` will be silently treated as a path-param attempt and won't reach the controller as a query.
+**Query parameters nest under `query: {...}`; path parameters are direct keys.** The third argument to `request.get/post/patch/delete` carries everything the request needs beyond URL and expected status: path params as top-level keys (matching the `{name}` placeholders in the URI), and query-string params under a `query` key. A flat `{ search: 'Alice' }` is never sent: only keys matching the URI's `{placeholders}` fill the path, and only `query` becomes the query string.
 
 ```typescript
 // Path param only
@@ -454,27 +461,43 @@ await request.get('/v1/host/places/{placeId}/rooms', 200, {
 })
 ```
 
-The shape is enforced by the OpenAPI-derived types: query-param keys come from the action's `@OpenAPI({ query: { ... } })` declaration, so a typo on either side surfaces as a TS error.
+The shape is enforced by the OpenAPI-derived types: query-param keys come from the action's `@OpenAPI({ query: { ... } })` declaration, so a misspelled key is a TS error when it is the object's only key; next to a correctly spelled key it type-checks.
 
 ### Transaction-callback type for helper methods
 
-For helper methods called inside a `.transaction(...)` callback, type the txn parameter as `DreamTransaction<Dream>` (imported from `@rvoh/dream`). The same type is used by `@AfterCreate` / `@AfterUpdate` hooks (see [models.md — After Hooks](models.md)) and in [models.md — Transactions](models.md#transactions). Don't reach for `Parameters<Parameters<typeof ApplicationModel.transaction>[0]>[0]` gymnastics.
+For helper methods called inside a `.transaction(...)` callback, type the txn parameter as `DreamTransaction<Dream>` (imported from `@rvoh/dream`). Hooks take it as `DreamTransaction<Dream> | null` (see [models.md — After Hooks](models.md)); see also [models.md — Transactions](models.md#transactions). Don't reach for `Parameters<Parameters<typeof ApplicationModel.transaction>[0]>[0]` gymnastics.
 
 ## Authentication Helper
 
 ```typescript
 // spec/unit/helpers/authentication.ts
-import { Encrypt } from '@rvoh/dream'
-import { OpenapiSpecRequest } from '@rvoh/psychic-spec-helpers'
+import AppEnv from '#conf/AppEnv.js'
+import { Dream } from '@rvoh/dream'
+import { Encrypt } from '@rvoh/dream/utils'
 import { PsychicServer } from '@rvoh/psychic'
-import AppEnv from '@conf/AppEnv.js'
+import { OpenapiRequestBody, OpenapiRequestQuery, OpenapiSpecRequest } from '@rvoh/psychic-spec-helpers'
 
-type OpenapiPaths = import('@src/types/openapi/tests.openapi.js').paths
+type OpenapiPaths = import('#src/types/openapi/tests.openapi.js').paths
+
+export type SpecRequestType = Awaited<ReturnType<typeof session>>
+
+export type RequestBody<HttpMethod extends 'get' | 'post' | 'patch' | 'delete', Uri> = OpenapiRequestBody<
+  OpenapiPaths,
+  HttpMethod,
+  Uri
+>
+
+export type RequestQuery<HttpMethod extends 'get' | 'post' | 'patch' | 'delete', Uri> = OpenapiRequestQuery<
+  OpenapiPaths,
+  HttpMethod,
+  Uri
+>
 
 function testToken(user: Dream): string {
+  // encrypt the object itself: resolveCurrentUser reads userId from what decrypt returns
   return Encrypt.encrypt(
-    JSON.stringify({ userId: user.primaryKeyValue() }),
-    { algorithm: 'aes-256-gcm', key: AppEnv.string('APP_ENCRYPTION_KEY') }
+    { userId: user.primaryKeyValue() as string },
+    { algorithm: 'aes-256-gcm', key: AppEnv.string('APP_ENCRYPTION_KEY') },
   )
 }
 
@@ -533,8 +556,8 @@ await expect(page).toUncheck('Send newsletter')    // Uncheck a checkbox
 These assert on the current state of the page:
 
 ```typescript
-await expect(page).toMatchTextContent('Welcome back')      // Page contains text
-await expect(page).toNotMatchTextContent('Error')           // Page does not contain text
+await expect(page).toMatchTextContent('Welcome back')      // Page shows text
+await expect(page).toNotMatchTextContent('Error')           // Page does not show text
 await expect(page).toHaveSelector('.success-banner')        // Page has CSS selector
 await expect(page).toNotHaveSelector('.error-message')      // Page does not have selector
 await expect(page).toHavePath('/dashboard')                 // Current path matches
@@ -542,11 +565,13 @@ await expect(page).toHaveUrl('https://example.com/dash')   // Current full URL m
 await expect(page).toHaveLink('Documentation')              // Page has a link with text
 await expect(page).toHaveChecked('Remember me')             // Checkbox with text is checked
 await expect(page).toHaveUnchecked('Opt out')               // Checkbox with text is unchecked
+await expect(page).toHaveSelected('#style', 'cabin')        // Option with value 'cabin' is selected
+await expect(page).toHaveUnselected('#style', 'tent')       // Option with value 'tent' is not selected
 ```
 
 ### What the text matchers actually read
 
-`toMatchTextContent` / `toNotMatchTextContent` assert on what the page **renders**, not its DOM source. They collect each element's `innerText` (joined with spaces, with `input`/`textarea` values included), so they see CSS `text-transform`, visibility, and other rendered output. Two consequences:
+`toMatchTextContent` / `toNotMatchTextContent` assert on what the page **renders**, not its DOM source. They collect each element's `innerText` and each displayed `input`/`textarea` value, joined with spaces, so they see CSS `text-transform` and skip CSS-hidden content (`display: none`, `visibility: hidden`) and `<select>` menus; `opacity: 0` and offscreen text still match. Two consequences:
 
 **Default to a case-insensitive regex for text content.** A label whose source is `5 out of 5` but is rendered with an `uppercase` class matches as `5 OUT OF 5`. The literal string fails, and hardcoding `'5 OUT OF 5'` couples the spec to cosmetic styling. Match on meaning instead:
 
@@ -561,7 +586,7 @@ Keep this separate from **specificity**. Case-insensitivity does not make a matc
 
 **Split label/value markup matches contiguously.** Because per-element text is joined with spaces, `<dt>Sleeps</dt><dd>4</dd>` lands in the matched string as `Sleeps 4`. So `toMatchTextContent('Sleeps 4')` matches a label/value split with no `page.$eval` workaround.
 
-A more complex layout — a flex container around the `<dt>`/`<dd>` pair, for instance — can break that contiguity, landing extra whitespace between what look like adjacent elements in the source. If a literal contiguous match fails unexpectedly on markup that looks equivalent to the example above, fall back to a whitespace-tolerant regex (`/Sleeps\s+4/`) rather than assuming the assertion itself is broken.
+Contiguity holds between separate elements. A label and value inside one element that a line break separates — a `<br>`, a block child, or a flex item (`<p>Sleeps<br>4</p>`) — land as `Sleeps\n4`; match those with a whitespace-tolerant regex (`/Sleeps\s+4/`).
 
 ### What the selector matchers actually assert
 
@@ -569,22 +594,23 @@ A more complex layout — a flex container around the `<dt>`/`<dd>` pair, for in
 
 `toNotHaveSelector` requires true DOM absence. A present-but-hidden element — one still in the DOM but invisible via CSS — **fails** `toNotHaveSelector`; only an element that's actually unmounted or never rendered passes it.
 
-The rest of the matcher set is presence/interaction-only: `toCheck`, `toClick`/`toClickButton`/`toClickLink`/`toClickSelector`, `toFill`, `toHaveChecked`, `toHaveLink`, `toHavePath`, `toHaveSelector`, `toHaveUnchecked`, `toHaveUrl`, `toNotHaveSelector`, `toSelect`, `toUncheck` — none of these assert visibility directly. `toMatchTextContent`/`toNotMatchTextContent` are the exception: as covered above, they read rendered `innerText`, so they're visibility-sensitive by construction. `toEvaluate` — a generic retry-with-timeout predicate matcher, requiring an `{ pass, actual }`-returning function and a `failureText` option — can express a visibility check directly, but has no established usage pattern in this codebase; the class-assertion workaround below is the more direct tool for the common case.
+The rest of the matcher set is presence/interaction-only: `toCheck`, `toClick`/`toClickButton`/`toClickLink`/`toClickSelector`, `toFill`, `toHaveChecked`, `toHaveLink`, `toHavePath`, `toHaveSelected`, `toHaveSelector`, `toHaveUnchecked`, `toHaveUnselected`, `toHaveUrl`, `toNotHaveSelector`, `toSelect`, `toUncheck` — none of these assert visibility directly. `toMatchTextContent`/`toNotMatchTextContent` are the exception: as covered above, they skip CSS-hidden text.
 
-When a spec genuinely needs to distinguish hidden-but-mounted from truly absent, assert the mechanism that hides the element rather than reaching for a visibility matcher that doesn't exist. If a booking confirmation banner is toggled with an `invisible` CSS class instead of being unmounted, assert the class directly:
+To tell hidden-but-mounted from absent, pair the presence check with a text check scoped to the element. A booking confirmation banner toggled with an `invisible` class (`visibility: hidden`) instead of being unmounted stays in the DOM but shows no text:
 
 ```typescript
-await expect(page).toHaveSelector('.booking-confirmation')                 // still mounted either way
-const classAttr = await page.$eval('.booking-confirmation', el => el.className)
-expect(classAttr).toMatch(/\binvisible\b/)                                 // actually hidden
+await expect(page).toHaveSelector('.booking-confirmation')        // still mounted
+await expect(page).toNotMatchTextContent(/booking confirmed/i, {
+  selector: '.booking-confirmation',
+})                                                                // but not shown
 ```
 
 ### Full Example
 
 ```typescript
-import City from '@models/City.js'
-import createAdminUser from '@spec/factories/AdminUserFactory.js'
-import adminSignIn from '@spec/features/helpers/adminSignIn.js'
+import City from '#models/City.js'
+import createAdminUser from '#spec/factories/AdminUserFactory.js'
+import adminSignIn from '#spec/features/helpers/adminSignIn.js'
 
 describe('Cities create', () => {
   it('allows an admin to create a new city from the index', async () => {
@@ -691,7 +717,7 @@ The derived getters (`AppEnv.isTest`, `.nodeEnv`, `.serviceRole`) have no setter
 Import the module as a namespace and spy on the export, the same way you spy on a class's static method:
 
 ```typescript
-import * as feesModule from '@services/Booking/fees.js'
+import * as feesModule from '#services/Booking/fees.js'
 
 vi.spyOn(feesModule, 'cleaningFee').mockReturnValue(0)
 ```
@@ -700,25 +726,11 @@ Code that imports `{ cleaningFee }` gets the spy. For a default export, spy on `
 
 ## Background Worker Testing
 
-```typescript
-// Default: Jobs execute immediately in specs (testInvocation = 'automatic')
-await GuestMailerService.sendWelcome(guest)
-// The backgrounded method runs synchronously
-
-// Manual mode for fine-grained control
-import { WorkerTestUtils } from '@rvoh/psychic-workers'
-
-const workersApp = PsychicAppWorkers.getOrFail()
-workersApp.set('testInvocation', 'manual')
-
-await GuestMailerService.sendWelcome(guest)  // Queued
-await WorkerTestUtils.work()                 // Process queue
-await WorkerTestUtils.clean()                // Clear queues
-```
+Under the default `testInvocation: 'automatic'`, a backgrounded method runs before `.background(...)` returns, so a spec asserts on its effects directly. Manual mode and `WorkerTestUtils` (from `@rvoh/psychic-workers/utils`) are in [workers.md](workers.md#testing-workers).
 
 ### A job that throws fails the enqueuing request in specs, but not in prod
 
-Under the default `automatic` invocation, a backgrounded method runs inline and **awaited** inside the call that enqueued it — the framework short-circuits the queue and calls the method directly, with no surrounding try/catch. So if the job throws, the error propagates back through `.background(...)` to the caller. A controller action that backgrounds a job and awaits it therefore returns **500 in specs** when the job throws.
+Under the default `automatic` invocation, a backgrounded method runs inline and **awaited** inside the call that enqueued it — the framework skips the queue and runs the job in place, rethrowing what it throws. So if the job throws, the error propagates back through `.background(...)` to the caller. A controller action that backgrounds a job and awaits it therefore returns an error status — usually 500 — **in specs** when the job throws.
 
 In production the same job runs on a separate BullMQ worker. A throw there is retried per the queue's `defaultJobOptions` (set in `conf/initializers/workers.ts`) and lands in `failed` only once attempts are exhausted — none of it touching the HTTP response that was already returned. The "fire-and-forget" mental model — `await this.background(...)` returns once queued, the job's success or failure is independent of the request — holds in prod but **not** in specs.
 
@@ -731,21 +743,18 @@ Two practical consequences:
 
 ```typescript
 describe('Host creates a Place', () => {
-  let page: Page
-
   beforeEach(async () => {
-    page = await getPage()
     const user = await createUser()
     await createHost({ user })
-    await hostSignIn(page, user)
+    await hostSignIn(user)
   })
 
   it('creates a new place via the form', async () => {
-    await visit(page, '/places/new')
-    await fillIn(page, '#name', 'Cozy Cabin')
-    await select(page, '#style', 'cabin')
-    await fillIn(page, '#sleeps', '4')
-    await clickButton(page, 'Create Place')
+    await visit('/places/new', { baseUrl: AppEnv.string('CLIENT_APP_HOST') })
+    await fillIn('#name', 'Cozy Cabin')
+    await select('#style', 'cabin')
+    await fillIn('#sleeps', '4')
+    await clickButton('Create Place')
 
     await expect(page).toHavePath('/places')
     await expect(page).toMatchTextContent('Cozy Cabin')
@@ -820,7 +829,7 @@ Avoid flat naming like `guest-browses-places.spec.ts` — the directory structur
 The test process and the browser run concurrently, so `page.waitForNetworkIdle({ idleTime: 500 })` is the general-purpose wait before interacting with the page or asserting on the database. When the UI visibly changes after the API call (e.g., navigation to a new path), waiting on that UI change is a cleaner signal:
 
 ```typescript
-await clickButton(page, 'Create Place')
+await clickButton('Create Place')
 await expect(page).toHavePath('/places')        // proves the response completed
 const place = await Place.firstOrFail()          // safe to query now
 ```
@@ -830,7 +839,7 @@ const place = await Place.firstOrFail()          // safe to query now
 When the path doesn't change, wait on the eventual state instead. Poll the database for the actual outcome:
 
 ```typescript
-await clickButton(page, 'Delete')
+await clickButton('Delete')
 await expect
   .poll(async () => await Place.find(place.id))
   .toBeNull()                                   // waits for the delete to land

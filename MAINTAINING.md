@@ -124,8 +124,8 @@ lines forces a token boundary at every newline and overstates the total.
 vocabulary; `tiktoken` cross-checks 5-6% lower. Treat the number as accurate to a few percent, and
 keep real headroom rather than shaving the cap.
 
-**Current state: `SKILL.md` is 4,950 tokens over 122 lines, with 50 tokens of headroom.** That
-slack is about fifty tokens, not hundreds. Any addition is measured with a real tokenizer *before* it
+**Current state: `SKILL.md` is 4,894 tokens over 122 lines, with 106 tokens of headroom.** That
+slack is about a hundred tokens, not hundreds. Any addition is measured with a real tokenizer *before* it
 is written, and anything added has to say where the room comes from.
 
 `SKILL.md` carries a sentinel line above its H1 so a truncated copy can notice it is truncated: it
@@ -318,12 +318,12 @@ There is no test suite, no lint config and no CI here. These are the checks, eac
 result, because a check with an undefined expected result is not verification.
 
 - **`wc -l SKILL.md`** — under 500. Currently 122.
-- **Token count of `SKILL.md`** — under 5,000, measured with the recipe above. Currently 4,950.
+- **Token count of `SKILL.md`** — under 5,000, measured with the recipe above. Currently 4,894.
 - **Every reference file still linked from `SKILL.md`**, all 17:
   `grep -o '](\([a-z0-9-]*\.md\)' SKILL.md | sed 's/](//' | sort -u`. The character class must
   include digits or `i18n.md` is missed.
 - **Anchors: 0 broken.** Scope any count you record: `SKILL.md` plus the 17 reference files
-  carry 119 anchored links, and `CHANGELOG.md` adds 4 more that are never maintained. Zero
+  carry 140 anchored links, and `CHANGELOG.md` adds 4 more that are never maintained. Zero
   broken is the claim that must hold. No off-the-shelf command does this correctly. A hand-rolled
   slugifier must (a) strip fenced code before collecting headings, (b) **preserve `_`** — it is a
   `\w` character and GitHub keeps it, so stripping it as emphasis falsely breaks
