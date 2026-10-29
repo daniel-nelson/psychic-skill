@@ -125,25 +125,14 @@ When `syncTypes` is true, `pnpm psy sync` runs the spec through `openapi-typescr
 ```bash
 pnpm psy setup:sync:openapi-zustand \
   --schema-file=./src/openapi/openapi.json \
-  --output-dir=../client/app/api/bearbnb \
-  --client-config-file=../client/app/api/bearbnbClient.ts \
+  --output-dir=../client/app/api/bearbnb/generated \
+  --client-config-file=../client/app/api/bearbnb/client.ts \
   --export-name=bearbnbApi
 ```
 
-`--client-config-file` must live outside `--output-dir`. `@hey-api/openapi-ts` recursively deletes and regenerates the whole `--output-dir` on every sync, so a config file placed inside it is deleted the next time `pnpm psy sync` runs — keep it as a sibling of the output directory instead. This is a deliberate deviation from the command's own default: both the `--help` example and the interactive prompt's default path place `--client-config-file` inside `--output-dir`. That default doesn't survive the clean-on-generate, which is why this guide places it outside instead.
-
-Placing it outside `--output-dir` breaks the generated stub's import, though: the generator always writes `import { client } from './client.gen'` in the config file, which only resolves when the config file sits next to `client.gen.ts` (i.e., inside `--output-dir`). After the first generate, open the config file and fix that import to point into the output directory instead, using the `--output-dir` basename — for the command above, `./bearbnb/client.gen`:
-
-```typescript
-// ../client/app/api/bearbnbClient.ts
-import { client } from './bearbnb/client.gen'
-```
-
-Your edit survives: the initializer `pnpm psy sync` runs writes only inside `--output-dir` — re-running `openapi-ts` and regenerating the store there — and the config file is outside it. Re-running `pnpm psy setup:sync:openapi-zustand` is what replaces the config file; the command prompts before overwriting, and confirming discards this import fix along with any baseUrl or auth code the config file has picked up.
-
 `--export-name` names the initializer — its file, function, and log labels — not the generated SDK or store code, which is derived entirely from the OpenAPI spec.
 
-`setup:sync:openapi-redux` is the sibling command for RTK Query / Redux Toolkit frontends. It takes a different flag set (`--schema-file`, `--api-file`, `--api-import`, `--output-file`, `--export-name`) with no `--output-dir`/`--client-config-file` at all, so the placement gotcha above doesn't apply to it.
+`setup:sync:openapi-redux` is the sibling command for RTK Query / Redux Toolkit frontends. It takes a different flag set (`--schema-file`, `--api-file`, `--api-import`, `--output-file`, `--export-name`) with no `--output-dir`/`--client-config-file` at all.
 
 `pnpm psy setup:sync:enums` is another command in this family. It generates a one-time initializer that rewrites a client-side enums file — at a path you pick — on every `pnpm psy sync`, exporting a `PlaceStylesEnumValues` const and a `PlaceStylesEnum` type, following the same naming convention as `#src/types/db.js`. Client code imports from that file instead of hand-writing its own; [Critical Rule 15](SKILL.md#critical-rules) is the backend-side counterpart. The file carries only the enums the chosen spec's surface actually reaches, each with only the values that spec renders — a client is given your public surface, not every enum in your database. So an enum or a value missing from it is the boundary working. If the client genuinely needs one, widen the spec that serves it; don't hand-write the value back.
 

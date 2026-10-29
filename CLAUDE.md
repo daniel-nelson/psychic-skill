@@ -141,4 +141,6 @@ Treat this as the complete release workflow for the current change:
 4. Add the matching `CHANGELOG.md` entry under a new `## <version> — <YYYY-MM-DD>` heading.
 5. Commit the intended files, push the branch, and open the PR.
 
+The PR title and description describe only the PR's final state: what the skill says once it merges. They never narrate earlier commits on the branch, what a revision replaced, or what `main` said before. When the branch changes, rewrite the description to match instead of appending to it.
+
 Do not open the PR until the branch includes the version bump and changelog entry. Do not rely on a post-merge fixup.

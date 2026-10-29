@@ -506,8 +506,16 @@ for (const config of FORM_CONFIGS) {
 This fails silently: no error, no warning, the worker boots clean, and you only discover it when N−1 of N jobs never happened in production. To schedule N variants you need either **N distinct `(class, method)` pairs**, or — the idiomatic fix — **one scheduled method registered once that fans out at runtime**:
 
 ```typescript
-// RIGHT — schedule the fan-out method ONCE; it loops at run time, not at schedule time
-await ScheduledJobs.schedule('0 13 * * *', 'reconcileAll')
+// RIGHT — schedule the cadence method ONCE; the backgrounded service it calls loops at run time
+export default class ScheduledJobs extends ApplicationScheduledService {
+  public static async scheduleAllJobs() {
+    await this.schedule('0 13 * * *', 'daily')
+  }
+
+  public static async daily() {
+    await ReconcileService.reconcileAll()   // enqueues one _reconcileForm job per config
+  }
+}
 ```
 
 ### Per-user cadence across time zones: schedule hourly, select by zone, fan out
