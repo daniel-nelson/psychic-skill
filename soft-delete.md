@@ -100,7 +100,7 @@ await place.destroy()
 // place.deletedAt is now set; row still exists in the database
 ```
 
-**Setting `deletedAt` yourself is not a substitute for `destroy()`.** A raw SQL `UPDATE`, a data-repair migration, or `Place.where({ id }).update({ deletedAt: DateTime.now() })` really does soft-delete the row: the `dream:SoftDelete` scope hides it from then on, and a query-level update still runs the model's *update* hooks, so the write reads as though it worked. What it skips is the rest of the destroy lifecycle — no `beforeDestroy` / `afterDestroy`, and no `dependent: 'destroy'` cascade, so dependent rows are left live pointing at a parent nothing returns.
+**Soft-delete through Dream: `place.destroy()` for one record, `Place.where({ id: placeIds }).destroy()` for a set.** A data repair that soft-deletes rows is a [one-off command](console.md#running-a-one-off-job-in-a-deployed-environment) calling `destroy()`, not a migration, where a model write runs outside the migration's transaction. Only `destroy()` does a soft delete's own work, such as destroy hooks, the `dependent: 'destroy'` cascade, and clearing `@Sortable` positions. Setting `deletedAt` any other way — raw SQL, a query-level `update`, an instance `update({ deletedAt })` with or without `skipHooks` — still hides the row, so it looks like it worked. On a `@Sortable` model such as `Room`, the hidden row keeps its position, and a later write that puts a live `Room` in that slot (destroying a lower-positioned one, or creating one at the end) fails at `COMMIT` with a `23505` duplicate-key error.
 
 ### Restore (undestroy)
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.107.0 — 2026-10-29
+
+### Changed
+
+- **`models.md`** — dirty tracking: a `DateTime` for the instant a column already holds is equal even as a new object in another zone, so assigning one dirties nothing and an `ifChanging` or `ifChanged` hook on that column doesn't run; ungated before-save hooks and validations still run.
+- **`testing.md`** — "Replacing a function a module exports": don't `vi.mock` an app module. The unit and feature setup files load routes, the controllers they name, and everything those import before the spec's mock registers, so the mock is silently inert in that code; a factory without a `default` export fails the spec file with `No "default" export is defined on the … mock`. The feature-spec paragraph links back to it.
+- **`soft-delete.md`** — soft-delete through Dream: `place.destroy()` for one record, `Place.where({ id: placeIds }).destroy()` for a set; a data repair that soft-deletes rows is a one-off command calling `destroy()`, not a migration, where a model write runs outside the migration's transaction. Only `destroy()` does a soft delete's own work (destroy hooks, the `dependent: 'destroy'` cascade, clearing `@Sortable` positions); setting `deletedAt` any other way still hides the row, and on a `@Sortable` model a later write into the slot it keeps fails at `COMMIT` with a `23505` duplicate-key error.
+
 ## 0.106.0 — 2026-10-29
 
 ### Added
