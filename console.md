@@ -139,3 +139,9 @@ NODE_ENV=development \
 - **`APP_NAME` / `APP_VERSION` are read at boot** by some projects' `app.ts` / `AppEnv` setup. The `console` script in `package.json` sets these from `$npm_package_name` / `$npm_package_version` automatically; standalone `tsx` doesn't, so set them explicitly. Skip this only if the project's boot doesn't reference them.
 - **Do not hand-roll an alternative** — a `tsx -e "..."` one-liner that skips `loadEnv` loads no `.env` file and runs with `NODE_ENV` unset, which `AppEnv` reads as production; one that skips `initializePsychicApp` fails its first query.
 - Add `scratch-*.ts` to `.gitignore` if it isn't already, and delete scratch files after use — they're throwaway, not artifacts.
+
+## Running a Script in a Deployed Container
+
+A deployed container holds the built image — `dist/`, `node_modules/` and `package.json`, with no `src/` and no `tsx`. Save the boilerplate above as plain JavaScript in `dist/scratch.mjs`, run `node dist/scratch.mjs` from the app root, and delete it afterwards. It must live in `dist/`, beside the copy of `package.json` whose `imports` map resolves `#conf/...`. Saved at the app root, it fails with `ERR_MODULE_NOT_FOUND` on `src/conf/loadEnv.js`, which reads as missing source rather than a misplaced file.
+
+The script uses whatever database the container is configured for. Stage runs `NODE_ENV=production` too, so that value doesn't mean the live app: run a script only when the user asks, in the deployment they named.
