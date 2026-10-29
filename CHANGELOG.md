@@ -1,13 +1,17 @@
 # Changelog
 
-## 0.104.1 — 2026-10-29
+## 0.105.0 — 2026-10-29
 
 ### Changed
 
-- **`workers.md`** — the `schedule()` keying pitfall's fix registers a method `ScheduledJobs` declares (`reconcileForms`, which calls `ReconcileService.reconcileAll()`), and notes that `schedule()` takes only a static method of its own class and that re-pointing it at an already-scheduled method replaces that scheduler.
-- **`models.md`** — "DreamConst in Association Conditions": the instance method `association()` takes `DreamConst.required` values as `{ required: { … } }` (and passthrough values as `{ passthrough: { … } }`), not `{ and: … }`.
-- **`openapi.md`** — re-running `setup:sync:openapi-zustand` with no TTY throws instead of prompting; `--overwrite` replaces the config file without prompting.
+- **`workers.md`** — the `schedule()` keying pitfall's fix is a `ScheduledJobs` class that schedules its `daily` cadence method once, and `daily` calls `ReconcileService.reconcileAll()` to fan out at run time.
+- **`models.md`** — "DreamConst in Association Conditions": the list of queries that take a `DreamConst.required` value as `{ and: … }` no longer names the `association()` instance method.
+- **`openapi.md`** — "Generating a typed API client (Zustand)": the example generates into `../client/app/api/bearbnb/generated` with the config file at `../client/app/api/bearbnb/client.ts`.
 - **`SKILL.md`** — ecosystem baseline: `@rvoh/psychic` 3.18.2.
+
+### Removed
+
+- **`openapi.md`** — the zustand section's guidance on placing `--client-config-file` outside `--output-dir` and on fixing the config file's `client.gen` import by hand.
 
 ## 0.104.0 — 2026-10-27
 
