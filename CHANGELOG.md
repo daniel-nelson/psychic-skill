@@ -4,7 +4,7 @@
 
 ### Added
 
-- **`console.md`** — "Running a Script in a Deployed Container": in a built image (no `src/`, no `tsx`), the console boilerplate is saved as plain JavaScript in `dist/scratch.mjs`, beside the copy of `package.json` whose `imports` map resolves `#conf/...`, run with `node dist/scratch.mjs` from the app root, and deleted afterwards; saved at the app root it fails with `ERR_MODULE_NOT_FOUND` on `src/conf/loadEnv.js`. The script uses whatever database the container is configured for, and stage also runs `NODE_ENV=production`, so a script runs only when the user asks, in the deployment they named.
+- **`console.md`** — "Running a One-Off Job in a Deployed Environment": a one-off job against a deployed database is a command registered in the app's own `src/conf/system/cli.ts` before `program.parse(process.argv)`, reviewed and deployed like any other change. In the `backfill-place-slugs` example, the action awaits `initializePsychicApp()`, imports the job from its own module (`#src/scripts/backfillPlaceSlugs.js`) inside the action so other `psy` commands never load it, runs it, and calls `process.exit()`. It runs locally with `pnpm psy backfill-place-slugs` and in a deployed image as a one-off task with `node ./dist/src/conf/system/cli.js backfill-place-slugs`. The command acts on whatever database that deployment is configured for, and stage also runs `NODE_ENV=production`, so it runs only when the user asks, in the deployment they named.
 - **`generators.md`** — "Generator workflow": column shorthand adds `.unique()` to columns whose names end in `email`, `token` or `uuid`; delete it where values repeat (`guest_email` on `bookings`), and on a soft-deleted table that needs the uniqueness, use a partial unique index instead.
 
 ### Changed
