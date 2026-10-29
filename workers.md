@@ -421,7 +421,7 @@ import ApplicationScheduledService from '../ApplicationScheduledService.js'
 export default class ScheduledJobs extends ApplicationScheduledService {
   public static async scheduleAllJobs() {
     await this.schedule('0 * * * *', 'processHour')     // Every hour
-    await this.schedule('0 9 * * *', 'dailyReport')     // 9am daily
+    await this.schedule('0 9 * * *', 'dailyReport')     // 09:00 UTC daily
   }
 
   public static async processHour() {
