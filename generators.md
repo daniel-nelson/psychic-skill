@@ -51,7 +51,7 @@ This mainly bites when a model was already created (via `g:model` or a prior `g:
 
 ## Generator workflow (after a generator runs)
 
-1. **Update the migration file as needed** (e.g., add `unique()` to a column).
+1. **Edit the generated migration as needed.** Column shorthand adds `.unique()` to columns whose names end in `email`, `token` or `uuid`. Delete it where values repeat (`guest_email` on `bookings`); where one must stay unique on a soft-deleted table, use a [partial unique index](soft-delete.md#natural-key-unique-indexes) instead.
 2. **Run migrations**: `pnpm psy db:migrate` (under the default `NODE_ENV=test` this also runs `sync` automatically — do NOT follow it with a separate `pnpm psy sync`; see [migrations.md](migrations.md) for the `NODE_ENV=development` case).
 3. **If the generator was a resource generator**:
    - Update the generated controller spec first.

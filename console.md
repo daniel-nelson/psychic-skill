@@ -139,3 +139,39 @@ NODE_ENV=development \
 - **`APP_NAME` / `APP_VERSION` are read at boot** by some projects' `app.ts` / `AppEnv` setup. The `console` script in `package.json` sets these from `$npm_package_name` / `$npm_package_version` automatically; standalone `tsx` doesn't, so set them explicitly. Skip this only if the project's boot doesn't reference them.
 - **Do not hand-roll an alternative** — a `tsx -e "..."` one-liner that skips `loadEnv` loads no `.env` file and runs with `NODE_ENV` unset, which `AppEnv` reads as production; one that skips `initializePsychicApp` fails its first query.
 - Add `scratch-*.ts` to `.gitignore` if it isn't already, and delete scratch files after use — they're throwaway, not artifacts.
+
+## Running a One-Off Job in a Deployed Environment
+
+A one-off job against a deployed database — a backfill, a data correction — is a command in the app's own `src/conf/system/cli.ts`, reviewed and deployed like any other change. Register it before `program.parse(process.argv)`, keep the job in its own module, and import that module inside the action so other `psy` commands never load it:
+
+```typescript
+// src/conf/system/cli.ts
+PsychicCLI.provide(program, { initializePsychicApp, seedDb })
+
+program
+  .command('backfill-place-slugs')
+  .description('Sets slug on every Place that has none')
+  .action(async () => {
+    await initializePsychicApp()
+    const { default: backfillPlaceSlugs } = await import('#src/scripts/backfillPlaceSlugs.js')
+    await backfillPlaceSlugs()
+    process.exit()
+  })
+
+program.parse(process.argv)
+```
+
+```typescript
+// src/scripts/backfillPlaceSlugs.ts
+import Place from '#models/Place.js'
+
+export default async function backfillPlaceSlugs() {
+  await Place.where({ slug: null }).findEach(async place => {
+    await place.update({ slug: place.name.toLowerCase().replace(/\W+/g, '-') })
+  })
+}
+```
+
+Run it locally with `pnpm psy backfill-place-slugs` (the test database by default, as above). In a deployed image, run `node ./dist/src/conf/system/cli.js backfill-place-slugs` as a one-off task — the entrypoint [deploying.md](deploying.md#runtime-model) uses for `db:migrate`.
+
+The command acts on whatever database that deployment is configured for. Stage runs `NODE_ENV=production` too, so that value doesn't identify the live app: run the command only when the user asks, in the deployment they named.

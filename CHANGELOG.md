@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.106.0 — 2026-10-29
+
+### Added
+
+- **`console.md`** — "Running a One-Off Job in a Deployed Environment": a one-off job against a deployed database is a command registered in the app's own `src/conf/system/cli.ts` before `program.parse(process.argv)`, reviewed and deployed like any other change. In the `backfill-place-slugs` example, the action awaits `initializePsychicApp()`, imports the job from its own module (`#src/scripts/backfillPlaceSlugs.js`) inside the action so other `psy` commands never load it, runs it, and calls `process.exit()`. It runs locally with `pnpm psy backfill-place-slugs` and in a deployed image as a one-off task with `node ./dist/src/conf/system/cli.js backfill-place-slugs`. The command acts on whatever database that deployment is configured for, and stage also runs `NODE_ENV=production`, so it runs only when the user asks, in the deployment they named.
+- **`generators.md`** — "Generator workflow": column shorthand adds `.unique()` to columns whose names end in `email`, `token` or `uuid`; delete it where values repeat (`guest_email` on `bookings`), and on a soft-deleted table that needs the uniqueness, use a partial unique index instead.
+
+### Changed
+
+- **`migrations.md`** — when post-sync fails after `pnpm psy db:migrate`, fix the problem and re-run `pnpm psy db:migrate` to regenerate the types. Recovering from a stale `src/types/db.ts` regenerates with `pnpm psy db:reset`, and when a model depends on a migration that never ran, the missing migration runs with `pnpm psy db:migrate` first.
+- **`workers.md`** — the `ScheduledJobs` example labels `'0 9 * * *'` as `// 09:00 UTC daily`. The `pluckEach` examples leave the callback's `id` parameter unannotated.
+- **`SKILL.md`** — ecosystem baseline: `@rvoh/psychic-workers` 2.9.1.
+
 ## 0.105.0 — 2026-10-29
 
 ### Changed

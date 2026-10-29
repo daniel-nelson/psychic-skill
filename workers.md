@@ -340,7 +340,7 @@ export default class ReprocessAllPlacePhotosService extends ApplicationBackgroun
 
   public static async _reprocessAll() {
     let batch: string[] = []
-    await PlacePhoto.pluckEach('id', async (id: string) => {
+    await PlacePhoto.pluckEach('id', async id => {
       batch.push(id)
       if (batch.length >= 1000) {
         await this.background('_expandBatch', batch)
@@ -421,7 +421,7 @@ import ApplicationScheduledService from '../ApplicationScheduledService.js'
 export default class ScheduledJobs extends ApplicationScheduledService {
   public static async scheduleAllJobs() {
     await this.schedule('0 * * * *', 'processHour')     // Every hour
-    await this.schedule('0 9 * * *', 'dailyReport')     // 9am daily
+    await this.schedule('0 9 * * *', 'dailyReport')     // 09:00 UTC daily
   }
 
   public static async processHour() {
@@ -548,7 +548,7 @@ export default class EndOfDayService extends ApplicationBackgroundedService {
     // The query filters by timezone so only guests whose local hour is end-of-day
     // are returned — selecting IDs only, never hydrating full records.
     const timeZones = timeZonesAtLocalHour(DateTime.fromISO(nowIso), END_OF_DAY_HOUR)
-    await Guest.where({ timeZone: timeZones }).pluckEach('id', async (id: string) => {
+    await Guest.where({ timeZone: timeZones }).pluckEach('id', async id => {
       await this.background('_runEndOfDay', id)
     })
   }
