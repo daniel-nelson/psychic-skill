@@ -461,7 +461,7 @@ await User.innerJoin('preference', { and: { category: 'notifications' } }).all()
 
 ## Hooks - Full Reference
 
-### Before Hooks (run before validations and the DB write)
+### Before Hooks (run on save, before its validations and the DB write)
 
 ```typescript
 @deco.BeforeCreate()
