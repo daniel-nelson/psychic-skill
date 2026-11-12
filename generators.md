@@ -39,11 +39,9 @@ A nested resource has a parent-id placeholder in its route path (the `{}` segmen
 
 Pass `--singular` when the owning side has-one of the resource (e.g., a `User` `HasOne` `Host`). It generates `r.resource` instead of `r.resources` and omits the `index` action; `r.resource` declares the path without `:id` because the owning model only has one of the resource, so there's nothing to disambiguate by ID. Get this wrong and the generated controller/spec don't match reality: a plural resource generated against a `HasOne` parent calls `associationQuery('hosts')` when the model only has a singular `host` association, which won't compile.
 
-### `g:resource` unconditionally overwrites existing model, spec, factory, and serializer files
+### Adding a controller to an existing model
 
-`g:resource` always regenerates the model file, unit spec, factory, and serializer for the given model name — it does not check whether those files already exist, and there is no flag to skip them (`--only` controls which controller actions are scaffolded, not which files are written). Running `g:resource` for a model name that already has hand-edited associations, hooks, validations, or serializer fields will silently discard those edits.
-
-This mainly bites when a model was already created (via `g:model` or a prior `g:resource`) and you need to add the missing controller/routes after the fact. Before running `g:resource` in that situation: commit or stash first, run the generator, then restore the hand-edited model/spec/factory/serializer files, keep only the newly generated controller, controller spec, and route entry, and delete the generated `create-…` migration (the table already exists).
+To add a controller and its routes to a model that already exists, run `pnpm psy g:resource --overwrite-psychic-only …`.
 
 ## Generated defaults
 
