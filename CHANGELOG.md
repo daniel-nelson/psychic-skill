@@ -5,7 +5,7 @@
 ### Added
 
 - **`workers.md`** — the "Every dispatch appends the BullMQ `Job`" bullet: a parameter added to a backgrounded method receives the `Job` in every job queued before the deploy, which delayed jobs and retries keep for days, and neither TypeScript nor specs see it. The method reads it defensively, falling back to its prior behavior: `typeof channel === 'string' ? channel : 'email'`. In a method that also declares the `Job`, those jobs leave `job` undefined and put the `Job` in the new slot, so the method takes it from there too.
-- **`deploying.md`** — "The migrate task is the boot smoke test": a step before the database connection, where `PsychicAppWorkers.init` waits for the scaffold's production Redis `Cluster` queue connection to be ready, so a jobs Redis the task cannot reach fails it after 60 seconds with `Failed to refresh slots cache.`
+- **`deploying.md`** — "The migrate task is the boot smoke test": a step after the database connection, where `PsychicAppWorkers.init` waits for the scaffold's production Redis `Cluster` queue connection to be ready, so a jobs Redis the task cannot reach fails it after 60 seconds with `Failed to refresh slots cache.`
 - **`serializers.md`** — "preloadFor Integration": a `customAttribute` computed across a `HasMany` (a host-facing `hasUpcomingBookings` on `Place`) has the serializer render the association, `.rendersMany('bookings', { serializerKey: 'summary' })` with a summary serializer that renders only `id`, so `preloadFor` loads `bookings` at every depth the serializer is reached. The id array becomes part of the response and its OpenAPI schema.
 
 ### Changed

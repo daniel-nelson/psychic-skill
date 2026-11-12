@@ -124,8 +124,8 @@ Running `node ./dist/src/conf/system/cli.js db:migrate` exercises the Psychic bo
 2. `loadEnv` resolves the environment (including any external-secret injection wired through `AppEnv`).
 3. Every required variable boot reads through `AppEnv` (`conf/app.ts`, `conf/dream.ts`, initializers) must be set, or boot throws naming it.
 4. Models, serializers, controllers, services and initializers load, so import-time errors surface. `db:migrate` boots with integrity checks bypassed, so route building, the OpenAPI document and the check that every model's table is in the schema run only when the web, websocket and worker processes boot.
-5. `PsychicAppWorkers.init` waits for the scaffold's production Redis `Cluster` queue connection to be ready, so a jobs Redis the task cannot reach fails it after 60 seconds with `Failed to refresh slots cache.`
-6. A database connection is established using the configured credentials, including TLS negotiation against the resolved `ssl` value.
+5. A database connection is established using the configured credentials, including TLS negotiation against the resolved `ssl` value.
+6. `PsychicAppWorkers.init` waits for the scaffold's production Redis `Cluster` queue connection to be ready, so a jobs Redis the task cannot reach fails it after 60 seconds with `Failed to refresh slots cache.`
 
 Only then does Kysely start applying pending migrations. Any failure in steps 1–6 fails the migrate task before the schema changes — which means a no-op "boot smoke" task that only waits for the container to reach a running state is redundant. The migrate task itself is the smoke test, and it covers strictly more than container liveness: missing env vars, registry-time import errors, malformed DB credentials, TLS handshake failures, and network reachability all surface here.
 
