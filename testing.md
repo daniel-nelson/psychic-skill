@@ -519,7 +519,7 @@ Set up the negative spec so the principal is fully authenticated and authorized 
 
 ```typescript
 // Dream model matching
-expect(result).toMatchDreamModels([bedroom, kitchen])  // Set membership by ID, order-insensitive
+expect(result).toMatchDreamModels([bedroom, kitchen])  // Same class + primary key per model, order-insensitive
 expect(result).toMatchDreamModel(bedroom)              // Single model
 
 // Standard vitest matchers
@@ -528,7 +528,7 @@ expect(body.results).toHaveLength(1)
 expect(place.name).toEqual('Expected Name')
 ```
 
-`toMatchDreamModels` compares the two arrays as **sets**: it sorts both the received and the expected list by each model's comparison key before matching, so the assertion passes regardless of the order the query returned the rows in. That is exactly what you want for a query whose order you don't control — `expect(rooms).toMatchDreamModels([bedroom, kitchen])` holds whether the rows come back `[bedroom, kitchen]` or `[kitchen, bedroom]`.
+`toMatchDreamModels` sorts both the received and the expected list by each model's comparison key, then requires every pair to have the same class and primary key, so the assertion passes regardless of the order the query returned the rows in. That is exactly what you want for a query whose order you don't control — `expect(rooms).toMatchDreamModels([bedroom, kitchen])` holds whether the rows come back `[bedroom, kitchen]` or `[kitchen, bedroom]`. Duplicates count: `[bedroom, bedroom]` does not match `[bedroom, kitchen]`.
 
 Do **not** reach for an order-sensitive assertion (`toEqual`, indexing `results[0]`, `.map(r => r.id)` against a fixed list) on a query that declares no order. A Dream query without an `order` — `.all()`, an unordered `associationQuery(...).all()`, a `pluck` — carries no SQL `ORDER BY`, so Postgres may return the rows in any order; the row sequence you happen to observe is not a guarantee and an assertion that depends on it is a latent flake. When order is part of what you're testing, make it explicit in the query — `.order({ name: 'asc' })`, an association `order` option, or sorting the results before the assertion — and only then assert the sequence.
 
