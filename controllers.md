@@ -1136,7 +1136,7 @@ Psychic automatically converts certain errors to HTTP responses:
 | `castParam` fails | 400 | Invalid parameter type/value |
 | `extractParams` fails | 400 | Invalid model attributes |
 | Model validation fails | 400 | `isInvalid` with errors |
-| The database rejects a value in a save or read query | 400 | Not-null, check, overflow or type mismatch (`DataIncompatibleWithDatabaseField`) |
+| The database rejects a value in a save or read query (other than a `find`/`findBy` key outside a transaction, which is no match) | 400 | Not-null, check, overflow or type mismatch (`DataIncompatibleWithDatabaseField`) |
 | `findOrFail` no match | 404 | Record not found |
 | `firstOrFail` no match | 404 | Record not found |
 | `save` / `update` that writes changes to a loaded record | 404 | Row hard-deleted after it was loaded (`CannotSaveMissingDream`) |
