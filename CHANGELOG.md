@@ -7,6 +7,7 @@
 - **`workers.md`** — the "Every dispatch appends the BullMQ `Job`" bullet: a parameter added to a backgrounded method receives the `Job` in every job queued before the deploy, which delayed jobs and retries keep for days, and neither TypeScript nor specs see it. The method reads it defensively, falling back to its prior behavior: `typeof channel === 'string' ? channel : 'email'`. In a method that also declares the `Job`, those jobs leave `job` undefined and put the `Job` in the new slot, so the method takes it from there too.
 - **`deploying.md`** — "The migrate task is the boot smoke test": a step after the database connection, where `PsychicAppWorkers.init` waits for the scaffold's production Redis `Cluster` queue connection to be ready, so a jobs Redis the task cannot reach fails it after 60 seconds with `Failed to refresh slots cache.`
 - **`serializers.md`** — "preloadFor Integration": a value computed from one associated record goes in a `customAttribute` on the serializer a flattened `rendersOne` renders. For a `customAttribute` that reads an association `preloadFor` cannot see, such as `hasUpcomingBookings` on `Place` across its `bookings`, every query that renders it chains `.preload('bookings')` after `preloadFor`, with the path from the queried model when it renders nested. An association is never rendered only so `preloadFor` loads it.
+- **`workers.md`** — "Base Classes": each service is the default export of its own file under `src/app/services/`, because discovery registers only that export and registration gives the class the global name its jobs are queued under. A scheduled service exported any other way, such as a named export beside its parent, schedules under the parent's name: its `schedule()` replaces the parent's schedule for a method both schedule, and each run resolves the parent class, so an overridden method runs the parent's version and a child-only method throws.
 
 ### Changed
 
@@ -14,11 +15,14 @@
 - **`controllers.md`** — "Automatic Error Handling": a value the database rejects in a save or a read query is a 400 (`DataIncompatibleWithDatabaseField`), except a `find`/`findBy` key outside a transaction, which is no match, and the persistent-400 causes in "Debugging Unexpected 400s" say the same.
 - **`testing.md`** — "Key Test Matchers": `toMatchDreamModels` sorts both lists by each model's comparison key, then requires every pair to have the same class and primary key. Duplicates count: `[bedroom, bedroom]` does not match `[bedroom, kitchen]`.
 - **`models.md`** — the "Before Hooks" heading says they run on save, before its validations and the DB write.
+- **`serializers.md`** — "Fixing Attribute Shadowing": the first fix declares the parent's attribute after the flattened `rendersOne` (again, when a serializer it extends already declares it). The later declaration wins in the payload, and Psychic leaves the association's copy of the key out of the OpenAPI schema. The controller-spec example comment matches.
+- **`models.md`** — the `@deco.Virtual` comment routes a value computed across a `HasMany` to `serializers.md`'s "preloadFor Integration".
 - **`SKILL.md`** — ecosystem baseline: `@rvoh/dream` 2.43.0, `@rvoh/psychic` 3.19.2, `@rvoh/psychic-workers` 2.9.2, `@rvoh/psychic-spec-helpers` 3.6.x, and `@rvoh/dream-spec-helpers` 2.5.0.
 
 ### Removed
 
 - **`generators.md`** — the section saying `g:resource` overwrites existing model, spec, factory and serializer files, with its commit, regenerate and restore recipe.
+- **`serializers.md`** — the attribute-shadowing fix that builds a dedicated flattenable serializer without the conflicting attribute.
 
 ## 0.107.0 — 2026-10-29
 
