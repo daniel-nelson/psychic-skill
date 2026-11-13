@@ -279,31 +279,13 @@ Flattening merges a `rendersOne` association's attributes directly into the pare
 
 ### Fixing Attribute Shadowing
 
-**Fix 1 (preferred when the shadowing attribute from the flattened association is not needed):** Create a dedicated flattenable serializer that omits the conflicting attribute (e.g., `id`). Build the default serializer from the flattenable serializer, adding the omitted attribute back. This changes the normal composition pattern where the default serializer extends the summary serializer, so some attributes may need to be duplicated.
+**Fix 1 (when the parent's attribute should win):** Declare the parent's attribute after the `rendersOne` — again, if a serializer this one extends already declared it. The later declaration wins in the payload, and Psychic leaves the association's copy of the key out of the OpenAPI schema.
 
 ```typescript
-// GuestSerializers
-export const GuestSummarySerializer = (guest: Guest) =>
-  DreamSerializer(Guest, guest)
-    .attribute('id')
-    .attribute('name')
-
-export const FlattenableGuestSerializer = (guest: Guest) =>
-  DreamSerializer(Guest, guest)
-    .attribute('name')
-    .attribute('bio')
-
-export const GuestSerializer = (guest: Guest) =>
-  FlattenableGuestSerializer(guest)
-    .attribute('id')
-```
-
-```typescript
-// BookingSerializer — flattens guest data without the guest's id
 export const BookingSerializer = (booking: Booking) =>
-  DreamSerializer(Booking, booking)
-    .attribute('id')
-    .rendersOne('guest', { serializer: FlattenableGuestSerializer, flatten: true })
+  BookingSummarySerializer(booking)                                   // declares 'id'
+    .rendersOne('guest', { serializerKey: 'summary', flatten: true }) // the guest's 'id' overwrites it
+    .attribute('id')                                                  // the booking's 'id' wins
 ```
 
 **Fix 2 (preferred when the shadowed attribute from the parent is not needed — common for join models):** Simply omit the shadowed attribute from the parent serializer. This is typical when the parent is a join model (e.g., `HostPlace`) where the join model's own `id` is not useful to the consumer, and the real identity is the flattened association's `id`.
@@ -322,8 +304,8 @@ When a serializer uses flattening, controller specs should assert the serialized
 
 ```typescript
 // If BookingSerializer flattens guest data and exposes:
-//   - booking's id as 'id' would be shadowed, so booking omits it or renames it
-//   - guest's 'id', 'name', 'bio' flattened into the response
+//   - booking's 'id', declared after the flatten
+//   - guest's 'name' flattened into the response (guest's 'id' is not)
 // Then specs should assert against the serialized shape, not model property names
 ```
 
