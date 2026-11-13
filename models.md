@@ -843,7 +843,8 @@ public set pounds(pounds: DreamColumn<Place, 'grams'>) {
 // (a DB lookup, a remote URL, a cross-association walk), express it as a real
 // association (@deco.HasOne / @deco.BelongsTo) and surface it via
 // .delegatedAttribute(...) or .rendersOne(...) in the serializer — never via
-// a virtual.
+// a virtual. For a value computed across a HasMany, see serializers.md,
+// "preloadFor Integration".
 //
 // The type argument to @deco.Virtual(...) sets the OpenAPI shape wherever the
 // attribute is surfaced in a serializer or model-derived OpenAPI request body,
