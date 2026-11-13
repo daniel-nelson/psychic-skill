@@ -14,7 +14,7 @@
 - **`controllers.md`** — "Automatic Error Handling": a value the database rejects in a save or a read query is a 400 (`DataIncompatibleWithDatabaseField`), except a `find`/`findBy` key outside a transaction, which is no match, and the persistent-400 causes in "Debugging Unexpected 400s" say the same.
 - **`testing.md`** — "Key Test Matchers": `toMatchDreamModels` sorts both lists by each model's comparison key, then requires every pair to have the same class and primary key. Duplicates count: `[bedroom, bedroom]` does not match `[bedroom, kitchen]`.
 - **`models.md`** — the "Before Hooks" heading says they run on save, before its validations and the DB write.
-- **`SKILL.md`** — ecosystem baseline: `@rvoh/dream` 2.42.0, `@rvoh/psychic` 3.19.0, `@rvoh/psychic-workers` 2.9.2, `@rvoh/psychic-spec-helpers` 3.6.x, and `@rvoh/dream-spec-helpers` 2.5.0.
+- **`SKILL.md`** — ecosystem baseline: `@rvoh/dream` 2.43.0, `@rvoh/psychic` 3.19.2, `@rvoh/psychic-workers` 2.9.2, `@rvoh/psychic-spec-helpers` 3.6.x, and `@rvoh/dream-spec-helpers` 2.5.0.
 
 ### Removed
 
