@@ -12,6 +12,8 @@ Background work should be used to offload costly, process-intensive, or failure-
 - **`ApplicationBackgroundedModel`** (extends Dream) - For model instance method backgrounding (transparently handles serializing the model global name and id and calling the backgrounded method on the instantiated model)
 - **`ApplicationScheduledService`** - For recurring/cron-based jobs
 
+Give each service its own file under `src/app/services/` and make it the default export: discovery registers only that export ([console.md](console.md#auto-imported-services)), and registration gives the class the global name its jobs are queued under. A scheduled service exported any other way, such as a named export beside its parent, schedules under the parent's name: its `schedule()` replaces the parent's schedule for a method both schedule, and each run resolves the parent class, so an overridden method runs the parent's version and a child-only method throws.
+
 ## Backgrounding Service Methods
 
 Services are the preferred way to background work. The pattern is:
