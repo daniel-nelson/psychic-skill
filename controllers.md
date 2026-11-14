@@ -1122,7 +1122,7 @@ The `validate` option accepts `requestBody`, `responseBody`, `headers`, `query`,
      console.dir(this.params, { depth: null })
      ```
      Check whether the shape matches what the endpoint expects. If a feature spec was the trigger and the payload looks correct, consider writing a controller spec — faster and more isolated than feature specs — and iterate from there.
-   - **If the failure persists:** OpenAPI validation wasn't the cause. A persistent 400 is a `castParam` / `extractParams` rejection, a model validation failing on save, or a not-null, check-constraint, overflow or type-mismatch error from the database on save; a persistent 500 is an unhandled error, a unique-constraint violation among them. Add logs around those calls to isolate.
+   - **If the failure persists:** OpenAPI validation wasn't the cause. A persistent 400 is a `castParam` / `extractParams` rejection, a model validation failing on save, or a not-null, check-constraint, overflow or type-mismatch error from the database on a save or read query; a persistent 500 is an unhandled error, a unique-constraint violation among them. Add logs around those calls to isolate.
 3. **Remove the `validate` line** (and restore `fastJsonStringify`) once the problem is identified. Leaving it disabled defeats the protection OpenAPI validation provides.
 
 `NODE_DEBUG=psychic` also surfaces validation info, but `validate: { all: false }` is usually more useful because it lets the real response body through for direct inspection.
@@ -1136,7 +1136,7 @@ Psychic automatically converts certain errors to HTTP responses:
 | `castParam` fails | 400 | Invalid parameter type/value |
 | `extractParams` fails | 400 | Invalid model attributes |
 | Model validation fails | 400 | `isInvalid` with errors |
-| The database rejects a save | 400 | Not-null, check, overflow or type mismatch (`DataIncompatibleWithDatabaseField`) |
+| The database rejects a value in a save or read query (other than a `find`/`findBy` key outside a transaction, which is no match) | 400 | Not-null, check, overflow or type mismatch (`DataIncompatibleWithDatabaseField`) |
 | `findOrFail` no match | 404 | Record not found |
 | `firstOrFail` no match | 404 | Record not found |
 | `save` / `update` that writes changes to a loaded record | 404 | Row hard-deleted after it was loaded (`CannotSaveMissingDream`) |

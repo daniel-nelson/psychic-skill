@@ -279,31 +279,13 @@ Flattening merges a `rendersOne` association's attributes directly into the pare
 
 ### Fixing Attribute Shadowing
 
-**Fix 1 (preferred when the shadowing attribute from the flattened association is not needed):** Create a dedicated flattenable serializer that omits the conflicting attribute (e.g., `id`). Build the default serializer from the flattenable serializer, adding the omitted attribute back. This changes the normal composition pattern where the default serializer extends the summary serializer, so some attributes may need to be duplicated.
+**Fix 1 (when the parent's attribute should win):** Declare the parent's attribute after the `rendersOne` — again, if a serializer this one extends already declared it. The later declaration wins in the payload, and Psychic leaves the association's copy of the key out of the OpenAPI schema.
 
 ```typescript
-// GuestSerializers
-export const GuestSummarySerializer = (guest: Guest) =>
-  DreamSerializer(Guest, guest)
-    .attribute('id')
-    .attribute('name')
-
-export const FlattenableGuestSerializer = (guest: Guest) =>
-  DreamSerializer(Guest, guest)
-    .attribute('name')
-    .attribute('bio')
-
-export const GuestSerializer = (guest: Guest) =>
-  FlattenableGuestSerializer(guest)
-    .attribute('id')
-```
-
-```typescript
-// BookingSerializer — flattens guest data without the guest's id
 export const BookingSerializer = (booking: Booking) =>
-  DreamSerializer(Booking, booking)
-    .attribute('id')
-    .rendersOne('guest', { serializer: FlattenableGuestSerializer, flatten: true })
+  BookingSummarySerializer(booking)                                   // declares 'id'
+    .rendersOne('guest', { serializerKey: 'summary', flatten: true }) // the guest's 'id' overwrites it
+    .attribute('id')                                                  // the booking's 'id' wins
 ```
 
 **Fix 2 (preferred when the shadowed attribute from the parent is not needed — common for join models):** Simply omit the shadowed attribute from the parent serializer. This is typical when the parent is a join model (e.g., `HostPlace`) where the join model's own `id` is not useful to the consumer, and the real identity is the flattened association's `id`.
@@ -322,8 +304,8 @@ When a serializer uses flattening, controller specs should assert the serialized
 
 ```typescript
 // If BookingSerializer flattens guest data and exposes:
-//   - booking's id as 'id' would be shadowed, so booking omits it or renames it
-//   - guest's 'id', 'name', 'bio' flattened into the response
+//   - booking's 'id', declared after the flatten
+//   - guest's 'name' flattened into the response (guest's 'id' is not)
 // Then specs should assert against the serialized shape, not model property names
 ```
 
@@ -533,9 +515,9 @@ export const RoomBathroomForGuestsSerializer = (bathroom: Bathroom, passthrough:
 
 ## preloadFor Integration
 
-**Prefer `preloadFor` or `loadFor`** over manual `preload(...)` chains. These methods automatically load everything the serializer needs, including nested `rendersOne`, `rendersMany`, and `delegatedAttribute` associations. Manual preload is fragile — it misses nested dependencies, causing `NonLoadedAssociation` errors at serialization time. Don't switch to manual preload to avoid an extra DB query without data showing it's a real problem. `preloadFor` automatically adapts as serializers evolve — if you add a `rendersMany` to a serializer, every controller using `preloadFor` picks it up automatically. Manual preload chains don't, leading to production `NonLoadedAssociation` errors and harder-to-understand code. Let data lead optimization decisions, not intuition about query counts. Manual `preload(...)` and `load(...)` are still useful outside of serialization contexts (e.g., loading associations for business logic in a service).
+**Prefer `preloadFor` or `loadFor`** over manual `preload(...)` chains. These methods automatically load everything the serializer needs, including nested `rendersOne`, `rendersMany`, and `delegatedAttribute` associations. Manual preload is fragile — it misses nested dependencies, causing `NonLoadedAssociation` errors at serialization time. Don't switch to manual preload to avoid an extra DB query without data showing it's a real problem. `preloadFor` automatically adapts as serializers evolve — if you add a `rendersMany` to a serializer, every controller using `preloadFor` picks it up automatically. Manual preload chains don't, leading to production `NonLoadedAssociation` errors and harder-to-understand code. Let data lead optimization decisions, not intuition about query counts. Manual `preload(...)` and `load(...)` are still useful outside of serialization contexts (e.g., loading associations for business logic in a service), and beside `preloadFor` for an association it cannot see (below).
 
-To put a value from an associated record on a serializer, use `delegatedAttribute` or `rendersOne(name, { flatten: true })` — both are discovered by `preloadFor`, so the association is auto-preloaded. (`customAttribute` is for values computed from the model's own columns and passthrough, like localized labels; it's the right tool there.) `preloadFor` does not inspect `customAttribute` bodies, so reading an association inside one leaves it unloaded and rendering throws `NonLoadedAssociation` — read that error as the signal to switch to a delegate or a flattened `rendersOne`, not to hand-`.preload()` the association.
+To put a value from an associated record on a serializer, use `delegatedAttribute` or `rendersOne(name, { flatten: true })` — both are discovered by `preloadFor`, so the association is auto-preloaded. A value computed from that one record goes in a `customAttribute` on the serializer the flattened `rendersOne` renders. `preloadFor` does not inspect `customAttribute` bodies, so reading an association inside one leaves it unloaded and rendering throws `NonLoadedAssociation`. For a value the flattened serializer can't carry — one computed across a `HasMany`, like `hasUpcomingBookings` on `Place`, or one that also reads the parent's own columns — keep the `customAttribute` and chain `.preload(...)` after `preloadFor` where the rendered model is loaded: `Place.preloadFor('default').preload('bookings')`, or `.load(...)` after `loadFor`. Every query that renders the serializer needs it, with the path from the queried model when the serializer renders nested: `Host.preloadFor('default').preload('places', 'bookings')`. Don't render an association only so `preloadFor` loads it; that changes the response and its OpenAPI schema.
 
 **STI-aware preloading:** wherever the serializer graph reaches an STI base — at the root of the call, or through an association whose target is one — `preloadFor` resolves one serializer per STI child and discovers what each of them renders. When those serializers render different `rendersOne`, `rendersMany`, or `delegatedAttribute` associations, `preloadFor` loads them all: the preload set is the union across every child's serializer, decided before the query knows which types it will return, so every row carries the whole union. Each row is still serialized by its own child's serializer. This means a single `preloadFor` call on the base class correctly handles mixed result sets of different STI children.
 
