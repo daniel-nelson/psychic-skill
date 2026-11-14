@@ -17,7 +17,7 @@
 - **`models.md`** — the "Before Hooks" heading says they run on save, before its validations and the DB write.
 - **`serializers.md`** — "Fixing Attribute Shadowing": the first fix declares the parent's attribute after the flattened `rendersOne` (again, when a serializer it extends already declares it). The later declaration wins in the payload, and Psychic leaves the association's copy of the key out of the OpenAPI schema. The controller-spec example comment matches.
 - **`models.md`** — the `@deco.Virtual` comment routes a value computed across a `HasMany` to `serializers.md`'s "preloadFor Integration".
-- **`SKILL.md`** — ecosystem baseline: `@rvoh/dream` 2.43.0, `@rvoh/psychic` 3.19.2, `@rvoh/psychic-workers` 2.9.2, `@rvoh/psychic-spec-helpers` 3.6.x, and `@rvoh/dream-spec-helpers` 2.5.0.
+- **`SKILL.md`** — ecosystem baseline: `@rvoh/dream` 2.43.0, `@rvoh/psychic` 3.19.2, `@rvoh/psychic-workers` 2.9.3, `@rvoh/psychic-spec-helpers` 3.6.x, and `@rvoh/dream-spec-helpers` 2.5.0.
 
 ### Removed
 
