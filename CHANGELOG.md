@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.109.0 — 2026-11-16
+
+### Changed
+
+- **`SKILL.md`** — ecosystem baseline: `@rvoh/dream` 2.44.0 and `@rvoh/psychic-workers` 2.10.0.
+
 ## 0.108.0 — 2026-11-11
 
 ### Added
