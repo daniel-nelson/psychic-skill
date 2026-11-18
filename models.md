@@ -613,6 +613,8 @@ if (guest.isInvalid) {
 }
 ```
 
+A rule that must hold for every row also needs a database constraint in the migration. See [controllers.md — where rules live](controllers.md#what-an-action-does-and-where-rules-live).
+
 ## Scopes
 
 ```typescript

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.110.0 — 2026-11-17
+
+### Added
+
+- **`controllers.md`** — new "What an Action Does, and Where Rules Live" section before the CRUD pattern. An action reads params, finds records through the current user, authorizes, calls the model or a service, and renders; beyond authorization it holds no validation or business rules, because a check in one action is skipped by every other writer. A rule about saved data usually lives in two places: a migration constraint (`notNull()`, foreign key, Postgres enum, check constraint, unique index) that holds against every writer, and a model validation that gives the caller field-keyed `.errors`. Dream has no uniqueness validation, so uniqueness is a unique index (routed to the 409 section) or, when it is conditional, a `@deco.Validate()` method that checks for a duplicate. Domain behavior goes in model methods, hooks or services; `castParam` bounds are for request input that is never saved.
+- **`models.md`** — the Validations section routes to that controllers.md section.
+
+### Changed
+
+- **`controllers.md`** — "Bounding length and range" scopes `castParam` bounds to input no model validates (a search term, a page size); a bound on a saved column belongs in the model. Its example now bounds `search`, `perPage` and `minSleeps`.
+
 ## 0.109.0 — 2026-11-16
 
 ### Changed
