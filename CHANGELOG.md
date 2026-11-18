@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.110.0 — 2026-11-17
+
+### Added
+
+- **`controllers.md`** — new "What an Action Does, and Where Rules Live" section before the CRUD pattern. An action reads params, finds records through the current user, authorizes, calls the model or a service, and renders; beyond authorization it holds no validation or business rules, because a check in one action is skipped by every other writer. Rules about saved data route to models.md; state transitions, derived values and multi-model rules go in a model method or hook, or a service.
+- **`models.md`** — new "Constraints and validations" subsection under Validations. A constraint and a validation on the same rule do different jobs: the constraint guarantees the rule against every writer and racing requests; the validation reports every failing field in `.errors` before the write, for the controller to return deliberately, where the database stops at the first violation with a bare `400` (or a `500` for a unique violation). A rule that must always hold gets a constraint, plus a validation when user input can break it. Dream has no uniqueness validation: uniqueness is a unique index, or a partial unique index with a `WHERE` predicate when it holds only for some rows.
+
+### Changed
+
+- **`controllers.md`** — "Bounding length and range" scopes `castParam` bounds to request input no model validates (a search term, a filter value); a bound on a saved column belongs in the model, which is also why `extractParams` takes no bound options. Its example bounds the index action's optional `search` and `minSleeps`.
+
 ## 0.109.0 — 2026-11-16
 
 ### Changed

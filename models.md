@@ -613,6 +613,12 @@ if (guest.isInvalid) {
 }
 ```
 
+### Constraints and validations
+
+A database constraint and a model validation for the same rule do different jobs. The constraint is the guarantee. It holds against every writer, including ones that never load the model (a `skipHooks` update, raw Kysely, `psql`), and against two requests that both pass a check before either writes. The validation is the feedback. It runs before the row is written and lists every failing field in `.errors`, which a controller returns to the client deliberately ([returning `.errors`](controllers.md#automatic-error-handling)). The database stops at the first violation and names no field. Psychic answers that with a bare `400`, or a `500` for a unique violation unless the action [catches it](controllers.md#409-from-a-database-constraint).
+
+So a rule that must always hold gets a constraint in the migration: `notNull()`, a foreign key, a Postgres enum, a check constraint, a unique index. Add the validation when user input can break the rule. Dream has no uniqueness validation: uniqueness is a unique index, or, when it holds only for some rows, a [partial unique index](soft-delete.md#natural-key-unique-indexes) with a `WHERE` predicate.
+
 ## Scopes
 
 ```typescript

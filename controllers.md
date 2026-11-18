@@ -393,6 +393,12 @@ export default class V1HostPlacesBaseController extends V1HostBaseController {
 }
 ```
 
+## What an Action Does, and Where Rules Live
+
+An action reads params, finds records through the current user, checks what that user may do, calls the model or a service, and renders. The [CRUD pattern](#crud-controller-pattern) below is the whole shape. Beyond authorization, an action holds no validation and no business rules. A check written into one action guards that one endpoint. Every other writer saves the row without it — another endpoint, a worker, the console, a seed script — and no spec notices.
+
+A rule about saved data goes in the migration and the model ([Constraints and validations](models.md#constraints-and-validations)). State transitions, derived values, and rules spanning several models go in a model method or hook, or in a service in `app/services/`. `castParam` bounds are for request input that is never saved ([Bounding length and range](#bounding-length-and-range)).
+
 ## CRUD Controller Pattern
 
 ```typescript
@@ -612,12 +618,11 @@ this.castParam('roomType', 'string', { enum: BOOKABLE_ROOM_TYPES })
 
 ### Bounding length and range
 
-Beyond `enum`/`allowNull`/`match`, `castParam` enforces size bounds: `minLength`/`maxLength` on a `'string'`, and `minimum`/`maximum` on a `'number'`/`'integer'`/`'bigint'`. All four are inclusive and checked *after* type coercion; a violation throws `ParamValidationError`, which Psychic renders as a `400`. `extractParams` takes no bound options, so `castParam` each field that needs one. Bound untrusted request input at the boundary rather than validating it later in a model or service:
+Beyond `enum`/`allowNull`/`match`, `castParam` enforces size bounds: `minLength`/`maxLength` on a `'string'`, and `minimum`/`maximum` on a `'number'`/`'integer'`/`'bigint'`. All four are inclusive and checked *after* type coercion; a violation throws `ParamValidationError`, which Psychic renders as a `400`. These bounds are for request input no model validates, such as a search term or a filter value; a bound on a saved column belongs in the model ([Constraints and validations](models.md#constraints-and-validations)), which is also why `extractParams` takes no bound options:
 
 ```typescript
-this.castParam('title', 'string', { minLength: 1, maxLength: 200 })
-this.castParam('nightlyRateCents', 'integer', { minimum: 0, maximum: 100_000_000 })
-this.castParam('sleeps', 'integer', { minimum: 1, maximum: 20, allowNull: true })
+this.castParam('search', 'string', { minLength: 2, maxLength: 200, allowNull: true })
+this.castParam('minSleeps', 'integer', { minimum: 1, maximum: 20, allowNull: true })
 ```
 
 For array casts (`'string[]'`, `'integer[]'`, …) the bounds apply **element-wise** — each element must satisfy them — and `bigint` range checks compare without precision loss.
