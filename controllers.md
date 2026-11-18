@@ -618,11 +618,10 @@ this.castParam('roomType', 'string', { enum: BOOKABLE_ROOM_TYPES })
 
 ### Bounding length and range
 
-Beyond `enum`/`allowNull`/`match`, `castParam` enforces size bounds: `minLength`/`maxLength` on a `'string'`, and `minimum`/`maximum` on a `'number'`/`'integer'`/`'bigint'`. All four are inclusive and checked *after* type coercion; a violation throws `ParamValidationError`, which Psychic renders as a `400`. `extractParams` takes no bound options, so `castParam` each field that needs one. These bounds are for input no model validates, such as a search term or a page size. A bound on a saved column belongs in the model ([where rules live](#what-an-action-does-and-where-rules-live)):
+Beyond `enum`/`allowNull`/`match`, `castParam` enforces size bounds: `minLength`/`maxLength` on a `'string'`, and `minimum`/`maximum` on a `'number'`/`'integer'`/`'bigint'`. All four are inclusive and checked *after* type coercion; a violation throws `ParamValidationError`, which Psychic renders as a `400`. These bounds are for request input no model validates, such as a search term or a filter value; a bound on a saved column belongs in the model ([where rules live](#what-an-action-does-and-where-rules-live)), which is also why `extractParams` takes no bound options:
 
 ```typescript
-this.castParam('search', 'string', { minLength: 2, maxLength: 200 })
-this.castParam('perPage', 'integer', { minimum: 1, maximum: 100 })
+this.castParam('search', 'string', { minLength: 2, maxLength: 200, allowNull: true })
 this.castParam('minSleeps', 'integer', { minimum: 1, maximum: 20, allowNull: true })
 ```
 

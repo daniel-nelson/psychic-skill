@@ -9,7 +9,7 @@
 
 ### Changed
 
-- **`controllers.md`** — "Bounding length and range" scopes `castParam` bounds to input no model validates (a search term, a page size); a bound on a saved column belongs in the model. Its example now bounds `search`, `perPage` and `minSleeps`.
+- **`controllers.md`** — "Bounding length and range" scopes `castParam` bounds to request input no model validates (a search term, a filter value); a bound on a saved column belongs in the model, which is also why `extractParams` takes no bound options. Its example bounds the index action's optional `search` and `minSleeps`.
 
 ## 0.109.0 — 2026-11-16
 
