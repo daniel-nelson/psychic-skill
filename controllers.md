@@ -397,7 +397,7 @@ export default class V1HostPlacesBaseController extends V1HostBaseController {
 
 An action reads params, finds records through the current user, checks what that user may do, calls the model or a service, and renders. The [CRUD pattern](#crud-controller-pattern) below is the whole shape. Beyond authorization, an action holds no validation and no business rules. A check written into one action guards that one endpoint. Every other writer saves the row without it — another endpoint, a worker, the console, a seed script — and no spec notices.
 
-A rule about saved data usually lives in two places. The migration enforces it against every writer, including ones that never touch the model (a `skipHooks` query update, raw Kysely, `psql`): `notNull()`, a foreign key, a Postgres enum, a check constraint, a unique index. A [model validation](models.md#validations) runs on every model save and keys `.errors` by field, for when the caller should see why ([Automatic Error Handling](#automatic-error-handling)). Dream has no uniqueness validation: uniqueness is a unique index, or, when it holds only for some rows, a [partial unique index](soft-delete.md#natural-key-unique-indexes) with a `WHERE` predicate. [409 from a database constraint](#409-from-a-database-constraint) turns a unique-index violation into a status instead of a `500`. State transitions, derived values, and rules spanning several models go in a model method or hook, or in a service in `app/services/`. `castParam` bounds are for request input that is never saved ([Bounding length and range](#bounding-length-and-range)).
+A rule about saved data goes in the migration and the model ([Constraints and validations](models.md#constraints-and-validations)). State transitions, derived values, and rules spanning several models go in a model method or hook, or in a service in `app/services/`. `castParam` bounds are for request input that is never saved ([Bounding length and range](#bounding-length-and-range)).
 
 ## CRUD Controller Pattern
 
@@ -618,7 +618,7 @@ this.castParam('roomType', 'string', { enum: BOOKABLE_ROOM_TYPES })
 
 ### Bounding length and range
 
-Beyond `enum`/`allowNull`/`match`, `castParam` enforces size bounds: `minLength`/`maxLength` on a `'string'`, and `minimum`/`maximum` on a `'number'`/`'integer'`/`'bigint'`. All four are inclusive and checked *after* type coercion; a violation throws `ParamValidationError`, which Psychic renders as a `400`. These bounds are for request input no model validates, such as a search term or a filter value; a bound on a saved column belongs in the model ([where rules live](#what-an-action-does-and-where-rules-live)), which is also why `extractParams` takes no bound options:
+Beyond `enum`/`allowNull`/`match`, `castParam` enforces size bounds: `minLength`/`maxLength` on a `'string'`, and `minimum`/`maximum` on a `'number'`/`'integer'`/`'bigint'`. All four are inclusive and checked *after* type coercion; a violation throws `ParamValidationError`, which Psychic renders as a `400`. These bounds are for request input no model validates, such as a search term or a filter value; a bound on a saved column belongs in the model ([Constraints and validations](models.md#constraints-and-validations)), which is also why `extractParams` takes no bound options:
 
 ```typescript
 this.castParam('search', 'string', { minLength: 2, maxLength: 200, allowNull: true })
