@@ -1091,7 +1091,7 @@ The OpenAPI shape and the `extractParams` calls stay aligned: the spec advertise
 #### Anti-patterns
 
 - **Don't list model columns inside `combining`** except under the narrowing carve-out above. `combining` adds fields that are *not* on the model. Listing real columns there either silently duplicates the model-derived shape or shadows it with a hand-typed copy that drifts (e.g., a `{ enum: [...] }` redeclaration that goes stale when the DB enum changes). Use `OpenAPI.forDream(Model, ...)` (or the nested `for:` sentinel) when the value is itself a Dream-model shape.
-- **Don't write `properties:` inside `requestBody` for model fields.** It is not one of the shorthand options, and it duplicates model-owned type information. Only use explicit `type: 'object'` / `properties` / `required` when the body has no model fields at all (next subsection).
+- **Don't write a top-level `properties:` inside `requestBody` for model fields.** It is not one of the shorthand options, and it duplicates model-owned type information. Only use explicit top-level `type: 'object'` / `properties` / `required` when the body has no model fields at all (next subsection).
 
 #### When the body has no model fields
 

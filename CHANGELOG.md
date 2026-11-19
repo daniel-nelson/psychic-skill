@@ -8,7 +8,7 @@
 
 ### Changed
 
-- **`controllers.md`** — the sentence saying a model's columns and virtual attributes don't belong in `combining`, and the "Don't list model columns inside `combining`" anti-pattern, both point to the narrowing carve-out.
+- **`controllers.md`** — the sentence saying a model's columns and virtual attributes don't belong in `combining`, and the "Don't list model columns inside `combining`" anti-pattern, both point to the narrowing carve-out. The anti-pattern against `properties:` in `requestBody` names a top-level `properties`, so a `combining` entry's own shape stays in bounds.
 - **`SKILL.md`** — ecosystem baseline: `@rvoh/psychic` 3.19.3.
 
 ## 0.110.0 — 2026-11-17
