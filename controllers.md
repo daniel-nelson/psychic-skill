@@ -932,7 +932,7 @@ A query's `.passthrough()` is a separate channel: it scopes associations declare
 | `combining: { … }` | Add fields that are NOT columns on the model — join-table arrays (`cityIds`), one-shot tokens, upload metadata, workflow flags. |
 | `required: [...]` | Mark fields required. **Typed to the model's column names**, so it cannot reference `combining` keys. |
 
-One important STI nuance: when `@OpenAPI(BaseModel, ...)` documents an STI-dispatched create action, its `including` and `required` are typed to the base model's **shared physical table**, not to the TypeScript properties declared on the base class. Because every STI child shares that table, a column declared (as a `DreamColumn` property) only on a child class is still a real column on the base table, so it is part of the base model's derived request-body surface — re-add an auto-excluded one (a FK or the `type` discriminator) with `including` exactly as you would any base-model column. This is the OpenAPI mirror of `extractParams(BaseModel, [...])`, which names child columns off the same table (see [STI controller pattern](sti.md#controller-pattern)). Before deciding a field is unavailable to `@OpenAPI(BaseModel, ...)`, check the generated table metadata (`src/types/db.ts` / `src/types/dream.ts`): a physical STI column is derivable there even when no base-class property declares it. Reserve `combining` for a field that genuinely is *not* a model column — a non-column input such as a one-shot token, upload metadata, or a join-table array. A model's declared columns and its own virtual attributes are both part of its model-derived surface (`params` / `including`), so neither belongs in `combining`. One STI exception: a `@deco.Virtual` declared on a *child* class does not filter up to the base, so naming it in the base model's `params` / `including` type-checks but renders nothing into the spec — document a child's virtual attribute on a child-specific `@OpenAPI(ChildModel, ...)` instead (see [sti.md — Virtual attributes don't filter up to the base class](sti.md#virtual-attributes-dont-filter-up-to-the-base-class)).
+One important STI nuance: when `@OpenAPI(BaseModel, ...)` documents an STI-dispatched create action, its `including` and `required` are typed to the base model's **shared physical table**, not to the TypeScript properties declared on the base class. Because every STI child shares that table, a column declared (as a `DreamColumn` property) only on a child class is still a real column on the base table, so it is part of the base model's derived request-body surface — re-add an auto-excluded one (a FK or the `type` discriminator) with `including` exactly as you would any base-model column. This is the OpenAPI mirror of `extractParams(BaseModel, [...])`, which names child columns off the same table (see [STI controller pattern](sti.md#controller-pattern)). Before deciding a field is unavailable to `@OpenAPI(BaseModel, ...)`, check the generated table metadata (`src/types/db.ts` / `src/types/dream.ts`): a physical STI column is derivable there even when no base-class property declares it. Reserve `combining` for a field that genuinely is *not* a model column — a non-column input such as a one-shot token, upload metadata, or a join-table array. A model's declared columns and its own virtual attributes are both part of its model-derived surface (`params` / `including`), so neither belongs in `combining` except under the narrowing carve-out below. One STI exception: a `@deco.Virtual` declared on a *child* class does not filter up to the base, so naming it in the base model's `params` / `including` type-checks but renders nothing into the spec — document a child's virtual attribute on a child-specific `@OpenAPI(ChildModel, ...)` instead (see [sti.md — Virtual attributes don't filter up to the base class](sti.md#virtual-attributes-dont-filter-up-to-the-base-class)).
 
 #### Worked example — UPDATE with a nullable FK
 
@@ -987,6 +987,26 @@ public async update() {
     params: ['name'],
     combining: { timezone: 'string' },
     required: ['name', 'timezone'],
+  },
+})
+```
+
+A `json`/`jsonb` column in `params` is the same case: it derives as a bare `object`, so the spec and [request validation](openapi.md#validate) accept any object. Add a `combining` entry under the column's key with the real shape. It replaces the derived property whole, so a nullable column restates `'null'`:
+
+```typescript
+// houseRules is jsonb, which params derives as a bare object; combining documents its real shape.
+@OpenAPI(Place, {
+  status: 204,
+  tags: ['places'],
+  requestBody: {
+    params: ['name', 'houseRules'],
+    combining: {
+      houseRules: {
+        type: ['object', 'null'],
+        properties: { petsAllowed: 'boolean' },
+        additionalProperties: false,
+      },
+    },
   },
 })
 ```
@@ -1070,8 +1090,8 @@ The OpenAPI shape and the `extractParams` calls stay aligned: the spec advertise
 
 #### Anti-patterns
 
-- **Don't list model columns inside `combining`.** `combining` adds fields that are *not* on the model. Listing real columns there either silently duplicates the model-derived shape or shadows it with a hand-typed copy that drifts (e.g., a `{ enum: [...] }` redeclaration that goes stale when the DB enum changes). Use `OpenAPI.forDream(Model, ...)` (or the nested `for:` sentinel) when the value is itself a Dream-model shape.
-- **Don't write `properties:` inside `requestBody` for model fields.** It is not one of the shorthand options, and it duplicates model-owned type information. Only use explicit `type: 'object'` / `properties` / `required` when the body has no model fields at all (next subsection).
+- **Don't list model columns inside `combining`** except under the narrowing carve-out above. `combining` adds fields that are *not* on the model. Listing real columns there either silently duplicates the model-derived shape or shadows it with a hand-typed copy that drifts (e.g., a `{ enum: [...] }` redeclaration that goes stale when the DB enum changes). Use `OpenAPI.forDream(Model, ...)` (or the nested `for:` sentinel) when the value is itself a Dream-model shape.
+- **Don't write a top-level `properties:` inside `requestBody` for model fields.** It is not one of the shorthand options, and it duplicates model-owned type information. Only use explicit top-level `type: 'object'` / `properties` / `required` when the body has no model fields at all (next subsection).
 
 #### When the body has no model fields
 

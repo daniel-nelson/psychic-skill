@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.111.0 — 2026-11-19
+
+### Added
+
+- **`controllers.md`** — the `combining` narrowing carve-out covers a `json`/`jsonb` column in `params`: it derives as a bare `object`, so the spec and request validation accept any object. A `combining` entry under the column's key carries the real shape and replaces the derived property whole, so a nullable column restates `'null'`. The `Place.houseRules` example keeps the column in `params` and closes the shape with `additionalProperties: false`.
+
+### Changed
+
+- **`controllers.md`** — the sentence saying a model's columns and virtual attributes don't belong in `combining`, and the "Don't list model columns inside `combining`" anti-pattern, both point to the narrowing carve-out. The anti-pattern against `properties:` in `requestBody` names a top-level `properties`, so a `combining` entry's own shape stays in bounds.
+- **`SKILL.md`** — ecosystem baseline: `@rvoh/psychic` 3.19.3.
+
 ## 0.110.0 — 2026-11-17
 
 ### Added
